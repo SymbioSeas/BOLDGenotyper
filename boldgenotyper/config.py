@@ -257,6 +257,29 @@ class GeographicConfig:
             object.__setattr__(self, 'goas_shapefile_path', default_path)
 
 
+    def validate_goas_data(self) -> bool:
+        """
+        Check if GOaS shapefile exists and is readable.
+
+        Provides helpful error message if not found.
+        """
+        if self.goas_shapefile_path is None:
+            logger.warning("No GOaS shapefile path configured")
+            return False
+
+        if not self.goas_shapefile_path.exists():
+            logger.error(
+                f"GOaS shapefile not found: {self.goas_shapefile_path}\n\n"
+                "To download the GOaS reference data, run:\n"
+                "    python setup_goas.py\n\n"
+                "Or download manually from:\n"
+                "    https://www.marineregions.org/downloads.php"
+            )
+            return False
+
+        return True
+````
+
 # ============================================================================
 # Visualization Configuration
 # ============================================================================

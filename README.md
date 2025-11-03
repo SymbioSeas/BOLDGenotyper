@@ -1,21 +1,27 @@
-# BOLDGenotyper
-
-Automated COI sequence genotyping and biogeographic analysis from BOLD database data.
-
 ## Installation
 
-Coming soon...
+### 1. Clone the repository
+```bash
+git clone https://github.com/SymbioSeas/BOLDGenotyper.git
+cd BOLDGenotyper
+```
 
-## Quick Start
+### 2. Create conda environment
+```bash
+conda env create -f environment.yml
+conda activate boldgenotyper
+```
 
-Coming soon...
+### 3. Install the package
+```bash
+pip install -e .
+```
 
-## Citation
+### 4. Download GOaS reference data
+```bash
+python setup_goas.py
+```
 
-If you use this tool, please cite:
+This downloads the Global Oceans and Seas (GOaS) dataset (~120 MB) required for ocean basin assignment.
 
-Smith, S. and Black, C. (2025). Ocean basin-scale genetic partitioning in *Sphyrna lewini* revealed through COI sequence analysis. [Journal TBD].
-
-## License
-
-[Choose appropriate license - MIT recommended for open science tools]
+**Alternative**: If you already have GOaS data, you can specify a custom path in your configuration file.
