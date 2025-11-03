@@ -1,0 +1,193 @@
+# BOLDGenotyper Configuration Example - Advanced Usage
+#
+# This configuration file shows all available parameters with detailed
+# explanations. Customize this file for your specific analysis needs.
+#
+# Usage:
+#   boldgenotyper analyze --config config_example_advanced.yaml --input data.tsv
+
+# ============================================================================
+# Global Pipeline Settings
+# ============================================================================
+
+# Logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: INFO
+
+# Number of CPU threads to use (default: 1)
+n_threads: 8
+
+# Base directory for all outputs
+output_dir: results/sphyrna_lewini_analysis
+
+# Keep intermediate files (alignments, trimmed sequences, etc.)
+keep_intermediates: true
+
+# Overwrite existing output files
+overwrite_existing: false
+
+
+# ============================================================================
+# Sequence Dereplication and Clustering
+# ============================================================================
+
+dereplication:
+  # Distance threshold for clustering (default: 0.01 = 99% identity)
+  # Lower values = stricter clustering, more genotypes
+  # Higher values = looser clustering, fewer genotypes
+  clustering_threshold: 0.01
+
+  # Hierarchical clustering method
+  # Options: average (UPGMA), single, complete, ward
+  clustering_method: average
+
+  # Minimum fraction of sequences that must agree for consensus base
+  # Lower = more permissive, higher = more N's in consensus
+  consensus_frequency_cutoff: 0.7
+
+  # MAFFT alignment algorithm
+  # Options: auto (recommended), linsi (accurate), fftns (fast)
+  mafft_algorithm: auto
+
+  # Whether to trim alignment with trimAl
+  trim_alignment: true
+
+  # trimAl automated method
+  trimal_method: automated1
+
+  # Minimum sequence length to include (bp)
+  min_sequence_length: 400
+
+  # Maximum fraction of ambiguous bases (N) allowed
+  max_n_content: 0.1
+
+
+# ============================================================================
+# Genotype Assignment
+# ============================================================================
+
+genotype_assignment:
+  # Minimum sequence identity for genotype assignment
+  # Samples below this are flagged as unassigned
+  min_identity: 0.90
+
+  # Use edlib library for fast edit distance (if available)
+  use_edlib: true
+
+  # Number of parallel threads for assignment
+  n_threads: 8
+
+  # Report samples with ambiguous assignments (ties)
+  report_ties: true
+
+  # Minimum identity difference to avoid tie
+  tie_difference_threshold: 0.01
+
+
+# ============================================================================
+# Geographic Analysis
+# ============================================================================
+
+geographic:
+  # Path to GOaS (Global Oceans and Seas) shapefile
+  # Leave null to use default location in package directory
+  goas_shapefile_path: null
+
+  # CRITICAL: Exclude samples with centroid coordinates
+  # Many BOLD records use country centroids instead of actual locations
+  exclude_centroids: true
+
+  # Exclude coordinates at (0, 0) - common placeholder
+  exclude_zero_coords: true
+
+  # Minimum decimal places for coordinates (null = no requirement)
+  min_coordinate_precision: null
+
+  # Validate that coordinates fall in marine areas
+  validate_marine: false
+
+  # Ocean basins to recognize (used for analysis and visualization)
+  ocean_basins:
+    - North Atlantic Ocean
+    - South Atlantic Ocean
+    - North Pacific Ocean
+    - South Pacific Ocean
+    - Indian Ocean
+    - Southern Ocean
+    - Mediterranean Sea
+    - South China Sea
+
+
+# ============================================================================
+# Visualization
+# ============================================================================
+
+visualization:
+  # Color palette for genotypes
+  # Options: colorblind, tab10, tab20, Set3, etc.
+  color_palette: colorblind
+
+  # Specific colors for first 3 genotypes (for consistency with reference)
+  reference_colors:
+    - '#9D7ABE'  # Purple
+    - '#5AB4AC'  # Teal
+    - '#F2CC8F'  # Yellow
+
+  # Resolution for PNG/JPEG outputs (DPI)
+  figure_dpi: 300
+
+  # Output formats for figures
+  figure_format:
+    - png
+    - pdf
+
+  # Map projection for geographic plots
+  # Options: PlateCarree, Robinson, Mollweide, etc.
+  map_projection: PlateCarree
+
+  # Figure size for maps (width, height in inches)
+  map_figsize:
+    - 12
+    - 6
+
+  # Figure size for bar plots (width, height in inches)
+  barplot_figsize:
+    - 10
+    - 6
+
+  # Font family for plots
+  font_family: sans-serif
+
+  # Base font size in points
+  font_size: 11
+
+  # Minimum bootstrap value to show on phylogenetic trees
+  show_bootstrap_threshold: 70
+
+
+# ============================================================================
+# Phylogenetic Analysis (Optional)
+# ============================================================================
+
+phylogenetic:
+  # Whether to build phylogenetic tree
+  # Note: Requires PhyML or similar tool
+  build_tree: true
+
+  # Path to outgroup sequences (FASTA format)
+  # If null, tree will be midpoint-rooted
+  outgroup_fasta: data/outgroup_sequences.fasta
+
+  # Substitution model for tree building
+  # Options: GTR, HKY, JC, etc.
+  substitution_model: GTR
+
+  # Number of bootstrap replicates
+  # 1000 is standard, but 100 is faster for testing
+  n_bootstrap: 1000
+
+  # Tree building algorithm
+  # Options: phyml, fasttree, raxml
+  tree_algorithm: phyml
+
+  # Use midpoint rooting if no outgroup provided
+  midpoint_root: true

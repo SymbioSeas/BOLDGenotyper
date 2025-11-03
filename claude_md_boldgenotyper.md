@@ -1,370 +1,287 @@
-# BOLDGenoTyper Development Guide for Claude Code
+# BOLDGenotyper - Project Instructions for Claude Code
 
 ## Project Overview
 
-**BOLDGenoTyper** is a bioinformatics pipeline for identifying and analyzing COI (Cytochrome Oxidase I) genotypes from the BOLD (Barcode of Life Database) for any taxonomic group. This package enables researchers to reproduce the workflow described in the companion manuscript analyzing *Sphyrna lewini* genotypes separated by ocean basin.
+BOLDGenotyper is a Python package for automated COI sequence genotyping and biogeographic analysis from BOLD (Barcode of Life Database) data. The package enables researchers to identify genetic partitioning patterns in any organism with publicly available COI barcode sequences.
 
-## Core Objectives
+### Scientific Context
+This tool was developed to support the manuscript "Ocean basin-scale genetic partitioning in *Sphyrna lewini* revealed through COI sequence analysis" and is designed to be generalizable to any taxonomic group in BOLD.
 
-1. **Reproducibility**: Enable any researcher to analyze COI genotypes for their organism of interest
-2. **Accessibility**: Design for users without extensive bioinformatics experience
-3. **Standardization**: Use consistent naming conventions and file structures
-4. **Documentation**: Provide comprehensive documentation for every analysis step
-5. **Future Web App**: Architecture should support eventual web-based interface
+## Core Functionality
 
-## Package Architecture
+1. **Data Input**: TSV file downloaded directly from BOLD for any organism
+2. **Sequence Dereplication**: Identify unique COI genotypes using MAFFT alignment and hierarchical clustering
+3. **Consensus Generation**: Create consensus sequences for each genotype cluster
+4. **Metadata Integration**: Map samples to genotype groups and parse geographic coordinates
+5. **Geographic Filtering**: Remove samples with ambiguous locations (country centroids)
+6. **Visualization**: Generate distribution maps and relative abundance plots by ocean basin
+7. **Phylogenetic Analysis**: MAFFT alignment and PhyML tree construction (optional)
 
-### Input Requirements
-- **Primary Input**: TSV file downloaded directly from BOLD database for organism of interest
-  - File naming convention: `Genus_species_commonname.tsv` (e.g., `Sphyrna_lewini_scallopedhammerhead.tsv`)
-  - Must contain columns: `processid`, `lat`, `lon`, `nucleotides`
-  - Optional metadata columns will be preserved
+## Technical Requirements
 
-### Core Analysis Workflow
+### Environment
+- Conda environment name: `boldgenotyper`
+- Cloned from existing `depredation` environment
+- Python 3.8+
 
-1. **Data Parsing** (`parse_bold_data.py`)
-   - Extract organism name from filename using pattern: `Genus_species_commonname`
-   - Parse TSV to extract sequences and metadata
-   - Validate required columns exist
-   - Generate FASTA file: `{organism}_COI.fasta`
+### Dependencies
+- **Core Python**: biopython, pandas, scipy, numpy
+- **Bioinformatics Tools**: MAFFT (v7+), trimAl, PhyML
+- **Optional**: edlib (for faster sequence alignment)
+- **Visualization**: matplotlib, cartopy/basemap, seaborn
 
-2. **Sequence Dereplication** (`msa_to_consensus.py`)
-   - Align sequences with MAFFT (--auto mode)
-   - Trim alignments with trimAl (-automated1)
-   - Compute pairwise distance matrix (1 - % identity, ignoring gaps/Ns)
-   - Hierarchical clustering (default threshold: 0.01)
-   - Generate majority-rule consensus per cluster
-   - **Output**: `{organism}_consensus.fasta` with headers: `>consensus_c{cluster_id}_n{sample_count}`
-   - **Assumptions**:
-     - Gaps ('-') and ambiguous bases ('N') are ignored in distance calculations
-     - Sequences with <90% identity to all consensus groups remain unassigned
-     - Majority rule: most common base at each position becomes consensus
+### File Naming Conventions
+Users provide organism-specific naming, but the pipeline should:
+- Parse the TSV filename to extract organism name
+- Maintain consistent naming throughout: `{organism}_consensus.fasta`, `{organism}_with_genotypes.tsv`, etc.
+- Handle spaces and special characters in organism names gracefully
 
-3. **Genotype Assignment** (`consensus_group_to_metadata.py`)
-   - Map each sample (processid) to best-matching consensus sequence
-   - Use global edit distance (edlib if available, else Levenshtein)
-   - Calculate identity: 1 - (edit_distance / max_length)
-   - Assign to consensus group if identity ≥ 90%
-   - **Output**: `{organism}_with_consensus.tsv` (adds `consensus_group` column)
+## Input File Structure
 
-4. **Geographic Filtering** (`filter_coordinates.py`)
-   - Remove samples without precise lat/lon coordinates
-   - Exclude samples with: 
-     - Missing coordinates
-     - Country-level only coordinates
-     - "Coordinates from country centroid" notation
-   - **Rationale**: Avoid ambiguity in ocean basin assignments for countries bordering multiple basins
-   - **Output**: `{organism}_filtered.tsv`
+The input TSV from BOLD contains ~86 columns including:
+- `processid`: Unique sample identifier (REQUIRED)
+- `nuc`: COI nucleotide sequence (REQUIRED)
+- `coord`: Geographic coordinates in format `[lat, lon]` (REQUIRED for geographic analysis)
+- `country/ocean`: Location metadata
+- `coord_source`: Indicates if coordinates are from centroid
+- Other metadata: species, date, institution, etc.
 
-5. **Ocean Basin Assignment** (`assign_ocean_basins.py`)
-   - Classify each sample by ocean basin using coordinate boundaries:
-     - North Pacific Ocean
-     - South Pacific Ocean
-     - North Atlantic Ocean
-     - South Atlantic Ocean
-     - Indian Ocean
-     - Southern Ocean
-     - Arctic Ocean
-   - **Output**: `{organism}_with_basins.tsv` (adds `ocean_basin` column)
+### Coordinate Filtering Rules
+**EXCLUDE samples where:**
+- `coord` field is empty or missing
+- `coord_source` contains "centroid" or similar indicators
+- Only country-level location is provided
+- Coordinates are `[0, 0]` or other obvious placeholders
 
-6. **Visualization** (`generate_figures.py`)
-   - **Figure 1**: Global distribution map
-     - Plot sample coordinates on world map
-     - Color-code by genotype
-     - Size circles by sample count at location
-   - **Figure 2**: Ocean basin genotype abundance
-     - Stacked bar chart showing relative abundance per basin
-   - Save as: `{organism}_distribution_map.png`, `{organism}_basin_abundance.png`
+**This filtering is critical for accurate ocean basin assignment.**
 
-7. **Phylogenetic Analysis** (`run_phylogenetics.py`)
-   - Input: Consensus sequences from multiple taxa (if comparative analysis desired)
-   - MAFFT alignment (--auto)
-   - PhyML maximum likelihood tree:
-     - GTR nucleotide substitution model
-     - 1,000 bootstrap replicates
-   - **Output**: `{organism}_tree.newick`, `{organism}_tree.png`
+## Analysis Workflow
 
-8. **Sequence Alignment Visualization** (`visualize_alignment.py`)
-   - Pairwise alignment of dominant genotypes
-   - Highlight polymorphic sites
-   - Calculate % identity
-   - **Output**: `{organism}_alignment_comparison.png`
+### 1. Sequence Dereplication (`msa_to_consensus.py`)
+- Extract all COI sequences from TSV
+- Create FASTA file with headers: `{organism}_{processid}.COI-5P`
+- Run MAFFT alignment
+- Trim alignment with trimAl (--automated1)
+- Calculate pairwise sequence distances (ignoring gaps and Ns)
+- Hierarchical clustering (default threshold: 0.01 = 99% identity)
+- Generate consensus sequences using majority rule
+- Output naming: `consensus_c{cluster_id}_n{sample_count}`
 
-### File Structure
+### 2. Genotype Assignment (`consensus_group_to_metadata.py`)
+- Map each sample to its best-matching consensus sequence
+- Use global edit distance (edlib if available, else Levenshtein)
+- Require minimum identity threshold (default: 0.90)
+- Add `consensus_group` column to metadata TSV
+- Generate diagnostics showing identity scores
+
+### 3. Geographic Filtering
+- Parse `coord` field from bracketed format to lat/lon floats
+- Apply coordinate filtering rules (see above)
+- Assign samples to ocean basins based on coordinates
+- Ocean basins: North Atlantic, South Atlantic, North Pacific, South Pacific, Indian Ocean, South China Seas, Southern Ocean
+
+### 4. Visualization
+Generate publication-ready figures:
+- **Global distribution map**: Points colored by genotype, sized by sample count
+- **Ocean basin abundance**: Stacked bar chart showing genotype proportions
+- **Phylogenetic tree**: Maximum likelihood tree with bootstrap support (if requested)
+- **Sequence alignment**: Pairwise comparison highlighting differences (if requested)
+
+### 5. Phylogenetic Analysis (Optional)
+- MAFFT alignment of consensus sequences
+- PhyML with GTR model and 1000 bootstrap replicates
+- Tree visualization with bootstrap values
+
+## Code Organization
+
 ```
-BOLDGenoTyper/
+BOLDGenotyper/
 ├── boldgenotyper/
 │   ├── __init__.py
-│   ├── parse_data.py
-│   ├── dereplicate.py
-│   ├── assign_genotypes.py
-│   ├── filter_coords.py
-│   ├── assign_basins.py
-│   ├── visualize.py
-│   ├── phylogenetics.py
-│   └── utils.py
-├── scripts/
-│   └── run_full_pipeline.py
+│   ├── core.py              # Main pipeline orchestration
+│   ├── dereplication.py     # Sequence clustering and consensus
+│   ├── metadata.py          # TSV parsing and genotype assignment
+│   ├── geographic.py        # Coordinate filtering and ocean basin assignment
+│   ├── visualization.py     # All plotting functions
+│   ├── phylogenetics.py     # Tree building and analysis
+│   └── utils.py             # Helper functions
 ├── tests/
-│   └── test_pipeline.py
-├── docs/
-│   ├── installation.md
-│   ├── usage.md
-│   ├── tutorial.md
-│   └── api_reference.md
-├── example_data/
-│   └── Sphyrna_lewini_scallopedhammerhead.tsv
-├── environment.yml
-├── setup.py
-├── README.md
-├── LICENSE
-└── .gitignore
+│   └── test_*.py            # Unit tests for each module
+├── examples/
+│   └── example_workflow.py  # Tutorial script
+├── environment.yml          # Conda environment specification
+├── setup.py                 # Package installation
+├── README.md                # User documentation
+├── CLAUDE.md                # This file
+└── LICENSE
+
 ```
-
-## Development Environment
-
-### Conda Environment Setup
-```bash
-# Clone existing 'depredation' environment to 'boldgenotyper'
-conda create --name boldgenotyper --clone depredation
-
-# Activate new environment
-conda activate boldgenotyper
-
-# Export environment for reproducibility
-conda env export --no-builds > environment.yml
-```
-
-### Required Dependencies
-- **Python**: ≥3.8
-- **Bioinformatics tools**:
-  - MAFFT v7
-  - trimAl
-  - PhyML
-- **Python packages**:
-  - biopython
-  - pandas
-  - numpy
-  - scipy
-  - matplotlib
-  - cartopy (for map plotting)
-  - edlib (optional, for faster alignment)
-
-## Critical Implementation Details
-
-### 1. Organism Name Parsing
-```python
-def extract_organism_from_filename(filename):
-    """
-    Extract genus and species from BOLD TSV filename.
-    Expected format: Genus_species_commonname.tsv
-    Returns: (genus, species, full_name)
-    """
-    base = os.path.splitext(filename)[0]
-    parts = base.split('_')
-    if len(parts) < 2:
-        raise ValueError(f"Filename must follow pattern: Genus_species_commonname.tsv")
-    genus = parts[0]
-    species = parts[1]
-    return genus, species, f"{genus}_{species}"
-```
-
-### 2. ProcessID Extraction
-The `processid` in FASTA headers appears after the last underscore before a dot or end-of-line:
-- Example: `>Sphyrna_lewini_ANGBF11456-15.COI-5P` → processid = `ANGBF11456-15`
-- Use regex: `_(?P<pid>[^.\s_]+)(?:[.\s]|$)`
-
-### 3. Coordinate Filtering Logic
-```python
-def should_exclude_coordinate(lat, lon, metadata_notes):
-    """
-    Exclude samples with:
-    - Missing lat/lon (NaN, None, empty string)
-    - Metadata indicating "country centroid" or "country-level" coordinates
-    """
-    if pd.isna(lat) or pd.isna(lon):
-        return True
-    if isinstance(metadata_notes, str):
-        if "centroid" in metadata_notes.lower():
-            return True
-        if "country" in metadata_notes.lower() and not "precise" in metadata_notes.lower():
-            return True
-    return False
-```
-
-### 4. Ocean Basin Boundaries
-Use standard oceanographic definitions. Handle edge cases:
-- Mediterranean Sea → Atlantic Ocean
-- Caribbean Sea → North Atlantic Ocean
-- South China Sea → (separate category or Pacific Ocean - document choice)
-
-## Testing Strategy
-
-### Unit Tests Required
-- [ ] Filename parsing with various formats
-- [ ] Sequence dereplication with known sequences
-- [ ] Coordinate filtering edge cases
-- [ ] Ocean basin assignment accuracy
-
-### Integration Tests
-- [ ] Full pipeline run on example dataset (S. lewini)
-- [ ] Verify output files created
-- [ ] Check figure generation
-- [ ] Validate phylogenetic tree construction
-
-### Example Data
-Include `Sphyrna_lewini_scallopedhammerhead.tsv` as test dataset with known expected outputs.
 
 ## Documentation Requirements
 
-### README.md Must Include:
-1. **Installation instructions**
-   - Conda environment setup
-   - Dependency installation
-   - Tool availability checks (MAFFT, trimAl, PhyML)
+Each module must include:
+1. **Docstrings**: Comprehensive function and class documentation
+2. **Type hints**: All function parameters and returns
+3. **Examples**: Usage examples in docstrings
+4. **Assumptions**: Clearly state any data assumptions
+5. **Edge cases**: Document how edge cases are handled
 
-2. **Quick Start**
-   - Download data from BOLD
-   - Run single command: `boldgenotyper run input.tsv`
+### Critical Documentation Points
+- Explain why coordinate filtering is necessary
+- Document the clustering threshold rationale (99% identity)
+- Describe consensus sequence generation method
+- Explain ocean basin boundary definitions
+- Note dependencies on external tools (MAFFT, PhyML)
 
-3. **Usage Examples**
-   - Basic usage
-   - Custom parameters
-   - Output interpretation
+## User Experience Goals
 
-4. **Citation**
-   - Reference to companion manuscript
-   - BOLD database citation
-   - Tool citations (MAFFT, PhyML, etc.)
+### For Bioinformaticians
+- Clear command-line interface
+- Modular design for custom workflows
+- Well-documented API for programmatic use
 
-### docs/usage.md Must Explain:
-- Each analysis step in detail
-- Parameter choices and defaults
-- How to interpret results
-- Troubleshooting common errors
+### For Non-Technical Users (Future)
+- Web app with file upload
+- Automated analysis with progress indicators
+- Downloadable results package (figures + data)
+- No command-line experience required
 
-### docs/tutorial.md Should:
-- Walk through S. lewini example
-- Explain biological interpretation
-- Show how to modify for other organisms
+## Development Priorities
+
+1. **Phase 1** (Current): Core pipeline with CLI
+   - Robust file parsing
+   - Sequence analysis workflow
+   - Basic visualizations
+   - Comprehensive documentation
+
+2. **Phase 2**: Enhanced features
+   - Additional visualization options
+   - Statistical analyses
+   - Multiple organism comparison
+   - Performance optimization
+
+3. **Phase 3**: Web application
+   - Flask/Streamlit interface
+   - Cloud-based analysis
+   - Result sharing and export
+   - Interactive visualizations
 
 ## GitHub Best Practices
 
-### Repository Setup
-1. **Initialize with**:
-   - README.md
-   - LICENSE (suggest MIT or BSD)
-   - .gitignore (Python, Conda, IDE-specific)
+- **Branching**: Use feature branches (`feature/add-visualization`)
+- **Commits**: Clear, descriptive commit messages
+- **Issues**: Track bugs and feature requests
+- **Releases**: Semantic versioning (v1.0.0, v1.1.0, etc.)
+- **CI/CD**: Automated testing with GitHub Actions
+- **Documentation**: Keep README and examples up-to-date
 
-2. **Branching Strategy**:
-   - `main`: stable releases
-   - `dev`: development branch
-   - Feature branches: `feature/description`
-   - Bug fixes: `fix/description`
+## Testing Strategy
 
-3. **Commit Messages**:
-   - Use conventional commits format
-   - Example: `feat: add ocean basin assignment module`
-   - Example: `docs: update installation instructions`
+- **Unit tests**: Each function in isolation
+- **Integration tests**: Full pipeline with test data
+- **Edge cases**: Empty files, malformed coordinates, missing data
+- **Performance**: Test with large datasets (1000+ samples)
 
-4. **Version Control**:
-   - Tag releases: `v0.1.0`, `v0.2.0`, etc.
-   - Follow semantic versioning
+## Example Usage (Planned)
 
-### GitHub Actions (Future)
-- Automated testing on push
-- Documentation building
-- PyPI package deployment
+```bash
+# Basic usage
+boldgenotyper analyze \
+  --input Organism_name.tsv \
+  --output results/ \
+  --threads 4
 
-## Future Web Application Considerations
+# With phylogenetic analysis
+boldgenotyper analyze \
+  --input Organism_name.tsv \
+  --output results/ \
+  --phylogeny \
+  --outgroup Outgroup_species.fasta \
+  --threads 8
 
-### Architecture Planning
-- Keep core logic in separate modules from CLI
-- Design functions to accept/return standard data structures (pandas DataFrames)
-- Minimize side effects (file I/O separate from computation)
-- Enable progress reporting for long-running tasks
-
-### Potential Web Framework: Streamlit
-```python
-# Future structure for web app
-def run_pipeline_with_progress(uploaded_file, progress_callback):
-    """
-    progress_callback: function to report progress (0-100)
-    """
-    # Parse data
-    progress_callback(10, "Parsing BOLD data...")
-    
-    # Dereplicate sequences
-    progress_callback(30, "Identifying unique genotypes...")
-    
-    # etc.
+# Custom clustering threshold
+boldgenotyper analyze \
+  --input Organism_name.tsv \
+  --output results/ \
+  --cluster-threshold 0.005 \
+  --min-identity 0.95
 ```
 
-## Important Notes for Claude Code
+## Notes for Claude Code
 
-1. **Always use relative paths** - never hardcode absolute paths
-2. **Extract organism name from input filename** - all outputs should use this name
-3. **Preserve metadata** - don't drop columns unnecessarily from TSV
-4. **Document assumptions** - especially for filtering and clustering thresholds
-5. **Error handling** - provide clear error messages when:
-   - Required columns missing from TSV
-   - External tools (MAFFT, PhyML) not found
-   - Invalid coordinates
-6. **Logging** - use Python logging module to track pipeline progress
-7. **Reproducibility** - Set random seeds where applicable (e.g., bootstrap replicates)
+- **File paths**: Use relative paths and `pathlib` for cross-platform compatibility
+- **Error handling**: Graceful failures with informative error messages
+- **Logging**: Use Python logging module for progress tracking
+- **Memory**: Stream large files when possible, don't load entire datasets into memory
+- **External tools**: Check for tool availability before running (mafft, trimal, phyml)
+- **Coordinates**: Robust parsing of various coordinate formats from BOLD
+- **Visualization**: Use existing scientific color palettes, ensure figures are publication-ready
 
-## Contact and Support
+## Reference Implementation
 
-**Primary Developer**: Steph Smith (@SymbioSeas)
-**Email**: steph.smith@unc.edu
-**Manuscript**: [Journal submission pending - include citation once published]
+The original analysis scripts are:
+- `msa_to_consensus.py`: Sequence clustering pipeline
+- `consensus_group_to_metadata.py`: Genotype assignment
 
-## References to Include in Documentation
+These should be refactored into the modular package structure while maintaining their core functionality.
 
-- BOLD Database: Ratnasingham & Hebert (2007) doi:10.1111/j.1471-8286.2007.01678.x
-- MAFFT: Katoh & Standley (2013) doi:10.1093/molbev/mst010
-- trimAl: Capella-Gutiérrez et al. (2009) doi:10.1093/bioinformatics/btp348
-- PhyML: Guindon et al. (2010) doi:10.1093/sysbio/syq010
-- COI Barcoding: Hebert et al. (2003) doi:10.1098/rspb.2002.2218
+## Specific Implementation Details
 
----
+### Ocean Basin Assignment
+- **Reference**: GOaS_v1_20211214 (Global Oceans and Seas v1)
+- **Location**: `boldgenotyper/GOaS_v1_20211214/`
+- **Files**: goas_v01.shp (and associated .cpg, .dbf, .prj, .shx)
+- **Method**: Use geopandas to read shapefiles and perform point-in-polygon spatial joins
+- **Attribution**: Include LICENSE_GOAS_v1.txt and cite in documentation
 
-## Development Checklist for Claude Code
+### Phylogenetic Analysis Options
+**Mode 1**: No phylogeny (default) - genotype identification only
+**Mode 2**: `--phylogeny` - Build tree from consensus sequences, midpoint rooted
+**Mode 3**: `--phylogeny --outgroup <fasta>` - User provides outgroup sequences
 
-### Phase 1: Core Pipeline
-- [ ] Setup package structure
-- [ ] Implement BOLD data parser with organism name extraction
-- [ ] Port and refactor `msa_to_consensus.py` for general use
-- [ ] Port and refactor `consensus_group_to_metadata.py`
-- [ ] Implement coordinate filtering with documented logic
-- [ ] Implement ocean basin assignment
+Phylogenetic analysis is optional because:
+- Outgroup selection requires taxonomic expertise
+- Not all users need phylogenetic trees
+- Makes pipeline more flexible for exploratory analysis
 
-### Phase 2: Visualization & Analysis
-- [ ] Global distribution map generator
-- [ ] Ocean basin abundance plotter
-- [ ] Phylogenetic analysis wrapper
-- [ ] Sequence alignment visualization
+### Color Palette
+- Auto-assign colors based on number of genotypes detected
+- Use colorblind-friendly palette (e.g., seaborn's "colorblind" or "tab10")
+- For consistency with reference analysis, first 3 colors should approximate: purple (#9D7ABE), teal (#5AB4AC), yellow (#F2CC8F)
+- Scale gracefully to 20+ genotypes
 
-### Phase 3: Documentation & Testing
-- [ ] Write comprehensive README
-- [ ] Create usage documentation
-- [ ] Write tutorial using S. lewini example
-- [ ] Implement unit tests
-- [ ] Add integration test with example data
+### Figure Output
+- **Formats**: Both PNG (300 DPI) and PDF (vector)
+- **Naming**: `{organism}_distribution_map.png`, `{organism}_ocean_basins.pdf`, etc.
+- **Size**: Publication-ready (e.g., 10x6 inches for maps)
 
-### Phase 4: Packaging & Distribution
-- [ ] Create setup.py for pip installation
-- [ ] Finalize environment.yml
-- [ ] Add CLI entry point: `boldgenotyper`
-- [ ] Test installation on clean environment
-- [ ] Prepare for PyPI distribution
+### Clustering Parameters
+- **Default threshold**: 0.01 (99% sequence identity)
+- **User configurable**: `--cluster-threshold` flag
+- **Rationale**: 99% identity is standard for COI species delimitation
 
-### Phase 5: Future Enhancement (Post-Initial Release)
-- [ ] Streamlit web application
-- [ ] Docker containerization
-- [ ] Galaxy tool wrapper
-- [ ] Batch processing mode
+## Questions to Address
 
----
+When developing, consider:
+1. How to handle organisms with very few samples (<10)?
+2. What to do when no clear genotype clusters emerge?
+3. How to handle samples with identical sequences from different basins?
+4. What's the best way to visualize >10 genotypes?
+5. Should we include statistical tests for geographic partitioning?
 
-**This document should be the primary reference for all development work on BOLDGenoTyper.**
+## Success Criteria
+
+The package is ready for release when:
+- ✅ It successfully processes the example S. lewini dataset
+- ✅ It produces identical results to the reference analysis
+- ✅ Documentation allows a user to install and run without external help
+- ✅ All tests pass
+- ✅ Code follows PEP 8 style guidelines
+- ✅ Example workflows are provided
+- ✅ GitHub repository is well-organized
+
+## Contact & Funding
+
+- Primary Developer: Steph Smith (steph.smith@unc.edu)
+- Institution: University of North Carolina, Institute of Marine Sciences
+- Manuscript: "Ocean basin-scale genetic partitioning in *Sphyrna lewini* revealed through COI sequence analysis"
