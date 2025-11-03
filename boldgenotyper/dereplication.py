@@ -46,12 +46,13 @@ Example Usage:
 Author: Steph Smith (steph.smith@unc.edu)
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 from pathlib import Path
 import logging
 import subprocess
 import shutil
 import os
+import re
 from collections import Counter
 
 import pandas as pd
@@ -107,6 +108,60 @@ def check_external_tools() -> Dict[str, bool]:
     return tools
 
 
+def dereplicate_from_fasta(
+    input_fasta: Union[str, Path],
+    output_dir: Union[str, Path],
+    threshold: float = 0.01,
+    frequency_cutoff: float = 0.7,
+    mafft_options: Optional[List[str]] = None,
+    trimal_options: Optional[List[str]] = None,
+    cleanup_intermediates: bool = False,
+    organism_name: Optional[str] = None
+    ) -> Dict[str, SeqRecord]:
+    input_fasta = Path(input_fasta)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    tools = check_external_tools()
+    if not tools['mafft']:
+        raise DereplicationError("MAFFT not found. Please install MAFFT.")
+    if not tools['trimal']:
+        raise DereplicationError("trimAl not found. Please install trimAl.")
+
+    if organism_name is None:
+        organism_name = input_fasta.stem
+
+    aligned_fasta   = output_dir / f"{organism_name}_aligned.fasta"
+    trimmed_fasta   = output_dir / f"{organism_name}_trimmed.fasta"
+    consensus_fasta = output_dir / f"{organism_name}_consensus.fasta"
+
+    # Align
+    run_mafft_alignment(str(input_fasta), str(aligned_fasta), mafft_options=mafft_options)
+    # Trim
+    run_trimal_trimming(str(aligned_fasta), str(trimmed_fasta), trimal_options=trimal_options)
+    # Load trimmed alignment
+    alignment = list(AlignIO.read(str(trimmed_fasta), "fasta"))
+    # Distances
+    distances = calculate_pairwise_distances(alignment)
+    # Cluster
+    labels = cluster_sequences(distances, threshold=threshold)
+    # Consensus
+    clusters = {}
+    for rec, cid in zip(alignment, labels):
+        clusters.setdefault(cid, []).append(rec)
+    consensus_records = {}
+    for cid, seqs in sorted(clusters.items()):
+        cons = generate_consensus(seqs, cid, frequency_cutoff=frequency_cutoff)
+        consensus_records[cons.id] = cons
+    SeqIO.write(consensus_records.values(), str(consensus_fasta), "fasta")
+
+    if cleanup_intermediates:
+        for p in (aligned_fasta, trimmed_fasta):
+            if p.exists():
+                p.unlink()
+    return consensus_records
+    
+    
 def run_mafft_alignment(
     input_fasta: str,
     output_fasta: str,
@@ -677,11 +732,11 @@ def dereplicate_sequences(
     try:
         df = pd.read_csv(tsv_path, sep='\t')
 
-        if 'nucleotides' not in df.columns:
-            raise ValueError("TSV file missing 'nucleotides' column")
+        if 'nuc' not in df.columns:
+            raise ValueError("TSV file missing 'nuc' column")
 
         # Filter out empty sequences
-        df = df[df['nucleotides'].notna() & (df['nucleotides'] != '')]
+        df = df[df['nuc'].notna() & (df['nuc'] != '')]
 
         if len(df) == 0:
             raise ValueError("No valid sequences found in TSV file")
@@ -690,22 +745,41 @@ def dereplicate_sequences(
 
     except Exception as e:
         raise DereplicationError(f"Failed to read TSV file: {e}") from e
-
+        
     # Step 2: Write sequences to FASTA
     logger.info(f"Step 2/7: Writing unaligned sequences to {sequences_fasta}")
     try:
         records = []
+        
+        # allowed IUPAC DNA + gap
+        ALLOWED = set("ACGTURYKMSWBDHVN-")
+        
         for idx, row in df.iterrows():
             # Create sequence ID from processid or use index
             seq_id = row.get('processid', f"seq_{idx}")
-            sequence = str(row['nucleotides']).replace(' ', '').replace('\n', '')
-
-            record = SeqRecord(
-                Seq(sequence),
-                id=seq_id,
-                description=""
-            )
-            records.append(record)
+            
+            # Sanitize sequence
+            seq_raw = str(row['nuc'])
+            seq = re.sub(r'\s+', '', seq_raw).upper().replace('U', 'T')
+            
+            invalid = set(re.findall(r'[^ACGTURYKMSWBDHVN-]', seq))
+            if invalid:
+                logger.warning(f"Skipping {seq_id}: invalid characters {invalid}")
+                continue
+                
+            if len(seq) < 100:
+                logger.warning(f"Skipping {seq_id}: Sequence too short ({len(seq)} < 100)")
+                continue
+                
+            gap_frac = seq.count('-') / len(seq) if len(seq) else 1.0
+            if gap_frac > 0.8:
+                logger.warning(f"Skipping {seq_id}: Excessive gaps ({gap_frac:..1%})")
+                continue
+            
+            records.append(SeqRecord(Seq(seq), id=seq_id, description=""))
+            
+        if not records:
+            raise ValueError("No sequences remained after sanitation/filters")
 
         SeqIO.write(records, sequences_fasta, "fasta")
         logger.info(f"Wrote {len(records)} sequences to FASTA")

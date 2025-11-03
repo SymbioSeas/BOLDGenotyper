@@ -66,6 +66,8 @@ from typing import Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import logging
 import warnings
+import re
+import ast
 
 import pandas as pd
 import numpy as np
@@ -352,6 +354,7 @@ def assign_ocean_basins(
     shapefile_path: Optional[Union[str, Path]] = None,
     lat_col: str = 'lat',
     lon_col: str = 'lon',
+    coord_col: Optional[str] = None,
     country_ocean_col: Optional[str] = None,
     basin_col: str = 'ocean_basin',
     fallback_to_country_ocean: bool = True,
@@ -400,6 +403,9 @@ def assign_ocean_basins(
     2. For samples without coordinates and fallback enabled → use country/ocean column
     3. For samples outside all basins → "Unknown"
     4. For samples on boundaries → first match selected
+    
+    Coordinate handling:
+    - If {lat_col, lon_col} are missing but a single coordinate column is present (e.g., "coord" with values like "[-33.8, 151.283]"), set coord_col to that column and it will be parsed to create {lat_col, lon_col}.
 
     Missing Data Handling:
     - Samples with missing coordinates get basin from country/ocean column (if available)
@@ -426,6 +432,30 @@ def assign_ocean_basins(
 
     # Create copy to avoid modifying original
     df_copy = df.copy()
+    if basin_col not in df_copy.columns:
+        df_copy[basin_col] = pd.NA
+        
+    # Add lat/lon coord columns if needed
+    need_latlon = (lat_col not in df_copy.columns) or (lon_col not in df_copy.columns)
+    if need_latlon and coord_col is None:
+        if 'coord' in df_copy.columns:
+            coord_col = 'coord'
+        
+    if need_latlon and coord_col is not None and coord_col in df_copy.columns:
+        # parse strings like "[-33.8, 151.283]" or without brackets
+        def _parse_pair(s: str) -> Tuple[Optional[float], Optional[float]]:
+            if pd.isna(s):
+                return (None, None)
+            try:
+                v = ast.literal_eval(str(s)) # handles "[-33.8, 151.283]"
+                if isinstance(v, list(tuple)) and len(v) == 2:
+                    return (float(v[0]), float(v[1]))
+            except Exception:
+                pass
+            return (None, None)
+        latlon = df_copy[coord_col].apply(_parse_pair)
+        df_copy[lat_col] = latlon.apply(lambda t: t[0])
+        df_copy[lon_col] = latlon.apply(lambda t: t[1])
 
     # Initialize basin column
     df_copy[basin_col] = None

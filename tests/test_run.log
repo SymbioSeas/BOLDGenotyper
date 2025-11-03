@@ -1,0 +1,243 @@
+[2025-11-03 14:42:44] INFO: Logging to file: tests/test_run.log
+[2025-11-03 14:42:44] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 14:42:45] INFO: Read 381 rows and 89 columns
+[2025-11-03 14:42:45] ERROR: Found 4 duplicate processids. Examples: ['GBMTG5888-16', 'GBMTG5888-16', 'GBMTG5888-16', 'GBMTG5888-16']
+[2025-11-03 14:46:33] INFO: Logging to file: tests/test_run.log
+[2025-11-03 14:46:33] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 14:46:33] INFO: Read 376 rows and 89 columns
+[2025-11-03 14:46:33] INFO: Data quality summary:
+[2025-11-03 14:46:33] INFO:   total_rows: 376
+[2025-11-03 14:46:33] INFO:   total_columns: 89
+[2025-11-03 14:46:33] INFO:   unique_processids: 376
+[2025-11-03 14:46:33] INFO:   sequences_present: 376
+[2025-11-03 14:46:33] INFO:   sequences_missing: 0
+[2025-11-03 14:46:33] INFO:   empty_sequences: 0
+[2025-11-03 14:46:33] INFO:   coords_present: 149
+[2025-11-03 14:46:33] INFO:   coords_missing: 227
+[2025-11-03 14:46:33] INFO:   centroid_coords: 36
+[2025-11-03 14:46:33] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 14:46:33] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 14:46:34] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 14:47:28] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 14:47:28] INFO: Creating point geometries from coordinates
+[2025-11-03 15:44:38] INFO: Logging to file: tests/test_run.log
+[2025-11-03 15:44:39] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 15:44:39] INFO: Read 376 rows and 89 columns
+[2025-11-03 15:44:39] INFO: Data quality summary:
+[2025-11-03 15:44:39] INFO:   total_rows: 376
+[2025-11-03 15:44:39] INFO:   total_columns: 89
+[2025-11-03 15:44:39] INFO:   unique_processids: 376
+[2025-11-03 15:44:39] INFO:   sequences_present: 376
+[2025-11-03 15:44:39] INFO:   sequences_missing: 0
+[2025-11-03 15:44:39] INFO:   empty_sequences: 0
+[2025-11-03 15:44:39] INFO:   coords_present: 149
+[2025-11-03 15:44:39] INFO:   coords_missing: 227
+[2025-11-03 15:44:39] INFO:   centroid_coords: 36
+[2025-11-03 15:44:39] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 15:44:39] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 15:44:39] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 15:45:19] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 15:50:36] INFO: Logging to file: tests/test_run.log
+[2025-11-03 15:50:36] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 15:50:36] INFO: Read 376 rows and 89 columns
+[2025-11-03 15:50:36] INFO: Data quality summary:
+[2025-11-03 15:50:36] INFO:   total_rows: 376
+[2025-11-03 15:50:36] INFO:   total_columns: 89
+[2025-11-03 15:50:36] INFO:   unique_processids: 376
+[2025-11-03 15:50:36] INFO:   sequences_present: 376
+[2025-11-03 15:50:36] INFO:   sequences_missing: 0
+[2025-11-03 15:50:36] INFO:   empty_sequences: 0
+[2025-11-03 15:50:36] INFO:   coords_present: 149
+[2025-11-03 15:50:36] INFO:   coords_missing: 227
+[2025-11-03 15:50:36] INFO:   centroid_coords: 36
+[2025-11-03 15:50:36] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 15:50:36] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 15:50:36] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 15:51:15] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 15:51:34] INFO: Logging to file: tests/test_run.log
+[2025-11-03 15:51:34] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 15:51:34] INFO: Read 376 rows and 89 columns
+[2025-11-03 15:51:34] INFO: Data quality summary:
+[2025-11-03 15:51:34] INFO:   total_rows: 376
+[2025-11-03 15:51:34] INFO:   total_columns: 89
+[2025-11-03 15:51:34] INFO:   unique_processids: 376
+[2025-11-03 15:51:34] INFO:   sequences_present: 376
+[2025-11-03 15:51:34] INFO:   sequences_missing: 0
+[2025-11-03 15:51:34] INFO:   empty_sequences: 0
+[2025-11-03 15:51:34] INFO:   coords_present: 149
+[2025-11-03 15:51:34] INFO:   coords_missing: 227
+[2025-11-03 15:51:34] INFO:   centroid_coords: 36
+[2025-11-03 15:51:34] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 15:51:34] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 15:51:34] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 15:52:07] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 15:52:07] INFO: ======================================================================
+[2025-11-03 15:52:07] INFO: Starting sequence dereplication workflow
+[2025-11-03 15:52:07] INFO: ======================================================================
+[2025-11-03 15:52:07] INFO: Step 1/7: Reading sequences from tests/data/Sphyrnidae_test.tsv
+[2025-11-03 15:55:03] INFO: Logging to file: tests/test_run.log
+[2025-11-03 15:55:03] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 15:55:03] INFO: Read 376 rows and 89 columns
+[2025-11-03 15:55:03] INFO: Data quality summary:
+[2025-11-03 15:55:03] INFO:   total_rows: 376
+[2025-11-03 15:55:03] INFO:   total_columns: 89
+[2025-11-03 15:55:03] INFO:   unique_processids: 376
+[2025-11-03 15:55:03] INFO:   sequences_present: 376
+[2025-11-03 15:55:03] INFO:   sequences_missing: 0
+[2025-11-03 15:55:03] INFO:   empty_sequences: 0
+[2025-11-03 15:55:03] INFO:   coords_present: 149
+[2025-11-03 15:55:03] INFO:   coords_missing: 227
+[2025-11-03 15:55:03] INFO:   centroid_coords: 36
+[2025-11-03 15:55:03] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 15:55:03] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 15:55:03] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 15:55:38] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 15:55:38] INFO: ======================================================================
+[2025-11-03 15:55:38] INFO: Starting sequence dereplication workflow
+[2025-11-03 15:55:38] INFO: ======================================================================
+[2025-11-03 15:55:38] INFO: Step 1/7: Reading sequences from tests/data/Sphyrnidae_test.tsv
+[2025-11-03 15:55:38] INFO: Found 376 sequences
+[2025-11-03 15:55:38] INFO: Step 2/7: Writing unaligned sequences to tests/output/dereplication/Sphyrnidae_test_sequences.fasta
+[2025-11-03 15:55:38] INFO: Wrote 376 sequences to FASTA
+[2025-11-03 15:55:38] INFO: Step 3/7: Running MAFFT alignment
+[2025-11-03 15:55:38] INFO: Running MAFFT alignment: mafft --auto tests/output/dereplication/Sphyrnidae_test_sequences.fasta
+[2025-11-03 15:55:41] ERROR: MAFFT alignment failed:
+nthread = 0
+nthreadpair = 0
+nthreadtb = 0
+ppenalty_ex = 0
+stacksize: 8176 kb
+generating a scoring matrix for nucleotide (dist=200) ... done
+Gap Penalty = -1.53, +0.00, +0.00
+========================================================================= 
+========================================================================= 
+=== 
+=== Alphabet 'e' is unknown.
+=== Please check site 4 in sequence 262.
+=== 
+=== To make an alignment that has unusual characters (U, @, #, etc), try  
+=== % mafft --anysymbol input > output
+=== 
+========================================================================= 
+========================================================================= 
+Illegal character e
+
+[2025-11-03 16:22:53] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:22:53] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 16:22:53] INFO: Read 376 rows and 89 columns
+[2025-11-03 16:22:53] INFO: Data quality summary:
+[2025-11-03 16:22:53] INFO:   total_rows: 376
+[2025-11-03 16:22:53] INFO:   total_columns: 89
+[2025-11-03 16:22:53] INFO:   unique_processids: 376
+[2025-11-03 16:22:53] INFO:   sequences_present: 376
+[2025-11-03 16:22:53] INFO:   sequences_missing: 0
+[2025-11-03 16:22:53] INFO:   empty_sequences: 0
+[2025-11-03 16:22:53] INFO:   coords_present: 149
+[2025-11-03 16:22:53] INFO:   coords_missing: 227
+[2025-11-03 16:22:53] INFO:   centroid_coords: 36
+[2025-11-03 16:22:53] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 16:22:53] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 16:22:53] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 16:23:24] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 16:23:25] INFO: Creating point geometries from coordinates
+[2025-11-03 16:23:25] INFO: Creating point geometries for 0/340 samples with coordinates
+[2025-11-03 16:23:25] INFO: Performing spatial join for 0/340 samples with valid coordinates
+[2025-11-03 16:23:25] INFO: Assigned 340 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 16:23:25] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:23:53] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 16:23:53] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 16:23:53] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 16:23:53] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 16:24:00] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 16:24:00] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 16:24:00] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 16:27:37] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:27:37] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 16:27:37] INFO: Read 376 rows and 89 columns
+[2025-11-03 16:27:37] INFO: Data quality summary:
+[2025-11-03 16:27:37] INFO:   total_rows: 376
+[2025-11-03 16:27:37] INFO:   total_columns: 89
+[2025-11-03 16:27:37] INFO:   unique_processids: 376
+[2025-11-03 16:27:37] INFO:   sequences_present: 376
+[2025-11-03 16:27:37] INFO:   sequences_missing: 0
+[2025-11-03 16:27:37] INFO:   empty_sequences: 0
+[2025-11-03 16:27:37] INFO:   coords_present: 149
+[2025-11-03 16:27:37] INFO:   coords_missing: 227
+[2025-11-03 16:27:37] INFO:   centroid_coords: 36
+[2025-11-03 16:27:37] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 16:27:37] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 16:27:37] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 16:28:06] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 16:28:06] INFO: Creating point geometries from coordinates
+[2025-11-03 16:28:06] INFO: Creating point geometries for 0/340 samples with coordinates
+[2025-11-03 16:28:06] INFO: Performing spatial join for 0/340 samples with valid coordinates
+[2025-11-03 16:28:06] INFO: Assigned 340 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 16:28:07] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:28:34] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 16:28:34] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 16:28:34] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 16:28:34] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 16:28:41] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 16:28:42] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 16:28:42] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 16:32:51] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:32:51] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 16:32:51] INFO: Read 376 rows and 89 columns
+[2025-11-03 16:32:51] INFO: Data quality summary:
+[2025-11-03 16:32:51] INFO:   total_rows: 376
+[2025-11-03 16:32:51] INFO:   total_columns: 89
+[2025-11-03 16:32:51] INFO:   unique_processids: 376
+[2025-11-03 16:32:51] INFO:   sequences_present: 376
+[2025-11-03 16:32:51] INFO:   sequences_missing: 0
+[2025-11-03 16:32:51] INFO:   empty_sequences: 0
+[2025-11-03 16:32:51] INFO:   coords_present: 149
+[2025-11-03 16:32:51] INFO:   coords_missing: 227
+[2025-11-03 16:32:51] INFO:   centroid_coords: 36
+[2025-11-03 16:32:51] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 16:32:51] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 16:32:51] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 16:33:26] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 16:33:26] INFO: Creating point geometries from coordinates
+[2025-11-03 16:33:26] INFO: Creating point geometries for 0/340 samples with coordinates
+[2025-11-03 16:33:26] INFO: Performing spatial join for 0/340 samples with valid coordinates
+[2025-11-03 16:33:26] INFO: Assigned 340 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 16:33:26] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:33:56] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 16:33:56] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 16:33:57] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 16:33:57] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 16:34:04] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 16:34:04] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 16:34:04] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 16:34:04] INFO: ======================================================================
+[2025-11-03 16:34:04] INFO: Starting genotype assignment workflow
+[2025-11-03 16:34:04] INFO: ======================================================================
+[2025-11-03 16:34:04] INFO: Using edlib for fast edit distance calculation
+[2025-11-03 16:34:04] INFO: Step 1/6: Loading metadata from tests/output/02_filtered_metadata.tsv
+[2025-11-03 16:34:04] INFO: Loaded 340 samples from metadata
+[2025-11-03 16:34:04] INFO: Step 2/6: Loading consensus sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 16:34:04] INFO: Read 18 sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 16:34:04] INFO: Loaded 18 consensus groups
+[2025-11-03 16:34:04] INFO: Step 3/6: Loading raw sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:34:04] INFO: Read 337 sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:34:04] INFO: Extracted 337 unique processids from FASTA
+[2025-11-03 16:34:04] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-03 16:34:04] INFO: Prepared 340 assignment tasks
+[2025-11-03 16:34:04] INFO: Step 5/6: Assigning genotypes (using 2 processes)
+[2025-11-03 16:34:08] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:34:08] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:34:08] INFO: Completed genotype assignment for 340 samples
+[2025-11-03 16:34:08] INFO: Step 6/6: Writing outputs
+[2025-11-03 16:34:08] INFO: Wrote updated metadata to tests/output/Sphyrnidae_test_with_genotypes.tsv
+[2025-11-03 16:34:08] INFO: Wrote diagnostics to tests/output/Sphyrnidae_test_diagnostics.csv
+[2025-11-03 16:34:08] INFO: ======================================================================
+[2025-11-03 16:34:08] INFO: Genotype assignment summary:
+[2025-11-03 16:34:08] INFO:   Total samples: 340
+[2025-11-03 16:34:08] INFO:   Successfully assigned: 285 (83.8%)
+[2025-11-03 16:34:08] INFO:   Unassigned: 55 (16.2%)
+[2025-11-03 16:34:08] INFO:     - No sequence in FASTA: 3
+[2025-11-03 16:34:08] INFO:     - Below identity threshold: 52
+[2025-11-03 16:34:08] INFO:   Diagnostic flags:
+[2025-11-03 16:34:08] INFO:     - Ties (ambiguous): 43
+[2025-11-03 16:34:08] INFO:     - Low confidence: 45
+[2025-11-03 16:34:08] INFO: ======================================================================

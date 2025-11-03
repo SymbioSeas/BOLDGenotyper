@@ -278,7 +278,6 @@ class GeographicConfig:
             return False
 
         return True
-````
 
 # ============================================================================
 # Visualization Configuration
