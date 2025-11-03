@@ -1,0 +1,209 @@
+---
+title: "Genotype × Ocean Basin: Separation Analysis and Visualization"
+author: "Your Name"
+output: html_document
+params:
+  csv: "/Users/stesmith/Documents/depredation/global_distribution/plots_ocean_basins/plotting_scallop_genotype_basin_distribution.csv"
+  outdir: "/Users/stesmith/Documents/depredation/global_distribution/plots_ocean_basins/figs_genotype_basin_Rmd"
+  title_prefix: "Scalloped Hammerhead Genotypes vs Ocean Basins"
+  fig_width: 6
+  fig_height: 5
+  dpi: 300
+---
+
+```{r}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+# Auto-install missing packages, then load
+need <- c("readr","dplyr","tidyr","ggplot2","ggthemes","scales","stringr","svglite")
+miss <- need[!need %in% rownames(installed.packages())]
+if(length(miss)) install.packages(miss, repos = "https://cloud.r-project.org")
+
+library(readr); library(dplyr); library(tidyr); library(ggplot2)
+library(ggthemes); library(scales); library(stringr); library(svglite)
+
+# Helper: bias-corrected Cramér's V (Bergsma 2013)
+cramers_v_bc <- function(chi2, n, r, k){
+  phi2 <- chi2 / n
+  r_corr <- r - 1
+  k_corr <- k - 1
+  if(r_corr == 0 || k_corr == 0) return(NA_real_)
+  phi2corr <- max(0, phi2 - (r_corr * k_corr) / (n - 1))
+  rcorr <- r_corr - ((r_corr^2 - 1) / (n - 1))
+  kcorr <- k_corr - ((k_corr^2 - 1) / (n - 1))
+  denom <- min(rcorr, kcorr)
+  if(denom <= 0) return(NA_real_)
+  sqrt(phi2corr / denom)
+}
+
+# Fixed order for basins
+basin_levels <- c(
+  "North Atlantic Ocean",
+  "South Atlantic Ocean",
+  "Indian Ocean",
+  "South China and Eastern Archipelagic Seas",
+  "North Pacific Ocean",
+  "South Pacific Ocean"
+)
+
+# Create output directory
+outdir <- params$outdir
+if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+```
+
+## 1) Load data and build tables
+
+```{r}
+csv_in <- params$csv
+df <- readr::read_csv(csv_in, show_col_types = FALSE) |>
+  dplyr::filter(count > 0) |>
+  dplyr::mutate(
+    ocean_basin = factor(ocean_basin, levels = basin_levels, ordered = TRUE),
+    genotype = as.factor(genotype)
+  ) |>
+  dplyr::arrange(ocean_basin)
+
+df
+```
+
+```{r}
+# Contingency table (rows = basins, cols = genotypes)
+contingency <- df |>
+  tidyr::pivot_wider(names_from = genotype, values_from = count, values_fill = 0) |>
+  dplyr::arrange(ocean_basin)
+
+# Matrix for tests
+mat <- as.matrix(contingency[,-1, drop = FALSE])
+rownames(mat) <- contingency[[1]]
+
+# Row-normalized proportions
+row_sums <- rowSums(mat)
+prop_mat <- sweep(mat, 1, row_sums, "/")
+prop_mat[is.na(prop_mat)] <- 0
+
+proportions <- prop_mat |>
+  as.data.frame() |>
+  tibble::rownames_to_column(var="ocean_basin") |>
+  tidyr::pivot_longer(-ocean_basin, names_to = "genotype", values_to = "proportion") |>
+  dplyr::mutate(
+    ocean_basin = factor(ocean_basin, levels = basin_levels, ordered = TRUE),
+    genotype = factor(genotype, levels = sort(unique(df$genotype)))
+  ) |>
+  dplyr::arrange(ocean_basin)
+
+# Write tables
+readr::write_csv(contingency, file.path(outdir, "contingency_table.csv"))
+readr::write_csv(proportions, file.path(outdir, "proportions_by_basin.csv"))
+
+contingency
+```
+
+## 2) Chi-square test, effect size, standardized residuals
+
+```{r}
+ct <- suppressWarnings(chisq.test(mat, correct = FALSE))
+chi2 <- unname(ct$statistic)
+pval <- ct$p.value
+dof <- unname(ct$parameter)
+expected <- ct$expected
+
+n <- sum(mat); r <- nrow(mat); k <- ncol(mat)
+V <- cramers_v_bc(chi2, n, r, k)
+
+# Adjusted standardized residuals (Haberman)
+row_prob <- rowSums(mat) / n
+col_prob <- colSums(mat) / n
+std_resid <- (mat - expected) / sqrt(expected * (1 - row_prob) %o% (1 - col_prob))
+std_resid[!is.finite(std_resid)] <- 0
+
+# Save a text summary
+summary_txt <- sprintf(
+"Chi-square test of independence (Genotype x Ocean Basin)
+--------------------------------------------------------
+N (total counts): %d
+Table shape: %d basins x %d genotypes
+Chi2 statistic: %.4f
+Degrees of freedom: %d
+p-value: %.4e
+Cramér's V (bias-corrected): %.4f
+
+Interpretation guide:
+- Small p-values suggest a non-random association between genotype and ocean basin.
+- Cramér's V gauges association strength (rule-of-thumb: ~0.1 small, ~0.3 medium, ~0.5+ large, context-dependent).
+- See standardized_residuals_heatmap for cellwise over/under-representation.",
+  n, r, k, chi2, dof, pval, V
+)
+writeLines(summary_txt, con = file.path(outdir, "chi2_summary.txt"))
+
+cat(summary_txt)
+```
+
+## 3) 100% stacked proportions by basin
+
+```{r, fig.width=params$fig_width, fig.height=params$fig_height}
+p_prop <- ggplot(proportions, aes(x = ocean_basin, y = proportion, fill = genotype)) +
+  geom_col(width = 0.85) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = NULL, y = "Proportion",
+       title = paste0(params$title_prefix, " — Proportions by Basin"),
+       fill = "Genotype") +
+  ggthemes::theme_clean(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "right",
+        plot.title = element_text(face = "bold"))
+p_prop
+
+ggsave(file.path(outdir, "stacked_proportion_bars.pdf"),
+       p_prop, width = params$fig_width, height = params$fig_height,
+       dpi = params$dpi, device = cairo_pdf)
+ggsave(file.path(outdir, "stacked_proportion_bars.svg"),
+       p_prop, width = params$fig_width, height = params$fig_height,
+       dpi = params$dpi, device = svglite::svglite)
+```
+
+## 4) Standardized residuals heatmap
+
+```{r, fig.width=params$fig_width, fig.height=params$fig_height}
+std_df <- as.data.frame(std_resid) |>
+  tibble::rownames_to_column(var="ocean_basin") |>
+  tidyr::pivot_longer(-ocean_basin, names_to = "genotype", values_to = "std_resid") |>
+  dplyr::mutate(
+    ocean_basin = factor(ocean_basin, levels = basin_levels, ordered = TRUE),
+    genotype = factor(genotype, levels = sort(unique(df$genotype)))
+  ) |>
+  dplyr::arrange(ocean_basin)
+
+p_heat <- ggplot(std_df, aes(x = genotype, y = ocean_basin, fill = std_resid)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf('%.2f', std_resid)), size = 3) +
+  scale_fill_gradient2(low = scales::muted("blue"), mid = "white", high = scales::muted("red"),
+                       midpoint = 0, name = "Std. residual") +
+  labs(x = "Genotype", y = "Ocean basin",
+       title = paste0(params$title_prefix, " — Standardized Residuals (χ² post-hoc)")) +
+  ggthemes::theme_clean(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(face = "bold"))
+p_heat
+
+ggsave(file.path(outdir, "standardized_residuals_heatmap.pdf"),
+       p_heat, width = params$fig_width, height = params$fig_height,
+       dpi = params$dpi, device = cairo_pdf)
+ggsave(file.path(outdir, "standardized_residuals_heatmap.svg"),
+       p_heat, width = params$fig_width, height = params$fig_height,
+       dpi = params$dpi, device = svglite::svglite)
+```
+
+```{r msa, fig.width=7, fig.height=6}
+library(ggmsa)
+library(Biostrings)
+
+aln_path <- "/Users/stesmith/Documents/depredation/global_distribution/sphyrna_dominant_COI_aln.fasta"
+aln <- readDNAMultipleAlignment(aln_path)
+
+# Plot
+ggmsa(aln, char_width=0.7, seq_name = TRUE, border = NA, none_bg = TRUE) + 
+  facet_msa(field = 100)
+
+ggsave("/Users/stesmith/Documents/depredation/global_distribution/sphyrna_COI_wrapped.png", width = 7, height = 6, dpi = 300)
+ggsave("/Users/stesmith/Documents/depredation/global_distribution/sphyrna_COI_wrapped.svg", width = 7, height = 6, dpi = 300)
+```
