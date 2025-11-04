@@ -17,6 +17,7 @@ Configuration Structure:
 - VisualizationConfig: Plot styling and output parameters
 - PhylogeneticConfig: Phylogenetic tree construction parameters
 - PipelineConfig: Master configuration combining all components
+- TaxonomyConfig: Sequence-based species assignment thresholds and majority rules
 
 Key Design Principles:
 - Immutable configuration objects (frozen dataclasses)
@@ -182,6 +183,73 @@ class GenotypeAssignmentConfig:
             raise ValueError("min_identity must be between 0 and 1")
         if self.n_threads < 1:
             raise ValueError("n_threads must be at least 1")
+            
+            
+# ============================================================================
+# Taxonomy (Sequence-based Species Assignment) Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class TaxonomyConfig:
+    """
+    Configuration for sequence-based taxonomic assignment (samples & consensus).
+
+    These parameters control BLAST/VSEARCH-style classification thresholds,
+    tie-breaking behavior, and majority-vote consolidation.
+
+    Attributes
+    ----------
+    min_identity_pct : float
+        Minimum percent identity required to allow species-level assignment
+        from sequence similarity (e.g., 98.5 for COI).
+
+    min_query_cov_pct : float
+        Minimum percent of the query aligned (coverage) to consider a hit valid.
+
+    top2_min_delta_pct : float
+        Minimum absolute percent-identity margin between the best hit and the
+        best conflicting species hit to accept a species-level call.
+
+    majority_species_threshold : float
+        Fraction of members in a consensus_group that must share the same
+        reported species to call a metadata majority species.
+
+    allow_ambiguous_N_pct : float
+        Maximum percent of ambiguous bases (N) tolerated in the *query* when
+        making species calls. Above this, downgrade to genus or unassigned.
+
+    classifier : str
+        Which backend you intend to use for sequence classification.
+        Options: "blastn", "vsearch" (currently informational).
+
+    db_name : str
+        Human-readable database tag for provenance in reports.
+
+    locus : Optional[str]
+        Locus/marker name (e.g., "COI-5P"), purely informational.
+    """
+    min_identity_pct: float = 98.5
+    min_query_cov_pct: float = 90.0
+    top2_min_delta_pct: float = 0.5
+    majority_species_threshold: float = 0.70
+    allow_ambiguous_N_pct: float = 2.0
+    classifier: str = "blastn"
+    db_name: str = "BOLD_COI_2025-10-01"
+    locus: Optional[str] = "COI-5P"
+
+    def __post_init__(self):
+        if not (0 < self.min_identity_pct <= 100):
+            raise ValueError("min_identity_pct must be in (0, 100]")
+        if not (0 < self.min_query_cov_pct <= 100):
+            raise ValueError("min_query_cov_pct must be in (0, 100]")
+        if not (0 <= self.top2_min_delta_pct <= 5):
+            raise ValueError("top2_min_delta_pct should be reasonable (0–5)")
+        if not (0.5 <= self.majority_species_threshold <= 1.0):
+            raise ValueError("majority_species_threshold must be in [0.5, 1.0]")
+        if not (0 <= self.allow_ambiguous_N_pct <= 100):
+            raise ValueError("allow_ambiguous_N_pct must be in [0, 100]")
+        if self.classifier not in {"blastn", "vsearch"}:
+            raise ValueError('classifier must be "blastn" or "vsearch"')
 
 
 # ============================================================================
@@ -437,6 +505,9 @@ class PipelineConfig:
 
     visualization : VisualizationConfig
         Figure generation configuration
+        
+    taxonomy : TaxonomyConfig
+        Taxonomy configuration
 
     phylogenetic : PhylogeneticConfig
         Phylogenetic tree construction configuration
@@ -445,7 +516,7 @@ class PipelineConfig:
         Logging level (default: "INFO")
 
     n_threads : int
-        Global thread count (default: 1, overrides component settings)
+        Global thread count (default: 4, overrides component settings)
 
     output_dir : Path
         Base output directory (default: "results")
@@ -460,9 +531,10 @@ class PipelineConfig:
     genotype_assignment: GenotypeAssignmentConfig = field(default_factory=GenotypeAssignmentConfig)
     geographic: GeographicConfig = field(default_factory=GeographicConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
+    taxonomy: TaxonomyConfig = field(default_factory=TaxonomyConfig)
     phylogenetic: PhylogeneticConfig = field(default_factory=PhylogeneticConfig)
     log_level: str = "INFO"
-    n_threads: int = 1
+    n_threads: int = 4
     output_dir: Path = field(default_factory=lambda: Path("results"))
     keep_intermediates: bool = False
     overwrite_existing: bool = False
@@ -708,6 +780,9 @@ def _dict_to_config(config_dict: Dict[str, Any]) -> PipelineConfig:
 
     if 'phylogenetic' in config_dict:
         nested_configs['phylogenetic'] = PhylogeneticConfig(**config_dict.pop('phylogenetic'))
+        
+    if 'taxonomy' in config_dict:
+        nested_configs['taxonomy'] = TaxonomyConfig(**config_dict.pop('taxonomy'))
 
     # Create pipeline config
     return PipelineConfig(**nested_configs, **config_dict)
@@ -876,6 +951,24 @@ def validate_config(config: PipelineConfig) -> List[str]:
     if config.n_threads > os.cpu_count():
         warnings.append(
             f"Thread count ({config.n_threads}) exceeds available CPUs ({os.cpu_count()})"
+        )
+        
+    # taxonomy sanity checks
+    tx = config.taxonomy
+    if tx.min_identity_pct < 97:
+        warnings.append(
+            f"Taxonomy min_identity_pct ({tx.min_identity_pct}) is low for COI; "
+            "you may be genus-level calls promoted to species."
+        )
+    if tx.min_query_cov_pct < 80:
+        warnings.append(
+            f"Taxonomy min_query_cov_pct ({tx.min_query_cov_pct}) is low; "
+            "partial hits may drive incorrect species assignments."
+        )
+    if tx.majority_species_threshold < 0.6:
+        warnings.append(
+            f"Majority treshold ({tx.majority_species_threshold}) is lenient; "
+            "consider 0.7 for conservative metadata-majority species naming."
         )
 
     return warnings

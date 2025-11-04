@@ -166,19 +166,20 @@ def parse_bold_tsv(
     # Validate required columns
     validate_required_columns(df, required_columns)
 
-    # Check for duplicate processids
+    # Check for duplicate processids and remove them (keep first occurrence)
     if 'processid' in df.columns:
         duplicates = df['processid'].duplicated()
         if duplicates.any():
             n_duplicates = duplicates.sum()
             dup_ids = df.loc[duplicates, 'processid'].head(5).tolist()
-            logger.error(
+            logger.warning(
                 f"Found {n_duplicates} duplicate processids. "
-                f"Examples: {dup_ids}"
+                f"Examples: {dup_ids}. "
+                f"Keeping only first occurrence of each duplicate."
             )
-            raise ValueError(
-                f"processid column must be unique. Found {n_duplicates} duplicates."
-            )
+            # Remove duplicates, keeping first occurrence
+            df = df[~duplicates].copy()
+            logger.info(f"After removing duplicates: {len(df)} rows remaining")
 
     # Clean up whitespace in string columns
     for col in df.select_dtypes(include=['object']).columns:

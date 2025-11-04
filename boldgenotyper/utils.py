@@ -1217,6 +1217,14 @@ def assign_consensus_taxonomy(
     counts = counts.merge(n_by_group, on=group_col, how="left")
     counts["frac"] = counts["n"] / counts["n_in_group"]
     
+    # majority fraction per group (max frac among species)
+    maj = (
+        counts.groupby(group_col, as_index=False)["frac"]
+            .max()
+            .rename(columns={"frac": "majority_fraction"})
+    )
+    
+        
     # pick winner per group (majority species; else fall back to genus
     def _choose(group_df: pd.DataFrame) -> Dict[str, str]:
         gname = group_df[group_col].iloc[0]
@@ -1259,8 +1267,15 @@ def assign_consensus_taxonomy(
               .reset_index(drop=True)
     )
     
+    # Merge in majority_fraction
+    assign = assign.merge(
+        maj.rename(columns={group_col: "consensus_group"}),
+        on="consensus_group",
+        how="left"
+    )
+    
     # Ensure column order and types
-    expected_cols = ["consensus_group", "assigned_sp", "assignment_level", "assignment_notes"]
+    expected_cols = ["consensus_group", "assigned_sp", "assignment_level", "assignment_notes", "majority_fraction"]
     missing = [c for c in expected_cols if c not in assign.columns]
     if missing:
         raise RuntimeError(f"assign_consensus_taxonomy: missing columns in result: {missing}")
@@ -1271,3 +1286,42 @@ def assign_consensus_taxonomy(
     )
 
     return assign, species_counts
+    
+
+def pick_final_group_taxon(
+    cluster_sp: str,
+    cluster_level: str,
+    cluster_id: float,
+    cluster_qcov: float,
+    majority_sp: str,
+    majority_level: str,
+    majority_frac: float,
+    cfg_taxonomy,
+):
+    """
+    Decide final consensus-group taxon based on sequence (cluster) vs metadata majority.
+    
+    Returns: (final_sp, final_level, provenance)
+        provenance = {"cluster_seq","majority_species","cluster_genus","majority_genus","none"}
+    """
+    # Threshold checks
+    id_ok = (cluster_id or 0) >= cfg_taxonomy.min_identity_pct
+    cov_ok = (cluster_qcov or 0) >= cfg_taxonomy.min_query_cov_pct
+    maj_ok = (majority_frac or 0) >=cfg_taxonomy.majority_species_threshold
+    
+    # Prefer high-confidence sequence-based call
+    if(cluster_level == "species") and id_ok and cov_ok and (cluster_sp or "").strip():
+        return cluster_sp, "species", "cluster_seq"
+        
+    # Fallback: strong metadata majority at species level
+    if (majority_level == "species") and maj_ok and (majority_sp or "").strip():
+        return majority_sp, "species", "majority_species"
+        
+    # Genus-level fallback
+    if (cluster_level == "genus") and (cluster_sp or "").strip():
+        return cluster_sp, "genus", "cluster_genus"
+        
+    if (majority_level == "genus") and (majority_sp or "").strip():
+        return majority_sp, "genus", "majority_genus"
+        
+    return "", "unassigned", "none"

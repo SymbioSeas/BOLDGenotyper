@@ -12,6 +12,7 @@ Author: Steph Smith
 """
 
 import sys
+import os
 from pathlib import Path
 
 # Add package to path
@@ -27,9 +28,12 @@ logger = utils.setup_logging(log_level="INFO", log_file="tests/test_run.log")
 
 # Paths
 TEST_DATA_DIR = Path("tests/data")
-TEST_TSV = TEST_DATA_DIR / "Sphyrnidae_test.tsv"
-OUTPUT_DIR = Path("tests/output")
+TEST_TSV = TEST_DATA_DIR / "Euprymna.tsv"
+OUTPUT_DIR = Path("tests/Euprymna_output")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+# Adjustable similarity threshold (use 0.80 for highly diverse taxa like Carcharhinus)
+SIMILARITY_THRESHOLD = float(os.environ.get("BG_SIMILARITY_THRESHOLD", "0.80"))
 
 def print_section(title):
     """Print a section header."""
@@ -76,7 +80,10 @@ def main():
     
     try:
         cfg = config.get_default_config()
+
+        # Update configuration including adjustable similarity threshold
         cfg = cfg.update(
+            genotype_assignment__min_identity=SIMILARITY_THRESHOLD,
             output_dir=OUTPUT_DIR,
             n_threads=2,
             keep_intermediates=True,
@@ -84,7 +91,7 @@ def main():
         )
         print("✓ Configuration loaded")
         print(f"  Clustering threshold: {cfg.dereplication.clustering_threshold}")
-        print(f"  Min identity: {cfg.genotype_assignment.min_identity}")
+        print(f"  Min identity (similarity threshold): {cfg.genotype_assignment.min_identity}")
         print(f"  Exclude centroids: {cfg.geographic.exclude_centroids}")
         
         # Validate configuration
@@ -294,7 +301,7 @@ def main():
     
     try:
         print(f"Input: {len(fasta_records)} sequences")
-        print(f"Clustering threshold: {cfg.dereplication.clustering_threshold} (99% identity)")
+        print(f"Clustering threshold: {cfg.dereplication.clustering_threshold:.3f} (~{cfg.dereplication.clustering_threshold*100:.0f}% identity)")
         
         # Check external tools
         if not utils.check_external_tool("mafft"):
@@ -394,12 +401,13 @@ def main():
     
     try:
         # df_with_genotypes should already include at least: processid, consensus_group, species (and ideally genus)
+        majority_thr = cfg.taxonomy.majority_species_threshold
         assign_table, species_counts = utils.assign_consensus_taxonomy(
             df_with_genotypes,
             group_col="consensus_group",
             species_col="species",
             genus_col="genus",               # if not present, helper derives from species
-            majority_threshold=0.5
+            majority_threshold=majority_thr
         )
         
         required = {"consensus_group", "assigned_sp", "assignment_level", "assignment_notes"}
@@ -430,11 +438,49 @@ def main():
     
         # Attach 'assigned_sp' and 'consensus_group_sp' to every row by group
         df_with_genotypes = df_with_genotypes.merge(
-            assign_table[["consensus_group", "assigned_sp", "consensus_group_sp", "assignment_level", "assignment_notes"]],
+            assign_table[["consensus_group", "assigned_sp", "consensus_group_sp", "assignment_level", "assignment_notes", "majority_fraction"]],
             on="consensus_group",
             how="left",
             validate="many_to_one"
         )
+        
+        # Load and merge cluster-seq assignments
+        cluster_seq_path = OUTPUT_DIR / f"{organism}_consensus_taxonomy_seq.csv"
+        if cluster_seq_path.exists():
+            cluster_seq_df = pd.read_csv(cluster_seq_path)
+            # expected columns: consensus_group, cluster_seq_sp, cluster_seq_level,
+            #					cluster_seq_best_identity, cluster_seq_qcov
+            df_with_genotypes = df_with_genotypes.merge(
+                cluster_seq_df, on="consensus_group", how="left", validate="many_to_one"
+            )
+        
+        def _final_label(row):
+            final_sp, final_level, prov = utils.pick_final_group_taxon(
+                cluster_sp=row.get("cluster_seq_sp", ""),
+                cluster_level=row.get("cluster_seq_level", ""),
+                cluster_id=row.get("cluster_seq_best_identity", 0.0),
+                cluster_qcov=row.get("cluster_seq_qcov", 0.0),
+                majority_sp=row.get("assigned_sp", ""),
+                majority_level=row.get("assignment_level", ""),
+                majority_frac=row.get("majority_fraction", 0.0),
+                cfg_taxonomy=cfg.taxonomy,
+            )
+            short = row["consensus_group"].replace("consensus_", "") if isinstance(row.get("consensus_group"), str) else ""
+            # Build the display label
+            label = f"{final_sp} {short}".strip() if final_sp else short
+            return pd.Series({
+                "final_group_sp": final_sp,
+                "final_group_level": final_level,
+                "tax_provenance": prov,
+                "consensus_group_sp": label
+            })
+            
+        final_cols = df_with_genotypes.apply(_final_label, axis=1)
+        for c in final_cols.columns:
+            df_with_genotypes[c] = final_cols[c]
+            
+        df_with_genotypes = df_with_genotypes.loc[:, ~df_with_genotypes.columns.duplicated(keep='last')]
+        
     
         # Flag taxonomy conflicts at the processid level
         # conflict if assigned at species-level and original species != assigned_sp;
@@ -489,6 +535,8 @@ def main():
         
         # Merge first
         df_final = geno_df.merge(geo_df[geo_keep], on='processid', how='left', validate='one_to_one')
+        # Drop duplicate-named columns
+        df_final = df_final.loc[:, ~df_final.columns.duplicated(keep='last')]
         
         # Bring new taxonomy columns to the front
         front_more = [c for c in [
@@ -503,7 +551,7 @@ def main():
         
         # Save the final unified annotated CSV
         df_final.to_csv(merged_out, index=False)
-    
+        
         # --------- Summary stats ----------
         print(f"\n{'='*70}")
         print(f"Pipeline Summary for {organism}")
