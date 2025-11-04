@@ -1159,3 +1159,115 @@ class ProgressTracker:
             f"{self.description} complete: {self.total} items "
             f"in {format_elapsed_time(elapsed)}"
         )
+        
+# ============================================================================
+# Taxonomy Assignment Helper
+# ============================================================================
+import re
+import pandas as pd
+from typing import Tuple, Dict
+
+def _norm_species(s: str) -> str:
+    if pd.isna(s):
+        return ""
+    s = str(s).strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
+    
+def _to_genus(species: str) -> str:
+    species = _norm_species(species)
+    return species.split(" ")[0] if species else ""
+    
+def assign_consensus_taxonomy(
+    df: pd.DataFrame,
+    group_col: str = "consensus_group",
+    species_col: str = "species",
+    genus_col: str = "genus",
+    majority_threshold: float = 0.5
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    For each consensus group, tally 'species', pick a dominant species if any has
+    > majority_threshold of samples; otherwise fall back to genus.
+
+    Returns:
+      - assign_table: one row per consensus_group with chosen assigned_sp (+metadata)
+      - species_counts: long table of counts per (consensus_group, species)
+    """
+    df = df.copy()
+
+    # Normalize species/genus text
+    if species_col not in df.columns:
+        raise ValueError(f"Column '{species_col}' not found")
+    if genus_col not in df.columns:
+        # derive genus from species if genus column absent
+        df[genus_col] = df[species_col].map(_to_genus)
+
+    df[species_col] = df[species_col].map(_norm_species)
+    df[genus_col] = df[genus_col].map(_norm_species)
+
+    # Species tallies per group
+    counts = (
+        df.groupby([group_col, species_col], dropna=False)
+          .size()
+          .rename("n")
+          .reset_index()
+    )
+    # n in group
+    n_by_group = counts.groupby(group_col)["n"].sum().rename("n_in_group")
+    counts = counts.merge(n_by_group, on=group_col, how="left")
+    counts["frac"] = counts["n"] / counts["n_in_group"]
+    
+    # pick winner per group (majority species; else fall back to genus
+    def _choose(group_df: pd.DataFrame) -> Dict[str, str]:
+        gname = group_df[group_col].iloc[0]
+        
+        # sort by count desc, then species name for determinism
+        gsorted = group_df.sort_values(["n", species_col], ascending=[False, True])
+        top = gsorted.iloc[0]
+        tie = (gsorted["n"].values == top["n"]).sum() > 1
+        
+        # majority species?
+        if (not tie) and (top["frac"] > majority_threshold) and isinstance(top[species_col], str) and top[species_col]:
+            assigned_sp = top[species_col]
+            level = "species"
+            notes = f"majority {top['frac']:.2f}"
+        else:
+            # fallback: mode genus among members of this consensus group
+            members = (
+                df.loc[df[group_col] == gname, genus_col]
+                    .dropna().astype(str).str.strip()
+            )
+            assigned_sp = members.value_counts().idxmax() if not members.empty else ""
+            level = "genus" if assigned_sp else "unassigned"
+            notes = "tie or not majority; fell back to genus" if assigned_sp else "no genus available"
+            
+        return {
+            "consensus_group": gname,
+            "assigned_sp": assigned_sp,
+            "assignment_level": level,
+            "assignment_notes": notes,
+        }
+
+    # pick winner per group (kept as nested function so it can see df/*_col/threshold)
+    def _choose_series(g: pd.DataFrame) -> pd.Series:
+        d = _choose(g)  # your existing function that returns a dict
+        return pd.Series(d, dtype="object")
+    
+    assign = (
+        counts.groupby(group_col, group_keys=False)   # <- prevents group col duplication
+              .apply(_choose_series)
+              .reset_index(drop=True)
+    )
+    
+    # Ensure column order and types
+    expected_cols = ["consensus_group", "assigned_sp", "assignment_level", "assignment_notes"]
+    missing = [c for c in expected_cols if c not in assign.columns]
+    if missing:
+        raise RuntimeError(f"assign_consensus_taxonomy: missing columns in result: {missing}")
+    
+    # Build the species-by-group table (long summary)
+    species_counts = counts[[group_col, species_col, "n", "frac", "n_in_group"]].rename(
+        columns={species_col: "reported_species"}
+    )
+
+    return assign, species_counts

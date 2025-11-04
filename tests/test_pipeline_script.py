@@ -216,8 +216,13 @@ def main():
             df_with_basins = geographic.assign_ocean_basins(
                 df_filtered,
                 goas_data=goas_data,
-                coord_col='coord'
+                coord_col="coord"
             )
+            
+            nn = int(df_with_basins[['lat','lon']].notna().all(axis=1).sum()) if {'lat','lon'}.issubset(df_with_basins.columns) else 0
+            print(f"✓ Parsed coordinate rows carried into basins: {nn}")
+            unk = int((df_with_basins.get('ocean_basin','Unknown') == 'Unknown').sum())
+            print(f" Unknown basin count: {unk} / {len(df_with_basins)}")
             
             # Show basin distribution
             basin_counts = df_with_basins['ocean_basin'].value_counts()
@@ -381,40 +386,214 @@ def main():
         import traceback; traceback.print_exc()
         return False
     
+
+    # ========================================================================
+    # STEP 7.5: Assign taxonomy to consensus groups (majority rule)
+    # ========================================================================
+    print_section("STEP 7.5: Assign Taxonomy to Consensus Groups")
+    
+    try:
+        # df_with_genotypes should already include at least: processid, consensus_group, species (and ideally genus)
+        assign_table, species_counts = utils.assign_consensus_taxonomy(
+            df_with_genotypes,
+            group_col="consensus_group",
+            species_col="species",
+            genus_col="genus",               # if not present, helper derives from species
+            majority_threshold=0.5
+        )
         
+        required = {"consensus_group", "assigned_sp", "assignment_level", "assignment_notes"}
+        missing = required - set(assign_table.columns)
+        if missing:
+            raise RuntimeError(f"assign_consensus_taxonomy returned missing columns: {missing}\n"f"Got columns: {list(assign_table.columns)}")
+    
+        # Build 'consensus_group_sp' like "Sphyrna zygaena c7_n46" or "Sphyrna c9_n12"
+        def _strip_prefix(s: str) -> str:
+            return s.replace("consensus_", "") if isinstance(s, str) else s
+    
+        assign_table["consensus_group_short"] = assign_table["consensus_group"].map(_strip_prefix)
+    
+        def _join_label(row):
+            sp = row["assigned_sp"]
+            short = row["consensus_group_short"]
+            if not sp:
+                return short  # fall back to bare group if totally unassigned
+            return f"{sp} {short}"
+    
+        assign_table["consensus_group_sp"] = assign_table.apply(_join_label, axis=1)
+    
+        # Save per-group species tallies and final assignment
+        species_counts_out = OUTPUT_DIR / f"{organism}_species_by_consensus.csv"
+        assign_table_out   = OUTPUT_DIR / f"{organism}_consensus_taxonomy.csv"
+        species_counts.to_csv(species_counts_out, index=False)
+        assign_table.to_csv(assign_table_out, index=False)
+    
+        # Attach 'assigned_sp' and 'consensus_group_sp' to every row by group
+        df_with_genotypes = df_with_genotypes.merge(
+            assign_table[["consensus_group", "assigned_sp", "consensus_group_sp", "assignment_level", "assignment_notes"]],
+            on="consensus_group",
+            how="left",
+            validate="many_to_one"
+        )
+    
+        # Flag taxonomy conflicts at the processid level
+        # conflict if assigned at species-level and original species != assigned_sp;
+        # if assigned at genus-level, conflict if original genus != assigned_sp
+        if "genus" not in df_with_genotypes.columns:
+            df_with_genotypes["genus"] = df_with_genotypes["species"].map(lambda s: s.split(" ")[0] if isinstance(s, str) and s.strip() else "")
+    
+        def _conflict(row):
+            lvl = row.get("assignment_level", "")
+            if lvl == "species":
+                return (isinstance(row.get("species",""), str) 
+                        and row["species"].strip() != row.get("assigned_sp",""))
+            elif lvl == "genus":
+                return (isinstance(row.get("genus",""), str)
+                        and row["genus"].strip() != row.get("assigned_sp",""))
+            return False
+    
+        df_with_genotypes["taxonomy_conflict"] = df_with_genotypes.apply(_conflict, axis=1)
+    
+        # Update on-disk TSV so later steps read the enriched columns
+        annotated_tsv = OUTPUT_DIR / f"{organism}_with_genotypes.tsv"
+        df_with_genotypes.to_csv(annotated_tsv, sep="\t", index=False)
+        print(f"✓ Saved updated genotypes with taxonomy: {annotated_tsv}")
+        print(f"✓ Species tallies by group: {species_counts_out}")
+        print(f"✓ Chosen assignments per group: {assign_table_out}")
+    
+    except Exception as e:
+        print(f"✗ Taxonomy assignment failed: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
     # ========================================================================
     # STEP 8: Generate Summary
     # ========================================================================
     print_section("STEP 8: Summary Statistics")
     
     try:
-        # Combine all information
-        df_final = df_with_genotypes.merge(
-            df_with_basins[['processid', 'ocean_basin']],
-            on='processid',
-            how='left'
-        )
+        # Build one final annotated table with geography + genotype
+        merged_out        = OUTPUT_DIR / f"{organism}_annotated.csv"
+        geno_path         = OUTPUT_DIR / f"{organism}_with_genotypes.tsv"   # already written in Step 7
+        geo_path          = OUTPUT_DIR / "03_with_ocean_basins.tsv"         # already written in Step 4
+        crosstab_out      = OUTPUT_DIR / f"{organism}_genotype_by_basin.csv"
+        crosstab_sp_out   = OUTPUT_DIR / f"{organism}_genotypeSP_by_basin.csv"
+        basin_summary_out = OUTPUT_DIR / f"{organism}_basin_summary.csv"
+    
+        # Re-load (robust if someone reruns Step 8 standalone)
+        geno_df = df_with_genotypes if 'df_with_genotypes' in locals() else pd.read_csv(geno_path, sep="\t")
+        geo_df  = df_with_basins    if 'df_with_basins'    in locals() else pd.read_csv(geo_path,  sep="\t")
+    
+        # Only append the geography columns we need
+        geo_keep = [c for c in ['processid', 'lat', 'lon', 'ocean_basin'] if c in geo_df.columns]
         
-        # Overall summary
+        # Merge first
+        df_final = geno_df.merge(geo_df[geo_keep], on='processid', how='left', validate='one_to_one')
+        
+        # Bring new taxonomy columns to the front
+        front_more = [c for c in [
+            "assigned_sp", "assignment_level", "assignment_notes", "taxonomy_conflict", "consensus_group_sp"
+        ] if c in df_final.columns]
+        
+        # For specific column ordering, do it here
+        cols_front = [c for c in ["processid"] + front_more if c in df_final.columns]
+        cols_geo   = [c for c in ["lat","lon","ocean_basin"] if c in df_final.columns]
+        other_cols = [c for c in df_final.columns if c not in cols_front + cols_geo]
+        df_final   = df_final[cols_front + other_cols + cols_geo]
+        
+        # Save the final unified annotated CSV
+        df_final.to_csv(merged_out, index=False)
+    
+        # --------- Summary stats ----------
         print(f"\n{'='*70}")
         print(f"Pipeline Summary for {organism}")
         print(f"{'='*70}")
         print(f"\nInput:")
         print(f"  Total samples in TSV: {len(df)}")
-        print(f"  Samples with valid coordinates: {len(df_filtered)}")
+        print(f"  Samples with valid coordinates after filtering: {len(df_filtered)}")
         print(f"  Unique genotypes identified: {len(consensus_records)}")
-        
+    
+        # Genotype distribution (from Step 7)
         print(f"\nGenotype Distribution:")
         for genotype, count in genotype_counts.items():
             if pd.notna(genotype):
                 percent = (count / len(df_filtered)) * 100
                 print(f"  {genotype}: {count} ({percent:.1f}%)")
-        
-        if 'ocean_basin' in df_final.columns:
+    
+        # Coordinate & basin coverage
+        has_lat = 'lat' in df_final.columns
+        has_lon = 'lon' in df_final.columns
+        has_basin = 'ocean_basin' in df_final.columns
+    
+        if has_lat and has_lon:
+            n_coords = int((df_final['lat'].notna() & df_final['lon'].notna()).sum())
+            print(f"\nCoordinate Coverage:")
+            print(f"  Parsed lat/lon for: {n_coords} / {len(df_final)} "
+                  f"({(n_coords/len(df_final))*100:.1f}%)")
+            if n_coords > 0:
+                lat_min, lat_max = df_final['lat'].min(), df_final['lat'].max()
+                lon_min, lon_max = df_final['lon'].min(), df_final['lon'].max()
+                print(f"  Latitude range:  {lat_min:.2f} to {lat_max:.2f}")
+                print(f"  Longitude range: {lon_min:.2f} to {lon_max:.2f}")
+    
+        if has_basin:
             print(f"\nOcean Basin Distribution:")
-            for basin, count in df_final['ocean_basin'].value_counts().items():
+            basin_counts = df_final['ocean_basin'].fillna('Unknown').value_counts()
+            for basin, count in basin_counts.items():
                 print(f"  {basin}: {count} samples")
-        
+    
+        # Genotype × Basin crosstab (printed and saved)
+        if has_basin:
+            ct = pd.crosstab(
+                df_final['consensus_group'].fillna('Unassigned'),
+                df_final['ocean_basin'].fillna('Unknown')
+            )
+            # Sort for readable display: rows by total desc, columns by total desc
+            ct = ct.loc[ct.sum(axis=1).sort_values(ascending=False).index,
+                        ct.sum(axis=0).sort_values(ascending=False).index]
+    
+            print(f"\nGenotype × Ocean Basin (top 10 rows):")
+            # print only top 10 rows to keep logs readable
+            print(ct.head(10).to_string())
+    
+            ct.to_csv(crosstab_out)
+            
+        # GenotypeSP x Basin crosstab (species-augmented labels)
+        if has_basin and 'consensus_group_sp' in df_final.columns:
+            ct_sp = pd.crosstab(
+                df_final['consensus_group_sp'].fillna('Unassigned'),
+                df_final['ocean_basin'].fillna('Unknown')
+            )
+            ct_sp = ct_sp.loc[ct_sp.sum(axis=1).sort_values(ascending=False).index, ct_sp.sum(axis=0).sort_values(ascending=False).index]
+            print(f"\nGenotypeSP x Ocean Basin (top 10 rows):")
+            print(ct_sp.head(10).to_string())
+            ct_sp.to_csv(crosstab_sp_out)
+    
+        # Basin summary: counts, assigned rate, mean identity (if available)
+        if has_basin:
+            cols = ['processid', 'ocean_basin', 'consensus_group']
+            if 'best_identity' in df_final.columns:
+                cols.append('best_identity')
+            bs = df_final[cols].copy()
+            bs['assigned'] = bs['consensus_group'].notna()
+            grp = bs.groupby(bs['ocean_basin'].fillna('Unknown'), dropna=False)
+    
+            summary = grp.agg(
+                total=('processid', 'count'),
+                assigned=('assigned', 'sum')
+            )
+            summary['assigned_rate'] = (summary['assigned'] / summary['total']).round(3)
+            if 'best_identity' in bs.columns:
+                # mean identity computed on assigned rows only
+                summary['mean_best_identity'] = grp.apply(
+                    lambda g: g.loc[g['assigned'], 'best_identity'].mean()
+                ).round(4)
+    
+            summary = summary.sort_values(['total', 'assigned'], ascending=False)
+            summary.to_csv(basin_summary_out)
+            print(f"\nPer-basin assignment summary (saved): {basin_summary_out}")
+    
+        # --------- Output file manifest ----------
         print(f"\nOutput Files:")
         output_files = [
             "01_parsed_metadata.tsv",
@@ -424,24 +603,29 @@ def main():
             f"{organism}_consensus.fasta",
             f"{organism}_with_genotypes.tsv",
             f"{organism}_diagnostics.csv",
+            f"{organism}_species_by_consensus.csv",
+            f"{organism}_consensus_taxonomy.csv",
+            f"{organism}_annotated.csv",          # NEW unified file
+            f"{organism}_genotype_by_basin.csv",  # NEW crosstab
+            f"{organism}_genotypeSP_by_basin.csv",
+            f"{organism}_basin_summary.csv",      # NEW per-basin summary
         ]
         for filename in output_files:
             filepath = OUTPUT_DIR / filename
             if filepath.exists():
                 print(f"  ✓ {filepath}")
-        
+    
         print(f"\n{'='*70}")
         print("✓ Pipeline test completed successfully!")
         print(f"{'='*70}\n")
-        
+            
         return True
-        
+    
     except Exception as e:
         print(f"✗ Summary generation failed: {e}")
         import traceback
         traceback.print_exc()
         return False
-
 
 if __name__ == '__main__':
     success = main()

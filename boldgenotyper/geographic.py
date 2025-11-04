@@ -66,8 +66,8 @@ from typing import Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import logging
 import warnings
-import re
 import ast
+import re
 
 import pandas as pd
 import numpy as np
@@ -443,16 +443,21 @@ def assign_ocean_basins(
         
     if need_latlon and coord_col is not None and coord_col in df_copy.columns:
         # parse strings like "[-33.8, 151.283]" or without brackets
-        def _parse_pair(s: str) -> Tuple[Optional[float], Optional[float]]:
+        def _parse_pair(s: str):
             if pd.isna(s):
                 return (None, None)
+            text = str(s).strip()
             try:
-                v = ast.literal_eval(str(s)) # handles "[-33.8, 151.283]"
-                if isinstance(v, list(tuple)) and len(v) == 2:
+                v = ast.literal_eval(text)
+                if isinstance(v, (list, tuple)) and len(v) == 2:
                     return (float(v[0]), float(v[1]))
             except Exception:
                 pass
+            m = re.search(r'(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)', text)
+            if m:
+                return (float(m.group(1)), float(m.group(2)))
             return (None, None)
+
         latlon = df_copy[coord_col].apply(_parse_pair)
         df_copy[lat_col] = latlon.apply(lambda t: t[0])
         df_copy[lon_col] = latlon.apply(lambda t: t[1])

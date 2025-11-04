@@ -241,3 +241,255 @@ Illegal character e
 [2025-11-03 16:34:08] INFO:     - Ties (ambiguous): 43
 [2025-11-03 16:34:08] INFO:     - Low confidence: 45
 [2025-11-03 16:34:08] INFO: ======================================================================
+[2025-11-03 16:53:06] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:53:06] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 16:53:06] INFO: Read 376 rows and 89 columns
+[2025-11-03 16:53:06] INFO: Data quality summary:
+[2025-11-03 16:53:06] INFO:   total_rows: 376
+[2025-11-03 16:53:06] INFO:   total_columns: 89
+[2025-11-03 16:53:06] INFO:   unique_processids: 376
+[2025-11-03 16:53:06] INFO:   sequences_present: 376
+[2025-11-03 16:53:06] INFO:   sequences_missing: 0
+[2025-11-03 16:53:06] INFO:   empty_sequences: 0
+[2025-11-03 16:53:06] INFO:   coords_present: 149
+[2025-11-03 16:53:06] INFO:   coords_missing: 227
+[2025-11-03 16:53:06] INFO:   centroid_coords: 36
+[2025-11-03 16:53:06] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 16:53:06] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 16:53:06] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 16:53:45] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 16:53:45] INFO: Creating point geometries from coordinates
+[2025-11-03 16:53:45] INFO: Creating point geometries for 113/340 samples with coordinates
+[2025-11-03 16:53:45] INFO: Performing spatial join for 113/340 samples with valid coordinates
+[2025-11-03 16:53:46] INFO: Spatial join results: 71 assigned to basins, 42 outside all basins
+[2025-11-03 16:53:46] WARNING: 37.2% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-03 16:53:46] INFO: Assigned 269 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 16:53:46] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:54:16] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 16:54:16] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 16:54:17] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 16:54:17] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 16:54:24] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 16:54:24] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 16:54:24] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 16:54:25] INFO: ======================================================================
+[2025-11-03 16:54:25] INFO: Starting genotype assignment workflow
+[2025-11-03 16:54:25] INFO: ======================================================================
+[2025-11-03 16:54:25] INFO: Using edlib for fast edit distance calculation
+[2025-11-03 16:54:25] INFO: Step 1/6: Loading metadata from tests/output/02_filtered_metadata.tsv
+[2025-11-03 16:54:25] INFO: Loaded 340 samples from metadata
+[2025-11-03 16:54:25] INFO: Step 2/6: Loading consensus sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 16:54:25] INFO: Read 18 sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 16:54:25] INFO: Loaded 18 consensus groups
+[2025-11-03 16:54:25] INFO: Step 3/6: Loading raw sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:54:25] INFO: Read 337 sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 16:54:25] INFO: Extracted 337 unique processids from FASTA
+[2025-11-03 16:54:25] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-03 16:54:25] INFO: Prepared 340 assignment tasks
+[2025-11-03 16:54:25] INFO: Step 5/6: Assigning genotypes (using 2 processes)
+[2025-11-03 16:54:29] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:54:29] INFO: Logging to file: tests/test_run.log
+[2025-11-03 16:54:30] INFO: Completed genotype assignment for 340 samples
+[2025-11-03 16:54:30] INFO: Step 6/6: Writing outputs
+[2025-11-03 16:54:30] INFO: Wrote updated metadata to tests/output/Sphyrnidae_test_with_genotypes.tsv
+[2025-11-03 16:54:30] INFO: Wrote diagnostics to tests/output/Sphyrnidae_test_diagnostics.csv
+[2025-11-03 16:54:30] INFO: ======================================================================
+[2025-11-03 16:54:30] INFO: Genotype assignment summary:
+[2025-11-03 16:54:30] INFO:   Total samples: 340
+[2025-11-03 16:54:30] INFO:   Successfully assigned: 285 (83.8%)
+[2025-11-03 16:54:30] INFO:   Unassigned: 55 (16.2%)
+[2025-11-03 16:54:30] INFO:     - No sequence in FASTA: 3
+[2025-11-03 16:54:30] INFO:     - Below identity threshold: 52
+[2025-11-03 16:54:30] INFO:   Diagnostic flags:
+[2025-11-03 16:54:30] INFO:     - Ties (ambiguous): 43
+[2025-11-03 16:54:30] INFO:     - Low confidence: 45
+[2025-11-03 16:54:30] INFO: ======================================================================
+[2025-11-03 19:53:58] INFO: Logging to file: tests/test_run.log
+[2025-11-03 19:53:58] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 19:53:58] INFO: Read 376 rows and 89 columns
+[2025-11-03 19:53:58] INFO: Data quality summary:
+[2025-11-03 19:53:58] INFO:   total_rows: 376
+[2025-11-03 19:53:58] INFO:   total_columns: 89
+[2025-11-03 19:53:58] INFO:   unique_processids: 376
+[2025-11-03 19:53:58] INFO:   sequences_present: 376
+[2025-11-03 19:53:58] INFO:   sequences_missing: 0
+[2025-11-03 19:53:58] INFO:   empty_sequences: 0
+[2025-11-03 19:53:58] INFO:   coords_present: 149
+[2025-11-03 19:53:58] INFO:   coords_missing: 227
+[2025-11-03 19:53:58] INFO:   centroid_coords: 36
+[2025-11-03 19:53:58] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 19:53:58] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 19:53:58] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 19:54:29] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 19:54:29] INFO: Creating point geometries from coordinates
+[2025-11-03 19:54:29] INFO: Creating point geometries for 113/340 samples with coordinates
+[2025-11-03 19:54:29] INFO: Performing spatial join for 113/340 samples with valid coordinates
+[2025-11-03 19:54:29] INFO: Spatial join results: 71 assigned to basins, 42 outside all basins
+[2025-11-03 19:54:29] WARNING: 37.2% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-03 19:54:29] INFO: Assigned 269 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 19:54:29] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 19:54:58] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 19:54:58] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 19:54:58] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 19:54:58] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 19:55:05] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 19:55:05] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 19:55:05] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 19:55:06] INFO: ======================================================================
+[2025-11-03 19:55:06] INFO: Starting genotype assignment workflow
+[2025-11-03 19:55:06] INFO: ======================================================================
+[2025-11-03 19:55:06] INFO: Using edlib for fast edit distance calculation
+[2025-11-03 19:55:06] INFO: Step 1/6: Loading metadata from tests/output/02_filtered_metadata.tsv
+[2025-11-03 19:55:06] INFO: Loaded 340 samples from metadata
+[2025-11-03 19:55:06] INFO: Step 2/6: Loading consensus sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 19:55:06] INFO: Read 18 sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 19:55:06] INFO: Loaded 18 consensus groups
+[2025-11-03 19:55:06] INFO: Step 3/6: Loading raw sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 19:55:06] INFO: Read 337 sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 19:55:06] INFO: Extracted 337 unique processids from FASTA
+[2025-11-03 19:55:06] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-03 19:55:06] INFO: Prepared 340 assignment tasks
+[2025-11-03 19:55:06] INFO: Step 5/6: Assigning genotypes (using 2 processes)
+[2025-11-03 19:55:09] INFO: Logging to file: tests/test_run.log
+[2025-11-03 19:55:09] INFO: Logging to file: tests/test_run.log
+[2025-11-03 19:55:09] INFO: Completed genotype assignment for 340 samples
+[2025-11-03 19:55:09] INFO: Step 6/6: Writing outputs
+[2025-11-03 19:55:09] INFO: Wrote updated metadata to tests/output/Sphyrnidae_test_with_genotypes.tsv
+[2025-11-03 19:55:09] INFO: Wrote diagnostics to tests/output/Sphyrnidae_test_diagnostics.csv
+[2025-11-03 19:55:09] INFO: ======================================================================
+[2025-11-03 19:55:09] INFO: Genotype assignment summary:
+[2025-11-03 19:55:09] INFO:   Total samples: 340
+[2025-11-03 19:55:09] INFO:   Successfully assigned: 285 (83.8%)
+[2025-11-03 19:55:09] INFO:   Unassigned: 55 (16.2%)
+[2025-11-03 19:55:09] INFO:     - No sequence in FASTA: 3
+[2025-11-03 19:55:09] INFO:     - Below identity threshold: 52
+[2025-11-03 19:55:09] INFO:   Diagnostic flags:
+[2025-11-03 19:55:09] INFO:     - Ties (ambiguous): 43
+[2025-11-03 19:55:09] INFO:     - Low confidence: 45
+[2025-11-03 19:55:09] INFO: ======================================================================
+[2025-11-03 20:02:07] INFO: Logging to file: tests/test_run.log
+[2025-11-03 20:02:07] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 20:02:07] INFO: Read 376 rows and 89 columns
+[2025-11-03 20:02:07] INFO: Data quality summary:
+[2025-11-03 20:02:07] INFO:   total_rows: 376
+[2025-11-03 20:02:07] INFO:   total_columns: 89
+[2025-11-03 20:02:07] INFO:   unique_processids: 376
+[2025-11-03 20:02:07] INFO:   sequences_present: 376
+[2025-11-03 20:02:07] INFO:   sequences_missing: 0
+[2025-11-03 20:02:07] INFO:   empty_sequences: 0
+[2025-11-03 20:02:07] INFO:   coords_present: 149
+[2025-11-03 20:02:07] INFO:   coords_missing: 227
+[2025-11-03 20:02:07] INFO:   centroid_coords: 36
+[2025-11-03 20:02:07] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 20:02:07] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 20:02:07] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 20:02:34] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 20:02:34] INFO: Creating point geometries from coordinates
+[2025-11-03 20:02:34] INFO: Creating point geometries for 113/340 samples with coordinates
+[2025-11-03 20:02:35] INFO: Performing spatial join for 113/340 samples with valid coordinates
+[2025-11-03 20:02:35] INFO: Spatial join results: 71 assigned to basins, 42 outside all basins
+[2025-11-03 20:02:35] WARNING: 37.2% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-03 20:02:35] INFO: Assigned 269 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 20:02:35] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 20:03:01] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 20:03:01] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 20:03:01] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 20:03:01] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 20:03:08] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 20:03:08] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 20:03:08] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 20:03:08] INFO: ======================================================================
+[2025-11-03 20:03:08] INFO: Starting genotype assignment workflow
+[2025-11-03 20:03:08] INFO: ======================================================================
+[2025-11-03 20:03:08] INFO: Using edlib for fast edit distance calculation
+[2025-11-03 20:03:08] INFO: Step 1/6: Loading metadata from tests/output/02_filtered_metadata.tsv
+[2025-11-03 20:03:08] INFO: Loaded 340 samples from metadata
+[2025-11-03 20:03:08] INFO: Step 2/6: Loading consensus sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 20:03:08] INFO: Read 18 sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 20:03:08] INFO: Loaded 18 consensus groups
+[2025-11-03 20:03:08] INFO: Step 3/6: Loading raw sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 20:03:08] INFO: Read 337 sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 20:03:08] INFO: Extracted 337 unique processids from FASTA
+[2025-11-03 20:03:08] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-03 20:03:08] INFO: Prepared 340 assignment tasks
+[2025-11-03 20:03:08] INFO: Step 5/6: Assigning genotypes (using 2 processes)
+[2025-11-03 20:03:12] INFO: Logging to file: tests/test_run.log
+[2025-11-03 20:03:12] INFO: Logging to file: tests/test_run.log
+[2025-11-03 20:03:12] INFO: Completed genotype assignment for 340 samples
+[2025-11-03 20:03:12] INFO: Step 6/6: Writing outputs
+[2025-11-03 20:03:12] INFO: Wrote updated metadata to tests/output/Sphyrnidae_test_with_genotypes.tsv
+[2025-11-03 20:03:12] INFO: Wrote diagnostics to tests/output/Sphyrnidae_test_diagnostics.csv
+[2025-11-03 20:03:12] INFO: ======================================================================
+[2025-11-03 20:03:12] INFO: Genotype assignment summary:
+[2025-11-03 20:03:12] INFO:   Total samples: 340
+[2025-11-03 20:03:12] INFO:   Successfully assigned: 285 (83.8%)
+[2025-11-03 20:03:12] INFO:   Unassigned: 55 (16.2%)
+[2025-11-03 20:03:12] INFO:     - No sequence in FASTA: 3
+[2025-11-03 20:03:12] INFO:     - Below identity threshold: 52
+[2025-11-03 20:03:12] INFO:   Diagnostic flags:
+[2025-11-03 20:03:12] INFO:     - Ties (ambiguous): 43
+[2025-11-03 20:03:12] INFO:     - Low confidence: 45
+[2025-11-03 20:03:12] INFO: ======================================================================
+[2025-11-03 20:13:59] INFO: Logging to file: tests/test_run.log
+[2025-11-03 20:13:59] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae_test.tsv
+[2025-11-03 20:13:59] INFO: Read 376 rows and 89 columns
+[2025-11-03 20:13:59] INFO: Data quality summary:
+[2025-11-03 20:13:59] INFO:   total_rows: 376
+[2025-11-03 20:13:59] INFO:   total_columns: 89
+[2025-11-03 20:13:59] INFO:   unique_processids: 376
+[2025-11-03 20:13:59] INFO:   sequences_present: 376
+[2025-11-03 20:13:59] INFO:   sequences_missing: 0
+[2025-11-03 20:13:59] INFO:   empty_sequences: 0
+[2025-11-03 20:13:59] INFO:   coords_present: 149
+[2025-11-03 20:13:59] INFO:   coords_missing: 227
+[2025-11-03 20:13:59] INFO:   centroid_coords: 36
+[2025-11-03 20:13:59] INFO: Excluded 36 samples with centroid coordinates
+[2025-11-03 20:13:59] INFO: Coordinate filtering: 340/376 samples retained (90.4%), 36 excluded
+[2025-11-03 20:14:00] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-03 20:14:27] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-03 20:14:27] INFO: Creating point geometries from coordinates
+[2025-11-03 20:14:27] INFO: Creating point geometries for 113/340 samples with coordinates
+[2025-11-03 20:14:27] INFO: Performing spatial join for 113/340 samples with valid coordinates
+[2025-11-03 20:14:27] INFO: Spatial join results: 71 assigned to basins, 42 outside all basins
+[2025-11-03 20:14:27] WARNING: 37.2% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-03 20:14:27] INFO: Assigned 269 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-03 20:14:28] INFO: Running MAFFT alignment: mafft --auto tests/output/Sphyrnidae_test.fasta
+[2025-11-03 20:14:54] INFO: MAFFT alignment completed: tests/output/dereplication/Sphyrnidae_test_aligned.fasta
+[2025-11-03 20:14:54] INFO: Running trimAl: trimal -in tests/output/dereplication/Sphyrnidae_test_aligned.fasta -out tests/output/dereplication/Sphyrnidae_test_trimmed.fasta -automated1
+[2025-11-03 20:14:55] INFO: trimAl completed: tests/output/dereplication/Sphyrnidae_test_trimmed.fasta
+[2025-11-03 20:14:55] INFO: Calculating pairwise distances for 337 sequences
+[2025-11-03 20:15:01] INFO: Distance calculation complete: 56616 pairwise distances
+[2025-11-03 20:15:01] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-03 20:15:01] INFO: Clustering complete: 18 clusters formed
+[2025-11-03 20:15:01] INFO: ======================================================================
+[2025-11-03 20:15:01] INFO: Starting genotype assignment workflow
+[2025-11-03 20:15:01] INFO: ======================================================================
+[2025-11-03 20:15:01] INFO: Using edlib for fast edit distance calculation
+[2025-11-03 20:15:01] INFO: Step 1/6: Loading metadata from tests/output/02_filtered_metadata.tsv
+[2025-11-03 20:15:01] INFO: Loaded 340 samples from metadata
+[2025-11-03 20:15:01] INFO: Step 2/6: Loading consensus sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 20:15:01] INFO: Read 18 sequences from tests/output/Sphyrnidae_test_consensus.fasta
+[2025-11-03 20:15:01] INFO: Loaded 18 consensus groups
+[2025-11-03 20:15:01] INFO: Step 3/6: Loading raw sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 20:15:01] INFO: Read 337 sequences from tests/output/Sphyrnidae_test.fasta
+[2025-11-03 20:15:01] INFO: Extracted 337 unique processids from FASTA
+[2025-11-03 20:15:01] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-03 20:15:01] INFO: Prepared 340 assignment tasks
+[2025-11-03 20:15:01] INFO: Step 5/6: Assigning genotypes (using 2 processes)
+[2025-11-03 20:15:04] INFO: Logging to file: tests/test_run.log
+[2025-11-03 20:15:04] INFO: Logging to file: tests/test_run.log
+[2025-11-03 20:15:04] INFO: Completed genotype assignment for 340 samples
+[2025-11-03 20:15:04] INFO: Step 6/6: Writing outputs
+[2025-11-03 20:15:04] INFO: Wrote updated metadata to tests/output/Sphyrnidae_test_with_genotypes.tsv
+[2025-11-03 20:15:04] INFO: Wrote diagnostics to tests/output/Sphyrnidae_test_diagnostics.csv
+[2025-11-03 20:15:04] INFO: ======================================================================
+[2025-11-03 20:15:04] INFO: Genotype assignment summary:
+[2025-11-03 20:15:04] INFO:   Total samples: 340
+[2025-11-03 20:15:04] INFO:   Successfully assigned: 285 (83.8%)
+[2025-11-03 20:15:04] INFO:   Unassigned: 55 (16.2%)
+[2025-11-03 20:15:04] INFO:     - No sequence in FASTA: 3
+[2025-11-03 20:15:04] INFO:     - Below identity threshold: 52
+[2025-11-03 20:15:04] INFO:   Diagnostic flags:
+[2025-11-03 20:15:04] INFO:     - Ties (ambiguous): 43
+[2025-11-03 20:15:04] INFO:     - Low confidence: 45
+[2025-11-03 20:15:04] INFO: ======================================================================
