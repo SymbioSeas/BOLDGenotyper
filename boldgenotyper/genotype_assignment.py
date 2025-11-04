@@ -45,6 +45,7 @@ Example Usage:
 Author: Steph Smith (steph.smith@unc.edu)
 """
 
+from __future__ import annotations
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 import logging
@@ -56,6 +57,12 @@ import multiprocessing as mp
 
 import pandas as pd
 import numpy as np
+
+# import taxonomy dataclass
+try:
+    from .config import TaxonomyConfig
+except Exception:
+    from config import TaxonomyConfig
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -488,6 +495,32 @@ def _assignment_worker(
 
     return result
 
+
+def assign_species_to_sample(
+    query_fasta: str,
+    db_path: str,
+    config: TaxonomyConfig
+) -> List[Dict]:
+    """
+    Run BLASTn/VSEARCH for each query sequence and return per-sample 
+    seq-based assignment with level, identity, qcov, ties, etc.
+    """
+    # 1) run search (subprocess to blastn -task megablast -perc_identity; or vsearch --usearch_global)
+    # 2) parse hits, compute coverage and identity; sort, compute top2 delta, ties
+    # 3) apply thresholds & LCA to species/genus; set fields:
+    #    seq_sp, seq_level, seq_best_identity, seq_qcov, seq_top2_delta, n_top_ties, low_confidence_flag
+    # 4) return records keyed by processid
+    
+def assign_species_to_consensus(
+    consensus_fasta: str,
+    db_path: str,
+    config: TaxonomyConfig
+) -> pd.DataFrame:
+    """
+    Classify each consensus sequence (untrimmed from Step 6 FASTA)
+    with same thresholds; return DataFrame:
+      consensus_group, cluster_seq_sp, cluster_seq_level, cluster_seq_best_identity, cluster_seq_qcov, cluster_seq_top2_delta, n_top_ties
+    """
 
 def assign_genotypes(
     metadata_path: str,

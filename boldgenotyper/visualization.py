@@ -128,6 +128,8 @@ def plot_distribution_map(
     """
     Create global distribution map with points colored by genotype.
 
+    Point sizes are scaled by the number of samples at each location.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -153,10 +155,36 @@ def plot_distribution_map(
     for c in need:
         if c not in df.columns:
             raise ValueError(f"Column '{c}' not found in dataframe")
+
+    # Count samples with coordinates and genotypes separately for diagnostic message
+    total_samples = len(df)
+    samples_with_coords = df[[latitude_col, longitude_col]].notna().all(axis=1).sum()
+    samples_with_genotype = df[genotype_column].notna().sum()
+
     d = df.dropna(subset=[genotype_column, latitude_col, longitude_col]).copy()
-    if d.empty:
-        logger.warning("No rows with valid coordinates; skipping map.")
+    samples_with_both = len(d)
+
+    if d.empty or samples_with_both < 5:
+        msg = (
+            f"Insufficient data for distribution map (need at least 5 samples with both coordinates and genotypes). "
+            f"Total samples: {total_samples}, "
+            f"with coordinates: {samples_with_coords} ({samples_with_coords/total_samples*100:.1f}%), "
+            f"with genotypes: {samples_with_genotype} ({samples_with_genotype/total_samples*100:.1f}%), "
+            f"with BOTH: {samples_with_both} ({samples_with_both/total_samples*100:.1f}%). "
+            f"Skipping map generation for: {output_path}"
+        )
+        logger.warning(msg)
+        print(f"⚠ WARNING: {msg}")
         return
+
+    # Count samples at each location for sizing
+    d['_count'] = d.groupby([latitude_col, longitude_col, genotype_column])[genotype_column].transform('count')
+    # Scale point sizes: min 20, max 200, proportional to count
+    min_size, max_size = 20, 200
+    if d['_count'].max() > 1:
+        d['_size'] = min_size + (d['_count'] - d['_count'].min()) / (d['_count'].max() - d['_count'].min()) * (max_size - min_size)
+    else:
+        d['_size'] = 50  # default size if all counts are 1
 
     genos = sorted(d[genotype_column].dropna().unique())
     colors = get_genotype_colors(len(genos))
@@ -176,12 +204,17 @@ def plot_distribution_map(
         ax.add_feature(cfeature.LAND, zorder=0, edgecolor="black", linewidth=0.2, facecolor="#f2f2f2")
         ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
         ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
-        ax.gridlines(draw_labels=False, linewidth=0.2, color="gray", alpha=0.5)
+        # Add gridlines with coordinate labels
+        gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, x_inline=False, y_inline=False)
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.xlabel_style = {'size': 9}
+        gl.ylabel_style = {'size': 9}
         for g in genos:
             sub = d[d[genotype_column] == g]
             ax.scatter(
                 sub[longitude_col], sub[latitude_col],
-                transform=ccrs.PlateCarree(), s=20, alpha=0.8, label=str(g),
+                transform=ccrs.PlateCarree(), s=sub['_size'], alpha=0.8, label=str(g),
                 color=color_map[g], edgecolors="black", linewidths=0.2,
             )
     else:
@@ -190,7 +223,7 @@ def plot_distribution_map(
             sub = d[d[genotype_column] == g]
             ax.scatter(
                 sub[longitude_col], sub[latitude_col],
-                s=20, alpha=0.8, label=str(g),
+                s=sub['_size'], alpha=0.8, label=str(g),
                 color=color_map[g], edgecolors="black", linewidths=0.2,
             )
         ax.set_xlabel("Longitude"); ax.set_ylabel("Latitude")
@@ -204,7 +237,7 @@ def plot_distribution_map(
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
-    
+
     pass
 
 
@@ -290,13 +323,326 @@ def plot_ocean_basin_abundance(
     pass
 
 
+def plot_distribution_map_faceted(
+    df: pd.DataFrame,
+    output_path: str,
+    genotype_column: str = "consensus_group",
+    species_column: str = "assigned_sp",
+    latitude_col: str = "latitude",
+    longitude_col: str = "longitude",
+    width: int = 10,
+    height_per_species: int = 5,
+    dpi: int = 300,
+) -> None:
+    """
+    Create distribution map with separate facets for each species.
+
+    Each facet shows genotypes for a single species, stacked vertically
+    in a single column. Species labels are italicized. Point sizes are
+    scaled by the number of samples at each location.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Metadata with coordinates, genotype, and species assignments
+    output_path : str
+        Path for output figure (PNG or PDF)
+    genotype_column : str, optional
+        Column containing genotype assignments
+    species_column : str, optional
+        Column containing species assignments for faceting
+    latitude_col : str, optional
+        Column containing latitude values
+    longitude_col : str, optional
+        Column containing longitude values
+    width : int, optional
+        Figure width in inches (default: 10)
+    height_per_species : int, optional
+        Height per species facet in inches (default: 5)
+    dpi : int, optional
+        Resolution for PNG output (default: 300)
+    """
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Validate required columns
+    need = [genotype_column, species_column, latitude_col, longitude_col]
+    for c in need:
+        if c not in df.columns:
+            raise ValueError(f"Column '{c}' not found in dataframe")
+
+    # Count samples with different attributes for diagnostic message
+    total_samples = len(df)
+    samples_with_coords = df[[latitude_col, longitude_col]].notna().all(axis=1).sum()
+    samples_with_genotype = df[genotype_column].notna().sum()
+    samples_with_species = df[species_column].notna().sum()
+
+    # Filter to valid rows
+    d = df.dropna(subset=[genotype_column, species_column, latitude_col, longitude_col]).copy()
+    samples_with_all = len(d)
+
+    if d.empty or samples_with_all < 5:
+        msg = (
+            f"Insufficient data for faceted distribution map (need at least 5 samples with coordinates, genotypes, and species). "
+            f"Total samples: {total_samples}, "
+            f"with coordinates: {samples_with_coords} ({samples_with_coords/total_samples*100:.1f}%), "
+            f"with genotypes: {samples_with_genotype} ({samples_with_genotype/total_samples*100:.1f}%), "
+            f"with species: {samples_with_species} ({samples_with_species/total_samples*100:.1f}%), "
+            f"with ALL: {samples_with_all} ({samples_with_all/total_samples*100:.1f}%). "
+            f"Skipping faceted map generation for: {output_path}"
+        )
+        logger.warning(msg)
+        print(f"⚠ WARNING: {msg}")
+        return
+
+    # Count samples at each location for sizing
+    d['_count'] = d.groupby([latitude_col, longitude_col, genotype_column, species_column])[genotype_column].transform('count')
+
+    # Get unique species (sorted)
+    species_list = sorted(d[species_column].unique())
+    n_species = len(species_list)
+
+    if n_species == 0:
+        logger.warning("No species found; skipping faceted map.")
+        return
+
+    # Get all genotypes and assign consistent colors
+    all_genotypes = sorted(d[genotype_column].unique())
+    all_colors = get_genotype_colors(len(all_genotypes))
+    color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
+
+    # Check cartopy availability
+    use_cartopy = True
+    try:
+        _ = ccrs.PlateCarree()
+    except Exception:
+        use_cartopy = False
+        logger.warning("Cartopy unavailable; drawing scatter without basemap.")
+
+    # Create figure with facets (reduced spacing)
+    fig_height = height_per_species * n_species
+    fig, axes = plt.subplots(n_species, 1, figsize=(width, fig_height),
+                             subplot_kw={'projection': ccrs.Robinson()} if use_cartopy else {})
+
+    # Handle single species case
+    if n_species == 1:
+        axes = [axes]
+
+    for idx, species in enumerate(species_list):
+        ax = axes[idx]
+        species_data = d[d[species_column] == species].copy()
+        species_genotypes = sorted(species_data[genotype_column].unique())
+
+        # Scale point sizes for this species
+        min_size, max_size = 20, 200
+        if species_data['_count'].max() > 1:
+            species_data['_size'] = min_size + (species_data['_count'] - species_data['_count'].min()) / (species_data['_count'].max() - species_data['_count'].min()) * (max_size - min_size)
+        else:
+            species_data['_size'] = 50
+
+        if use_cartopy:
+            ax.add_feature(cfeature.LAND, zorder=0, edgecolor="black", linewidth=0.2, facecolor="#f2f2f2")
+            ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
+            # Add gridlines with coordinate labels
+            gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, x_inline=False, y_inline=False)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlabel_style = {'size': 8}
+            gl.ylabel_style = {'size': 8}
+
+            for g in species_genotypes:
+                sub = species_data[species_data[genotype_column] == g]
+                ax.scatter(
+                    sub[longitude_col], sub[latitude_col],
+                    transform=ccrs.PlateCarree(), s=sub['_size'], alpha=0.8, label=str(g),
+                    color=color_map[g], edgecolors="black", linewidths=0.2,
+                )
+        else:
+            for g in species_genotypes:
+                sub = species_data[species_data[genotype_column] == g]
+                ax.scatter(
+                    sub[longitude_col], sub[latitude_col],
+                    s=sub['_size'], alpha=0.8, label=str(g),
+                    color=color_map[g], edgecolors="black", linewidths=0.2,
+                )
+            ax.set_xlabel("Longitude")
+            ax.set_ylabel("Latitude")
+            ax.set_xlim(-180, 180)
+            ax.set_ylim(-90, 90)
+            ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
+
+    # Reduce vertical spacing between facets and adjust margins
+    plt.subplots_adjust(hspace=0.1, left=0.08, right=0.85)
+
+    # Now add species labels and legends positioned based on actual axes positions
+    for idx, (species, ax) in enumerate(zip(species_list, axes)):
+        # Get axes position in figure coordinates
+        pos = ax.get_position()
+        y_center = (pos.y0 + pos.y1) / 2  # center of this axes in figure coords
+
+        # Add italicized species label (outside left margin, centered on facet y-axis)
+        fig.text(0.01, y_center, species,
+                fontsize=12, fontweight='bold', fontstyle='italic',
+                verticalalignment='center', rotation=90, transform=fig.transFigure)
+
+        # Add legend for THIS facet (centered on facet y-axis, on the right)
+        ax.legend(title="Genotype", loc="center left", bbox_to_anchor=(1.02, 0.5),
+                 frameon=False, fontsize=9)
+    if out.suffix.lower() == ".png":
+        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.savefig(out, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Saved faceted distribution map: {out}")
+
+
+def plot_ocean_basin_abundance_faceted(
+    df: pd.DataFrame,
+    output_path: str,
+    genotype_column: str = "consensus_group",
+    species_column: str = "assigned_sp",
+    basin_column: str = "ocean_basin",
+    width: int = 9,
+    height_per_species: int = 5,
+    dpi: int = 300,
+) -> None:
+    """
+    Create stacked bar chart with separate facets for each species.
+
+    Each facet shows genotype proportions by ocean basin for a single species,
+    stacked vertically in a single column. Species labels are italicized.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Metadata with genotype, species, and ocean basin assignments
+    output_path : str
+        Path for output figure (PNG or PDF)
+    genotype_column : str, optional
+        Column containing genotype assignments
+    species_column : str, optional
+        Column containing species assignments for faceting
+    basin_column : str, optional
+        Column containing ocean basin names
+    width : int, optional
+        Figure width in inches (default: 10)
+    height_per_species : int, optional
+        Height per species facet in inches (default: 4)
+    dpi : int, optional
+        Resolution for PNG output (default: 300)
+    """
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Validate required columns
+    need = [genotype_column, species_column, basin_column]
+    for c in need:
+        if c not in df.columns:
+            raise ValueError(f"Column '{c}' not found in dataframe")
+
+    # Prepare data
+    d = df.copy()
+    d[basin_column] = d[basin_column].fillna("Unknown")
+    d[genotype_column] = d[genotype_column].fillna("Unassigned")
+
+    # Filter to valid species
+    d = d.dropna(subset=[species_column])
+    if d.empty:
+        logger.warning("No rows with valid species; skipping faceted basin plot.")
+        return
+
+    # Get unique species (sorted)
+    species_list = sorted(d[species_column].unique())
+    n_species = len(species_list)
+
+    if n_species == 0:
+        logger.warning("No species found; skipping faceted basin plot.")
+        return
+
+    # Get all genotypes and assign consistent colors
+    all_genotypes = sorted(d[genotype_column].unique())
+    all_colors = get_genotype_colors(len(all_genotypes))
+    color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
+
+    # Get ALL ocean basins across all species (so we show all basins even if 0)
+    all_basins = sorted(d[basin_column].unique())
+
+    # Create figure with facets
+    fig_height = height_per_species * n_species
+    fig, axes = plt.subplots(n_species, 1, figsize=(width, fig_height))
+
+    # Handle single species case
+    if n_species == 1:
+        axes = [axes]
+
+    for idx, species in enumerate(species_list):
+        ax = axes[idx]
+        species_data = d[d[species_column] == species]
+
+        # Calculate proportions for this species
+        counts = (
+            species_data.groupby([basin_column, genotype_column])
+            .size().rename("n").reset_index()
+        )
+        totals = counts.groupby(basin_column)["n"].transform("sum")
+        counts["prop"] = counts["n"] / totals
+
+        species_genotypes = sorted(counts[genotype_column].unique())
+
+        # Pivot to wide format for stacking
+        wide = counts.pivot(index=basin_column, columns=genotype_column, values="prop").fillna(0.0)
+        # Reindex to include ALL basins (even if this species has 0 in some basins)
+        wide = wide.reindex(index=all_basins, fill_value=0.0)
+        wide = wide[[g for g in species_genotypes if g in wide.columns]]
+
+        # Plot stacked bars
+        bottom = None
+        for g in wide.columns:
+            vals = wide[g].values
+            ax.bar(wide.index, vals, bottom=bottom, label=str(g), color=color_map[g])
+            bottom = vals if bottom is None else bottom + vals
+
+        ax.set_ylabel("Relative abundance")
+        # Show x-axis labels on ALL facets (not just bottom)
+        ax.set_xlabel("Ocean basin")
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=20, ha="right")
+
+        ax.set_ylim(0, 1.0)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v*100)}%"))
+
+    # Adjust margins: more space on left for species labels, reduce plot width for narrower bars
+    plt.subplots_adjust(left=0.15, right=0.75, hspace=0.85)
+
+    # Now add species labels and legends positioned based on actual axes positions
+    for idx, (species, ax) in enumerate(zip(species_list, axes)):
+        # Get axes position in figure coordinates
+        pos = ax.get_position()
+        y_center = (pos.y0 + pos.y1) / 2  # center of this axes in figure coords
+
+        # Add italicized species label (outside left margin, centered on facet y-axis)
+        fig.text(0.02, y_center, species,
+                fontsize=12, fontweight='bold', fontstyle='italic',
+                verticalalignment='center', rotation=90, transform=fig.transFigure)
+
+        # Add legend for THIS facet (centered on facet y-axis, on the right)
+        ax.legend(title="Genotype", loc="center left", bbox_to_anchor=(1.02, 0.5),
+                 frameon=False, fontsize=9)
+    if out.suffix.lower() == ".png":
+        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.savefig(out, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Saved faceted basin abundance plot: {out}")
+
+
 def plot_phylogenetic_tree(
     tree_file: str,
     output_path: str,
     genotype_colors: Optional[Dict[str, str]] = None,
     show_bootstrap: bool = True,
     bootstrap_threshold: int = 70,
-    figsize: Tuple[int, int] = (8, 10),
+    figsize: Optional[Tuple[int, int]] = None,
     dpi: int = 300,
     label_map: Optional[Dict[str, str]] = None,
 ) -> None:
@@ -316,9 +662,12 @@ def plot_phylogenetic_tree(
     bootstrap_threshold : int, optional
         Minimum bootstrap value to display (default: 70)
     figsize : Tuple[int, int], optional
-        Figure size in inches
+        Figure size in inches. If None, automatically scales based on number of tips.
+        Minimum: (8, 10), scales as: height = max(10, n_tips * 0.3)
     dpi : int, optional
         Resolution for PNG output
+    label_map : Dict[str, str], optional
+        Mapping to rename tip labels (e.g., consensus_c1 -> species name)
     """
     from Bio import Phylo
 
@@ -326,12 +675,22 @@ def plot_phylogenetic_tree(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     tree = Phylo.read(str(tree_file), "newick")
-    
+
     # Apply label_map
     if label_map:
         for clade in tree.get_terminals():
             if clade.name in label_map:
                 clade.name = label_map[clade.name]
+
+    # Calculate figure size based on number of tips if not specified
+    if figsize is None:
+        n_tips = len(list(tree.get_terminals()))
+        # Scale height with number of tips: 0.3 inches per tip, minimum 10, maximum 50
+        height = max(10, min(50, n_tips * 0.3))
+        # Width scales more slowly: base 8 + extra for large trees
+        width = 8 if n_tips <= 30 else min(14, 8 + (n_tips - 30) * 0.1)
+        figsize = (width, height)
+        logger.info(f"Auto-scaled tree figure size to {figsize} for {n_tips} tips")
 
     # Map tip colors
     tip_colors = {}
@@ -363,5 +722,249 @@ def plot_phylogenetic_tree(
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
-    
+
     pass
+
+
+def plot_identity_distribution(
+    diagnostics_csv: str,
+    output_path: str,
+    figsize: Tuple[int, int] = (10, 6),
+    dpi: int = 300,
+) -> None:
+    """
+    Plot distribution of identity scores for assigned samples.
+
+    Shows histogram with density overlay to visualize the quality and
+    confidence of genotype assignments.
+
+    Parameters
+    ----------
+    diagnostics_csv : str
+        Path to diagnostics CSV with identity scores
+    output_path : str
+        Path for output figure (PNG or PDF)
+    figsize : Tuple[int, int], optional
+        Figure size in inches (default: 10x6)
+    dpi : int, optional
+        Resolution for PNG output (default: 300)
+    """
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load diagnostics
+    df = pd.read_csv(diagnostics_csv)
+
+    # Filter to samples with identity scores (exclude no_sequence)
+    df = df[df['identity'] > 0].copy()
+
+    if df.empty:
+        logger.warning("No samples with identity scores; skipping identity distribution plot.")
+        return
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot histogram with density
+    ax.hist(df['identity'], bins=50, alpha=0.6, color='#5AB4AC', edgecolor='black', linewidth=0.5, density=True, label='Distribution')
+
+    # Add density curve
+    from scipy.stats import gaussian_kde
+    try:
+        kde = gaussian_kde(df['identity'])
+        x_range = np.linspace(df['identity'].min(), df['identity'].max(), 200)
+        ax.plot(x_range, kde(x_range), color='#9D7ABE', linewidth=2, label='Density')
+    except:
+        pass  # Skip KDE if it fails
+
+    # Add vertical lines for mean and median
+    mean_val = df['identity'].mean()
+    median_val = df['identity'].median()
+    ax.axvline(mean_val, color='red', linestyle='--', linewidth=1.5, label=f'Mean: {mean_val:.3f}')
+    ax.axvline(median_val, color='orange', linestyle='--', linewidth=1.5, label=f'Median: {median_val:.3f}')
+
+    # Labels and formatting
+    ax.set_xlabel('Identity Score', fontsize=12)
+    ax.set_ylabel('Density', fontsize=12)
+    ax.set_title('Distribution of Genotype Assignment Identity Scores', fontsize=14, fontweight='bold')
+    ax.legend(frameon=False, fontsize=10)
+    ax.grid(True, linestyle='--', alpha=0.3)
+
+    plt.tight_layout()
+    if out.suffix.lower() == ".png":
+        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.savefig(out, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved identity distribution plot: {out}")
+
+
+def plot_identity_by_status(
+    diagnostics_csv: str,
+    output_path: str,
+    figsize: Tuple[int, int] = (12, 6),
+    dpi: int = 300,
+) -> None:
+    """
+    Plot identity scores faceted by assignment status.
+
+    Shows box plots comparing identity distributions across different
+    assignment statuses (assigned, low_confidence, tie, etc.).
+
+    Parameters
+    ----------
+    diagnostics_csv : str
+        Path to diagnostics CSV with identity and status
+    output_path : str
+        Path for output figure (PNG or PDF)
+    figsize : Tuple[int, int], optional
+        Figure size in inches (default: 12x6)
+    dpi : int, optional
+        Resolution for PNG output (default: 300)
+    """
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load diagnostics
+    df = pd.read_csv(diagnostics_csv)
+
+    # Filter to samples with identity scores
+    df = df[df['identity'] > 0].copy()
+
+    if df.empty:
+        logger.warning("No samples with identity scores; skipping identity by status plot.")
+        return
+
+    # Get status order (by frequency)
+    status_order = df['status'].value_counts().index.tolist()
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Create box plot
+    positions = range(len(status_order))
+    bp_data = [df[df['status'] == status]['identity'].values for status in status_order]
+
+    bp = ax.boxplot(bp_data, positions=positions, widths=0.6, patch_artist=True,
+                    showmeans=True, meanline=True,
+                    boxprops=dict(facecolor='#5AB4AC', alpha=0.7),
+                    medianprops=dict(color='red', linewidth=2),
+                    meanprops=dict(color='orange', linewidth=2, linestyle='--'),
+                    whiskerprops=dict(color='black', linewidth=1),
+                    capprops=dict(color='black', linewidth=1))
+
+    # Add sample counts
+    for i, status in enumerate(status_order):
+        n = len(df[df['status'] == status])
+        ax.text(i, 0.4, f'n={n}', ha='center', va='top', fontsize=9, style='italic')
+
+    # Labels and formatting
+    ax.set_xticks(positions)
+    ax.set_xticklabels(status_order, rotation=20, ha='right')
+    ax.set_xlabel('Assignment Status', fontsize=12)
+    ax.set_ylabel('Identity Score', fontsize=12)
+    ax.set_title('Identity Scores by Assignment Status', fontsize=14, fontweight='bold')
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+
+    # Add legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='red', linewidth=2, label='Median'),
+        Line2D([0], [0], color='orange', linewidth=2, linestyle='--', label='Mean')
+    ]
+    ax.legend(handles=legend_elements, frameon=False, fontsize=10)
+
+    plt.tight_layout()
+    if out.suffix.lower() == ".png":
+        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.savefig(out, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved identity by status plot: {out}")
+
+
+def plot_assignment_status(
+    diagnostics_csv: str,
+    output_path: str,
+    figsize: Tuple[int, int] = (10, 6),
+    dpi: int = 300,
+) -> None:
+    """
+    Plot assignment status breakdown as a stacked bar chart.
+
+    Shows the proportion of samples in each assignment status category.
+
+    Parameters
+    ----------
+    diagnostics_csv : str
+        Path to diagnostics CSV with assignment status
+    output_path : str
+        Path for output figure (PNG or PDF)
+    figsize : Tuple[int, int], optional
+        Figure size in inches (default: 10x6)
+    dpi : int, optional
+        Resolution for PNG output (default: 300)
+    """
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load diagnostics
+    df = pd.read_csv(diagnostics_csv)
+
+    # Count by status
+    status_counts = df['status'].value_counts()
+    total = len(df)
+
+    # Define colors for each status
+    status_colors = {
+        'assigned': '#5AB4AC',
+        'low_confidence': '#F2CC8F',
+        'tie': '#E07A7A',
+        'below_threshold': '#D3D3D3',
+        'no_sequence': '#A9A9A9'
+    }
+
+    # Create figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Left panel: Pie chart
+    colors = [status_colors.get(status, '#CCCCCC') for status in status_counts.index]
+    wedges, texts, autotexts = ax1.pie(
+        status_counts.values,
+        labels=status_counts.index,
+        colors=colors,
+        autopct='%1.1f%%',
+        startangle=90,
+        textprops={'fontsize': 10}
+    )
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontweight('bold')
+    ax1.set_title('Assignment Status Distribution', fontsize=12, fontweight='bold')
+
+    # Right panel: Bar chart with counts
+    ax2.bar(range(len(status_counts)), status_counts.values,
+            color=[status_colors.get(status, '#CCCCCC') for status in status_counts.index],
+            alpha=0.8, edgecolor='black', linewidth=0.5)
+    ax2.set_xticks(range(len(status_counts)))
+    ax2.set_xticklabels(status_counts.index, rotation=20, ha='right')
+    ax2.set_ylabel('Number of Samples', fontsize=12)
+    ax2.set_xlabel('Assignment Status', fontsize=12)
+    ax2.set_title('Sample Counts by Status', fontsize=12, fontweight='bold')
+    ax2.grid(True, axis='y', linestyle='--', alpha=0.3)
+
+    # Add count labels on bars
+    for i, (status, count) in enumerate(status_counts.items()):
+        ax2.text(i, count + total*0.01, f'{count}', ha='center', va='bottom', fontsize=9, fontweight='bold')
+
+    plt.tight_layout()
+    if out.suffix.lower() == ".png":
+        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.savefig(out, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved assignment status plot: {out}")

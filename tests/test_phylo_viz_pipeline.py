@@ -29,14 +29,14 @@ import pandas as pd
 from Bio import Phylo  # used for relabeling/reading/writing Newick
 
 # local imports
-from boldgenotyper import phylogenetics, visualization
+from boldgenotyper import phylogenetics, visualization, reports
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("test_phylo_viz")
 
 # ---------- Config ----------
-ORGANISM = os.environ.get("BG_ORGANISM", "Sphyrnidae_test")
-OUT_DIR  = Path("tests/output").resolve()
+ORGANISM = os.environ.get("BG_ORGANISM", "Euprymna")
+OUT_DIR  = Path("tests/Euprymna_output").resolve()
 ANNOT    = OUT_DIR / f"{ORGANISM}_annotated.csv"
 CONSFA   = OUT_DIR / f"{ORGANISM}_consensus.fasta"
 
@@ -46,13 +46,32 @@ TREE     = OUT_DIR / f"{ORGANISM}_tree.nwk"
 
 DIST_PNG = OUT_DIR / f"{ORGANISM}_distribution_map.png"
 DIST_PDF = OUT_DIR / f"{ORGANISM}_distribution_map.pdf"
+DIST_FACET_PNG = OUT_DIR / f"{ORGANISM}_distribution_map_faceted.png"
+DIST_FACET_PDF = OUT_DIR / f"{ORGANISM}_distribution_map_faceted.pdf"
 BARS_PNG = OUT_DIR / f"{ORGANISM}_ocean_basin_abundance.png"
 BARS_PDF = OUT_DIR / f"{ORGANISM}_ocean_basin_abundance.pdf"
+BARS_FACET_PNG = OUT_DIR / f"{ORGANISM}_ocean_basin_abundance_faceted.png"
+BARS_FACET_PDF = OUT_DIR / f"{ORGANISM}_ocean_basin_abundance_faceted.pdf"
 TREE_PNG = OUT_DIR / f"{ORGANISM}_tree.png"
 TREE_PDF = OUT_DIR / f"{ORGANISM}_tree.pdf"
 
 COLORMAP_CSV = OUT_DIR / f"{ORGANISM}_genotype_color_map.csv"
 CT_CSV       = OUT_DIR / f"{ORGANISM}_genotype_by_basin.csv"
+
+# Phase 1 Reports
+DIAG_CSV     = OUT_DIR / f"{ORGANISM}_diagnostics.csv"
+CONFLICTS_CSV = OUT_DIR / f"{ORGANISM}_taxonomy_conflicts.csv"
+SUMMARY_CSV   = OUT_DIR / f"{ORGANISM}_assignment_summary.csv"
+CONSENSUS_CHAR_CSV = OUT_DIR / f"{ORGANISM}_consensus_characterization.csv"
+
+# Phase 2 Reports and Visualizations
+IDENTITY_DIST_PNG = OUT_DIR / f"{ORGANISM}_identity_distribution.png"
+IDENTITY_DIST_PDF = OUT_DIR / f"{ORGANISM}_identity_distribution.pdf"
+IDENTITY_STATUS_PNG = OUT_DIR / f"{ORGANISM}_identity_by_status.png"
+IDENTITY_STATUS_PDF = OUT_DIR / f"{ORGANISM}_identity_by_status.pdf"
+STATUS_BREAKDOWN_PNG = OUT_DIR / f"{ORGANISM}_assignment_status.png"
+STATUS_BREAKDOWN_PDF = OUT_DIR / f"{ORGANISM}_assignment_status.pdf"
+SEQQ_CSV = OUT_DIR / f"{ORGANISM}_sequence_quality.csv"
 
 # columns in annotated CSV (adjust if yours differ)
 LAT_COL   = "lat"
@@ -62,7 +81,12 @@ GENO_COL  = "consensus_group_sp"   # we color/legend by the species-augmented la
 
 def check_inputs():
     if not CONSFA.exists():
-        raise FileNotFoundError(f"Missing consensus FASTA: {CONSFA}")
+        raise FileNotFoundError(
+            f"Missing consensus FASTA: {CONSFA}"
+            f"Hint: either set BG_ORGANISM to match the output folder "
+            f"(currently ORGANISM='{ORGANISM}', OUT_DIR='{OUT_DIR}') "
+            f"or rerun the main pipeline to generate {CONSFA.name} in that folder."
+        )
     if not ANNOT.exists():
         raise FileNotFoundError(f"Missing annotated CSV: {ANNOT}")
 
@@ -224,6 +248,37 @@ def main() -> bool:
     except Exception as e:
         logger.exception("Distribution map failed: %s", e)
 
+    # 4b) Distribution map - FACETED by species
+    try:
+        if "assigned_sp" in df.columns:
+            visualization.plot_distribution_map_faceted(
+                df=df,
+                output_path=str(DIST_FACET_PNG),
+                genotype_column=GENO_COL,
+                species_column="assigned_sp",
+                latitude_col=LAT_COL if LAT_COL in df.columns else "lat",
+                longitude_col=LON_COL if LON_COL in df.columns else "lon",
+                width=10,
+                height_per_species=5,
+                dpi=300,
+            )
+            visualization.plot_distribution_map_faceted(
+                df=df,
+                output_path=str(DIST_FACET_PDF),
+                genotype_column=GENO_COL,
+                species_column="assigned_sp",
+                latitude_col=LAT_COL if LAT_COL in df.columns else "lat",
+                longitude_col=LON_COL if LON_COL in df.columns else "lon",
+                width=10,
+                height_per_species=5,
+                dpi=300,
+            )
+            logger.info("✓ Faceted distribution map: %s / %s", DIST_FACET_PNG, DIST_FACET_PDF)
+        else:
+            logger.warning("Column 'assigned_sp' not found; skipping faceted distribution map")
+    except Exception as e:
+        logger.exception("Faceted distribution map failed: %s", e)
+
     # 5) Ocean basin stacked bars
     try:
         visualization.plot_ocean_basin_abundance(
@@ -246,6 +301,35 @@ def main() -> bool:
     except Exception as e:
         logger.exception("Basin abundance plot failed: %s", e)
 
+    # 5b) Ocean basin stacked bars - FACETED by species
+    try:
+        if "assigned_sp" in df.columns:
+            visualization.plot_ocean_basin_abundance_faceted(
+                df=df,
+                output_path=str(BARS_FACET_PNG),
+                genotype_column=GENO_COL,
+                species_column="assigned_sp",
+                basin_column=BASIN_COL if BASIN_COL in df.columns else "ocean_basin",
+                width=9,
+                height_per_species=5,
+                dpi=300,
+            )
+            visualization.plot_ocean_basin_abundance_faceted(
+                df=df,
+                output_path=str(BARS_FACET_PDF),
+                genotype_column=GENO_COL,
+                species_column="assigned_sp",
+                basin_column=BASIN_COL if BASIN_COL in df.columns else "ocean_basin",
+                width=9,
+                height_per_species=5,
+                dpi=300,
+            )
+            logger.info("✓ Faceted basin abundance plots: %s / %s", BARS_FACET_PNG, BARS_FACET_PDF)
+        else:
+            logger.warning("Column 'assigned_sp' not found; skipping faceted basin plots")
+    except Exception as e:
+        logger.exception("Faceted basin abundance plot failed: %s", e)
+
     # 6) Tree visualization (labels/colors by PRETTY; map SAFE->PRETTY for figure)
     try:
         visualization.plot_phylogenetic_tree(
@@ -254,7 +338,7 @@ def main() -> bool:
             genotype_colors=geno_to_color,    # keys are PRETTY names
             show_bootstrap=True,
             bootstrap_threshold=70,
-            figsize=(8, 10),
+            figsize=None,  # Auto-scale based on number of tips
             dpi=300,
             label_map=safe_to_pretty,         # SAFE -> PRETTY
         )
@@ -264,7 +348,7 @@ def main() -> bool:
             genotype_colors=geno_to_color,
             show_bootstrap=True,
             bootstrap_threshold=70,
-            figsize=(8, 10),
+            figsize=None,  # Auto-scale based on number of tips
             dpi=300,
             label_map=safe_to_pretty,
         )
@@ -283,6 +367,123 @@ def main() -> bool:
             logger.info("✓ Genotype × Basin crosstab: %s", CT_CSV)
     except Exception as e:
         logger.exception("Crosstab failed: %s", e)
+
+    # --------- PHASE 1 REPORTS ----------
+    # 8) Taxonomy conflicts report
+    try:
+        if DIAG_CSV.exists():
+            reports.generate_taxonomy_conflicts_report(
+                annotated_csv=str(ANNOT),
+                diagnostics_csv=str(DIAG_CSV),
+                output_csv=str(CONFLICTS_CSV)
+            )
+            logger.info("✓ Taxonomy conflicts report: %s", CONFLICTS_CSV)
+        else:
+            logger.warning(f"Diagnostics file not found: {DIAG_CSV}; skipping conflict report")
+    except Exception as e:
+        logger.exception("Taxonomy conflicts report failed: %s", e)
+
+    # 9) Assignment summary statistics
+    try:
+        if DIAG_CSV.exists():
+            reports.generate_assignment_summary(
+                annotated_csv=str(ANNOT),
+                diagnostics_csv=str(DIAG_CSV),
+                output_csv=str(SUMMARY_CSV)
+            )
+            logger.info("✓ Assignment summary: %s", SUMMARY_CSV)
+        else:
+            logger.warning(f"Diagnostics file not found: {DIAG_CSV}; skipping summary")
+    except Exception as e:
+        logger.exception("Assignment summary failed: %s", e)
+
+    # 10) Consensus group characterization
+    try:
+        if DIAG_CSV.exists():
+            reports.generate_consensus_characterization(
+                annotated_csv=str(ANNOT),
+                diagnostics_csv=str(DIAG_CSV),
+                output_csv=str(CONSENSUS_CHAR_CSV)
+            )
+            logger.info("✓ Consensus characterization: %s", CONSENSUS_CHAR_CSV)
+        else:
+            logger.warning(f"Diagnostics file not found: {DIAG_CSV}; skipping characterization")
+    except Exception as e:
+        logger.exception("Consensus characterization failed: %s", e)
+
+    # --------- PHASE 2 VISUALIZATIONS & REPORTS ----------
+    # 11) Identity distribution plot
+    try:
+        if DIAG_CSV.exists():
+            visualization.plot_identity_distribution(
+                diagnostics_csv=str(DIAG_CSV),
+                output_path=str(IDENTITY_DIST_PNG),
+                figsize=(10, 6),
+                dpi=300
+            )
+            visualization.plot_identity_distribution(
+                diagnostics_csv=str(DIAG_CSV),
+                output_path=str(IDENTITY_DIST_PDF),
+                figsize=(10, 6),
+                dpi=300
+            )
+            logger.info("✓ Identity distribution plots: %s / %s", IDENTITY_DIST_PNG, IDENTITY_DIST_PDF)
+        else:
+            logger.warning(f"Diagnostics file not found: {DIAG_CSV}; skipping identity distribution")
+    except Exception as e:
+        logger.exception("Identity distribution plot failed: %s", e)
+
+    # 12) Identity by status plot
+    try:
+        if DIAG_CSV.exists():
+            visualization.plot_identity_by_status(
+                diagnostics_csv=str(DIAG_CSV),
+                output_path=str(IDENTITY_STATUS_PNG),
+                figsize=(12, 6),
+                dpi=300
+            )
+            visualization.plot_identity_by_status(
+                diagnostics_csv=str(DIAG_CSV),
+                output_path=str(IDENTITY_STATUS_PDF),
+                figsize=(12, 6),
+                dpi=300
+            )
+            logger.info("✓ Identity by status plots: %s / %s", IDENTITY_STATUS_PNG, IDENTITY_STATUS_PDF)
+        else:
+            logger.warning(f"Diagnostics file not found: {DIAG_CSV}; skipping identity by status")
+    except Exception as e:
+        logger.exception("Identity by status plot failed: %s", e)
+
+    # 13) Assignment status breakdown
+    try:
+        if DIAG_CSV.exists():
+            visualization.plot_assignment_status(
+                diagnostics_csv=str(DIAG_CSV),
+                output_path=str(STATUS_BREAKDOWN_PNG),
+                figsize=(10, 6),
+                dpi=300
+            )
+            visualization.plot_assignment_status(
+                diagnostics_csv=str(DIAG_CSV),
+                output_path=str(STATUS_BREAKDOWN_PDF),
+                figsize=(10, 6),
+                dpi=300
+            )
+            logger.info("✓ Assignment status plots: %s / %s", STATUS_BREAKDOWN_PNG, STATUS_BREAKDOWN_PDF)
+        else:
+            logger.warning(f"Diagnostics file not found: {DIAG_CSV}; skipping status breakdown")
+    except Exception as e:
+        logger.exception("Assignment status plot failed: %s", e)
+
+    # 14) Sequence quality metrics
+    try:
+        reports.generate_sequence_quality_metrics(
+            annotated_csv=str(ANNOT),
+            output_csv=str(SEQQ_CSV)
+        )
+        logger.info("✓ Sequence quality metrics: %s", SEQQ_CSV)
+    except Exception as e:
+        logger.exception("Sequence quality metrics failed: %s", e)
 
     logger.info("All done.")
     return True
