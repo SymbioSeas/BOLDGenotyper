@@ -326,10 +326,17 @@ def plot_phylogenetic_tree(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     tree = Phylo.read(str(tree_file), "newick")
+    
+    # Apply label_map
+    if label_map:
+        for clade in tree.get_terminals():
+            if clade.name in label_map:
+                clade.name = label_map[clade.name]
 
     # Map tip colors
     tip_colors = {}
     if genotype_colors:
+        tip_colors = {}
         for clade in tree.get_terminals():
             g = clade.name
             if g in genotype_colors:
