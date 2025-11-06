@@ -160,8 +160,8 @@ def generate_assignment_summary(
     out = Path(output_csv)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load data
-    df = pd.read_csv(annotated_csv)
+    # Load data with proper CSV parsing (handle quoted fields with commas)
+    df = pd.read_csv(annotated_csv, quoting=1, on_bad_lines='skip')  # quoting=1 is csv.QUOTE_MINIMAL
     diag = pd.read_csv(diagnostics_csv)
 
     # Merge

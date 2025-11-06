@@ -598,15 +598,21 @@ def generate_consensus(
 
     # Create consensus sequence
     consensus_seq = "".join(consensus_bases)
+
+    # Degap the consensus sequence (remove alignment gaps and padding)
+    # Remove '-' (gaps) and 'N' (ambiguous/padding positions)
+    # This converts the aligned consensus (~7500 bp with padding) to raw consensus (~650 bp)
+    consensus_seq_degapped = consensus_seq.replace('-', '').replace('N', '')
+
     consensus_id = f"consensus_c{cluster_id}_n{n_seqs}"
 
     consensus_record = SeqRecord(
-        Seq(consensus_seq),
+        Seq(consensus_seq_degapped),
         id=consensus_id,
         description=f"Consensus sequence for cluster {cluster_id} ({n_seqs} sequences)"
     )
 
-    logger.debug(f"Generated consensus: {consensus_id}")
+    logger.debug(f"Generated consensus: {consensus_id} (degapped from {len(consensus_seq)} to {len(consensus_seq_degapped)} bp)")
 
     return consensus_record
 
