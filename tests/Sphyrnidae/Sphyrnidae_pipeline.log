@@ -1,0 +1,122 @@
+[2025-11-04 11:54:02] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/Sphyrnidae_pipeline.log
+[2025-11-04 11:54:02] INFO: ================================================================================
+[2025-11-04 11:54:02] INFO: BOLDGenotyper Pipeline - Sphyrnidae
+[2025-11-04 11:54:02] INFO: ================================================================================
+[2025-11-04 11:54:02] INFO: Input TSV: tests/data/Sphyrnidae.tsv
+[2025-11-04 11:54:02] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae
+[2025-11-04 11:54:02] INFO: 
+[2025-11-04 11:54:02] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-04 11:54:02] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:54:02] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-04 11:54:02] INFO: Reading BOLD TSV file: tests/data/Sphyrnidae.tsv
+[2025-11-04 11:54:02] INFO: Read 1138 rows and 89 columns
+[2025-11-04 11:54:02] WARNING: Found 30 duplicate processids. Examples: ['GBMTG4448-16', 'GBMTG4448-16', 'GBMTG4448-16', 'GBMTG4448-16', 'GBMTG4448-16']. Keeping only first occurrence of each duplicate.
+[2025-11-04 11:54:02] INFO: After removing duplicates: 1108 rows remaining
+[2025-11-04 11:54:02] INFO: Data quality summary:
+[2025-11-04 11:54:02] INFO:   total_rows: 1108
+[2025-11-04 11:54:02] INFO:   total_columns: 89
+[2025-11-04 11:54:02] INFO:   unique_processids: 1108
+[2025-11-04 11:54:02] INFO:   sequences_present: 1107
+[2025-11-04 11:54:02] INFO:   sequences_missing: 1
+[2025-11-04 11:54:02] INFO:   empty_sequences: 0
+[2025-11-04 11:54:02] INFO:   coords_present: 347
+[2025-11-04 11:54:02] INFO:   coords_missing: 761
+[2025-11-04 11:54:02] INFO:   centroid_coords: 113
+[2025-11-04 11:54:02] INFO:   ✓ Loaded 1108 samples with 89 columns
+[2025-11-04 11:54:02] INFO: 1.2: Filtering coordinate quality...
+[2025-11-04 11:54:02] INFO: Excluded 113 samples with centroid coordinates
+[2025-11-04 11:54:02] INFO: Coordinate filtering: 995/1108 samples retained (89.8%), 113 excluded
+[2025-11-04 11:54:02] INFO:   ✓ Retained 995/1108 samples after coordinate filtering
+[2025-11-04 11:54:02] INFO: 1.3: Assigning ocean basins...
+[2025-11-04 11:54:02] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-04 11:54:25] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-04 11:54:25] INFO: Creating point geometries from coordinates
+[2025-11-04 11:54:25] INFO: Creating point geometries for 234/995 samples with coordinates
+[2025-11-04 11:54:25] INFO: Performing spatial join for 234/995 samples with valid coordinates
+[2025-11-04 11:54:26] INFO: Spatial join results: 113 assigned to basins, 121 outside all basins
+[2025-11-04 11:54:26] WARNING: 51.7% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-04 11:54:26] INFO: Assigned 882 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-04 11:54:26] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-04 11:54:26] INFO: 
+[2025-11-04 11:54:26] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-04 11:54:26] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:54:26] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-04 11:54:26] WARNING:   ⚠ Skipped 8 samples with missing or invalid sequences
+[2025-11-04 11:54:26] INFO:   ✓ Created 987 FASTA records
+[2025-11-04 11:54:26] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-04 11:54:26] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/Sphyrnidae.fasta
+[2025-11-04 11:54:37] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/dereplication/Sphyrnidae_aligned.fasta
+[2025-11-04 11:54:37] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/dereplication/Sphyrnidae_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/dereplication/Sphyrnidae_trimmed.fasta -automated1
+[2025-11-04 11:54:40] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/dereplication/Sphyrnidae_trimmed.fasta
+[2025-11-04 11:54:40] INFO: Calculating pairwise distances for 987 sequences
+[2025-11-04 11:55:52] INFO: Distance calculation complete: 486591 pairwise distances
+[2025-11-04 11:55:52] INFO: Clustering sequences with average linkage, threshold=0.01
+[2025-11-04 11:55:52] INFO: Clustering complete: 33 clusters formed
+[2025-11-04 11:55:54] INFO:   ✓ Identified 33 unique genotypes
+[2025-11-04 11:55:54] INFO: 
+[2025-11-04 11:55:54] INFO: PHASE 3: Genotype Assignment
+[2025-11-04 11:55:54] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:55:54] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-04 11:55:54] INFO: ======================================================================
+[2025-11-04 11:55:54] INFO: Starting genotype assignment workflow
+[2025-11-04 11:55:54] INFO: ======================================================================
+[2025-11-04 11:55:54] INFO: Using edlib for fast edit distance calculation
+[2025-11-04 11:55:54] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/02_filtered_metadata.tsv
+[2025-11-04 11:55:54] INFO: Loaded 995 samples from metadata
+[2025-11-04 11:55:54] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/consensus_sequences/Sphyrnidae_consensus.fasta
+[2025-11-04 11:55:54] INFO: Read 33 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/consensus_sequences/Sphyrnidae_consensus.fasta
+[2025-11-04 11:55:54] INFO: Loaded 33 consensus groups
+[2025-11-04 11:55:54] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/Sphyrnidae.fasta
+[2025-11-04 11:55:54] INFO: Read 987 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/intermediate/Sphyrnidae.fasta
+[2025-11-04 11:55:54] INFO: Extracted 987 unique processids from FASTA
+[2025-11-04 11:55:54] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-04 11:55:54] INFO: Prepared 995 assignment tasks
+[2025-11-04 11:55:54] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-04 11:55:58] INFO: Completed genotype assignment for 995 samples
+[2025-11-04 11:55:58] INFO: Step 6/6: Writing outputs
+[2025-11-04 11:55:58] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/genotype_assignments/Sphyrnidae_with_genotypes.tsv
+[2025-11-04 11:55:58] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/genotype_assignments/Sphyrnidae_diagnostics.csv
+[2025-11-04 11:55:58] INFO: ======================================================================
+[2025-11-04 11:55:58] INFO: Genotype assignment summary:
+[2025-11-04 11:55:58] INFO:   Total samples: 995
+[2025-11-04 11:55:58] INFO:   Successfully assigned: 830 (83.4%)
+[2025-11-04 11:55:58] INFO:   Unassigned: 165 (16.6%)
+[2025-11-04 11:55:58] INFO:     - No sequence in FASTA: 8
+[2025-11-04 11:55:58] INFO:     - Below identity threshold: 157
+[2025-11-04 11:55:58] INFO:   Diagnostic flags:
+[2025-11-04 11:55:58] INFO:     - Ties (ambiguous): 407
+[2025-11-04 11:55:58] INFO:     - Low confidence: 302
+[2025-11-04 11:55:58] INFO: ======================================================================
+[2025-11-04 11:55:58] INFO:   ✓ Assigned 830/995 samples to genotypes
+[2025-11-04 11:55:58] INFO:   ✓ Assignment rate: 83.4%
+[2025-11-04 11:55:58] INFO: 
+[2025-11-04 11:55:58] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-04 11:55:58] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:55:58] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-04 11:55:58] INFO:   ✓ Assigned taxonomy to 33 consensus groups
+[2025-11-04 11:55:58] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/Sphyrnidae_annotated.csv
+[2025-11-04 11:55:58] INFO: 
+[2025-11-04 11:55:58] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-04 11:55:58] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:55:58] INFO: 5.1: Building phylogenetic tree...
+[2025-11-04 11:55:58] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/phylogenetic/Sphyrnidae_tree.nwk
+[2025-11-04 11:55:58] INFO: 
+[2025-11-04 11:55:58] INFO: PHASE 6: Visualization
+[2025-11-04 11:55:58] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:55:58] INFO: 6.1: Generating plots...
+[2025-11-04 11:56:01] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/visualization/Sphyrnidae_identity_distribution.png
+[2025-11-04 11:56:03] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/visualization/Sphyrnidae_identity_distribution.pdf
+[2025-11-04 11:56:03] INFO:   ✓ Generated visualization plots
+[2025-11-04 11:56:03] INFO: 
+[2025-11-04 11:56:03] INFO: PHASE 7: Generating Reports
+[2025-11-04 11:56:03] INFO: --------------------------------------------------------------------------------
+[2025-11-04 11:56:03] WARNING: Report generation failed (non-critical): 'processid'
+[2025-11-04 11:56:03] INFO: 
+[2025-11-04 11:56:03] INFO: ================================================================================
+[2025-11-04 11:56:03] INFO: ✓ Pipeline completed successfully for Sphyrnidae
+[2025-11-04 11:56:03] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae
+[2025-11-04 11:56:03] INFO:   Key files:
+[2025-11-04 11:56:03] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/Sphyrnidae_annotated.csv
+[2025-11-04 11:56:03] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/consensus_sequences/Sphyrnidae_consensus.fasta
+[2025-11-04 11:56:03] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/tests/Sphyrnidae/phylogenetic/Sphyrnidae_tree.nwk
+[2025-11-04 11:56:03] INFO: ================================================================================
