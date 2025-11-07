@@ -152,6 +152,16 @@ class GenotypeAssignmentConfig:
         Minimum sequence identity for genotype assignment (default: 0.90).
         Samples below this threshold are flagged as unassigned.
 
+    identity_method : str
+        Method for calculating sequence identity (default: "target_based").
+        Options:
+        - "target_based": matches / consensus_length
+          More robust to length differences and noisy 5'/3' ends.
+          Recommended for COI barcoding where consensus length is canonical.
+        - "classic": 1 - (edit_distance / max_length)
+          Original method for backwards compatibility.
+          May penalize samples with noisy ends.
+
     use_edlib : bool
         Prefer edlib for fast edit distance if available (default: True)
 
@@ -170,8 +180,15 @@ class GenotypeAssignmentConfig:
     - Sequencing errors (~1-2%)
     - Minor intraspecific variation
     - Differences between consensus and raw sequences
+
+    Identity Method Selection:
+    - Use "target_based" (default) when consensus sequences are canonical
+      references and samples may have variable quality at 5'/3' ends
+    - Use "classic" for backwards compatibility or when sequences are
+      expected to have uniform length and quality
     """
     min_identity: float = 0.90
+    identity_method: str = "target_based"
     use_edlib: bool = True
     n_threads: int = 1
     report_ties: bool = True
@@ -183,6 +200,11 @@ class GenotypeAssignmentConfig:
             raise ValueError("min_identity must be between 0 and 1")
         if self.n_threads < 1:
             raise ValueError("n_threads must be at least 1")
+        if self.identity_method not in ["target_based", "classic"]:
+            raise ValueError(
+                f"identity_method must be 'target_based' or 'classic', "
+                f"got '{self.identity_method}'"
+            )
             
             
 # ============================================================================
