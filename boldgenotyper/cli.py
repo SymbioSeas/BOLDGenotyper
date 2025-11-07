@@ -298,7 +298,12 @@ def run_pipeline(
         # Save final annotated file with proper CSV quoting to handle fields with commas
         annotated_csv = dirs['base'] / f"{organism}_annotated.csv"
         df_final.to_csv(annotated_csv, index=False, quoting=1)  # quoting=1 is csv.QUOTE_MINIMAL
-        logger.info(f"  ✓ Saved annotated dataset: {annotated_csv}")
+
+        # Verify file was created
+        if annotated_csv.exists():
+            logger.info(f"  ✓ Saved annotated dataset: {annotated_csv}")
+        else:
+            logger.warning(f"  ⚠ Failed to save annotated dataset: {annotated_csv}")
 
     except Exception as e:
         logger.error(f"Phase 4 failed: {e}", exc_info=True)
@@ -330,7 +335,37 @@ def run_pipeline(
                     threads=cfg.n_threads
                 )
                 tree_path = f"{output_prefix}_tree.nwk"
-                logger.info(f"  ✓ Built phylogenetic tree: {tree_path}")
+
+                # Verify tree file was actually created
+                if tree is not None and Path(tree_path).exists():
+                    logger.info(f"  ✓ Built phylogenetic tree: {tree_path}")
+
+                    # Create relabeled versions with consensus_group_sp labels
+                    logger.info("5.2: Creating relabeled tree and alignment files...")
+                    try:
+                        alignment_path = f"{output_prefix}_aligned.fasta"
+                        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_consensus_taxonomy.csv"
+
+                        if Path(alignment_path).exists() and taxonomy_csv_path.exists():
+                            relabeled_tree_path = f"{output_prefix}_tree_relabeled.nwk"
+                            relabeled_alignment_path = f"{output_prefix}_aligned_relabeled.fasta"
+
+                            phylogenetics.relabel_tree_and_alignment(
+                                tree_file=tree_path,
+                                alignment_file=alignment_path,
+                                taxonomy_csv=str(taxonomy_csv_path),
+                                output_tree=relabeled_tree_path,
+                                output_alignment=relabeled_alignment_path
+                            )
+                            logger.info(f"  ✓ Created relabeled tree: {relabeled_tree_path}")
+                            logger.info(f"  ✓ Created relabeled alignment: {relabeled_alignment_path}")
+                        else:
+                            logger.warning("  ⚠ Skipping relabeling: alignment or taxonomy file not found")
+                    except Exception as e:
+                        logger.warning(f"  ⚠ Relabeling failed (non-critical): {e}")
+                else:
+                    logger.warning(f"  ⚠ Phylogenetic tree building completed but output file not found: {tree_path}")
+                    tree_path = None
 
         except Exception as e:
             logger.warning(f"Phylogenetic analysis failed (non-critical): {e}")
@@ -362,6 +397,18 @@ def run_pipeline(
                 except Exception as e:
                     logger.debug(f"Distribution map skipped: {e}")
 
+            # Ocean basin abundance bar plot
+            if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                try:
+                    visualization.plot_ocean_basin_abundance(
+                        df=df_final,
+                        output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
+                        genotype_column='consensus_group_sp',
+                        basin_column='ocean_basin'
+                    )
+                except Exception as e:
+                    logger.debug(f"Ocean basin bar plot skipped: {e}")
+
             # Identity distribution
             if diagnostics_csv.exists():
                 visualization.plot_identity_distribution(
@@ -373,6 +420,14 @@ def run_pipeline(
 
             # Phylogenetic tree
             if tree_path and Path(tree_path).exists():
+                # Use relabeled tree if it exists (so tips show consensus_group_sp labels)
+                relabeled_tree_path = tree_path.replace("_tree.nwk", "_tree_relabeled.nwk")
+                if Path(relabeled_tree_path).exists():
+                    tree_to_plot = relabeled_tree_path
+                    logger.info(f"Using relabeled tree for visualization: {relabeled_tree_path}")
+                else:
+                    tree_to_plot = tree_path
+
                 # Load color map if it exists
                 color_map_path = dirs['visualization'] / f"{organism}_genotype_color_map.csv"
                 genotype_colors = None
@@ -381,7 +436,7 @@ def run_pipeline(
                     genotype_colors = dict(zip(color_df['consensus_group_sp'], color_df['color']))
 
                 visualization.plot_phylogenetic_tree(
-                    tree_file=str(tree_path),
+                    tree_file=str(tree_to_plot),
                     output_path=str(dirs['visualization'] / f"{organism}_tree.{fmt}"),
                     genotype_colors=genotype_colors,
                     show_bootstrap=True,
@@ -389,6 +444,35 @@ def run_pipeline(
                     figsize=None,  # Auto-scale based on tree size
                     dpi=cfg.visualization.figure_dpi
                 )
+
+            # Faceted distribution map by consensus_group_sp
+            if ('lat' in df_final.columns and 'lon' in df_final.columns and
+                'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
+                try:
+                    visualization.plot_distribution_map_faceted(
+                        df=df_final,
+                        output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
+                        genotype_column='consensus_group',
+                        species_column='consensus_group_sp',
+                        latitude_col='lat',
+                        longitude_col='lon'
+                    )
+                except Exception as e:
+                    logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
+
+            # Faceted ocean basin bar plot by consensus_group_sp
+            if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
+                'consensus_group' in df_final.columns):
+                try:
+                    visualization.plot_ocean_basin_abundance_faceted(
+                        df=df_final,
+                        output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
+                        genotype_column='consensus_group',
+                        species_column='consensus_group_sp',
+                        basin_column='ocean_basin'
+                    )
+                except Exception as e:
+                    logger.debug(f"Faceted basin bar plot skipped: {e}")
 
         logger.info(f"  ✓ Generated visualization plots")
 
@@ -406,11 +490,16 @@ def run_pipeline(
         # Generate assignment summary report
         summary_output = dirs['reports'] / f"{organism}_assignment_summary.csv"
         reports.generate_assignment_summary(
-            annotated_csv=str(annotated_tsv),
+            annotated_csv=str(annotated_csv),
             diagnostics_csv=str(diagnostics_csv),
             output_csv=str(summary_output)
         )
-        logger.info(f"  ✓ Generated assignment summary: {summary_output}")
+
+        # Verify file was created
+        if summary_output.exists():
+            logger.info(f"  ✓ Generated assignment summary: {summary_output}")
+        else:
+            logger.warning(f"  ⚠ Failed to generate assignment summary: {summary_output}")
 
     except Exception as e:
         logger.warning(f"Report generation failed (non-critical): {e}")

@@ -65,6 +65,8 @@ Author: Steph Smith (steph.smith@unc.edu)
 from typing import Optional, List
 from pathlib import Path
 import logging
+import subprocess
+import shutil
 from Bio import Phylo
 from Bio import SeqIO
 from Bio.Phylo.TreeConstruction import DistanceCalculator, DistanceTreeConstructor
@@ -80,7 +82,7 @@ def build_phylogeny(
     model: str = "GTR",
     bootstrap: int = 1000,
     threads: int = 1,
-) -> Phylo.BaseTree.Tree:
+) -> Optional[Phylo.BaseTree.Tree]:
     """
     Build maximum likelihood phylogenetic tree from consensus sequences.
 
@@ -101,11 +103,38 @@ def build_phylogeny(
 
     Returns
     -------
-    Phylo.BaseTree.Tree
-        Phylogenetic tree object
+    Phylo.BaseTree.Tree or None
+        Phylogenetic tree object, or None if tree building failed
     """
-    # Implementation will go here
-    pass
+    try:
+        output_prefix_path = Path(output_prefix)
+        output_prefix_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Combine with outgroup if provided
+        input_fasta = consensus_fasta
+        if outgroup_fasta:
+            combined_fasta = f"{output_prefix}_combined.fasta"
+            input_fasta = add_outgroup(consensus_fasta, outgroup_fasta, combined_fasta)
+
+        # Run MAFFT alignment
+        aligned_fasta = f"{output_prefix}_aligned.fasta"
+        run_mafft_alignment(input_fasta, aligned_fasta, threads=threads)
+
+        # Run FastTree to build phylogeny
+        tree_file = f"{output_prefix}_tree.nwk"
+        run_fasttree(aligned_fasta, tree_file, model=model)
+
+        # Load and return tree
+        if Path(tree_file).exists():
+            tree = Phylo.read(tree_file, "newick")
+            return tree
+        else:
+            logger.warning(f"Tree file not created: {tree_file}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Phylogenetic tree building failed: {e}")
+        return None
 
 
 def run_mafft_alignment(
@@ -133,8 +162,84 @@ def run_mafft_alignment(
     str
         Path to aligned FASTA file
     """
-    # Implementation will go here
-    pass
+    # Build MAFFT command
+    cmd = ["mafft", f"--{algorithm}", "--thread", str(threads), input_fasta]
+
+    logger.info(f"Running MAFFT alignment: {' '.join(cmd)}")
+
+    try:
+        with open(output_fasta, 'w') as out_handle:
+            result = subprocess.run(
+                cmd,
+                stdout=out_handle,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True
+            )
+        logger.info(f"MAFFT alignment completed: {output_fasta}")
+        return output_fasta
+
+    except subprocess.CalledProcessError as e:
+        error_msg = f"MAFFT alignment failed:\n{e.stderr}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except OSError as e:
+        error_msg = f"Failed to write alignment output: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+
+def run_fasttree(
+    alignment_file: str,
+    output_tree: str,
+    model: str = "GTR",
+) -> str:
+    """
+    Run FastTree for maximum likelihood tree construction.
+
+    Parameters
+    ----------
+    alignment_file : str
+        Path to aligned sequences (FASTA format)
+    output_tree : str
+        Path for output tree file
+    model : str, optional
+        Substitution model (default: GTR)
+
+    Returns
+    -------
+    str
+        Path to tree file
+    """
+    # Build FastTree command
+    # FastTree options:
+    # -nt: nucleotide sequences
+    # -gtr: generalized time-reversible model
+    # -gamma: Gamma20-based model of rate heterogeneity
+    cmd = ["fasttree", "-nt", "-gtr", "-gamma", alignment_file]
+
+    logger.info(f"Running FastTree: {' '.join(cmd)}")
+
+    try:
+        with open(output_tree, 'w') as out_handle:
+            result = subprocess.run(
+                cmd,
+                stdout=out_handle,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True
+            )
+        logger.info(f"FastTree completed: {output_tree}")
+        return output_tree
+
+    except subprocess.CalledProcessError as e:
+        error_msg = f"FastTree failed:\n{e.stderr}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except OSError as e:
+        error_msg = f"Failed to write tree output: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
 
 
 def run_phyml(
@@ -206,5 +311,152 @@ def add_outgroup(
     str
         Path to combined FASTA file
     """
-    # Implementation will go here
-    pass
+    logger.info(f"Combining ingroup and outgroup sequences")
+
+    try:
+        with open(output_fasta, 'w') as out_handle:
+            # Write ingroup sequences
+            for record in SeqIO.parse(ingroup_fasta, "fasta"):
+                SeqIO.write(record, out_handle, "fasta")
+
+            # Write outgroup sequences
+            for record in SeqIO.parse(outgroup_fasta, "fasta"):
+                SeqIO.write(record, out_handle, "fasta")
+
+        logger.info(f"Combined sequences written to: {output_fasta}")
+        return output_fasta
+
+    except Exception as e:
+        error_msg = f"Failed to combine sequences: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+
+def relabel_tree_and_alignment(
+    tree_file: str,
+    alignment_file: str,
+    taxonomy_csv: str,
+    output_tree: str,
+    output_alignment: str,
+    label_column: str = "consensus_group_sp",
+    id_column: str = "consensus_group"
+) -> tuple[str, str]:
+    """
+    Relabel phylogenetic tree and alignment with consensus_group_sp labels.
+
+    This function replaces consensus_group labels (e.g., "consensus_c34_n97")
+    with consensus_group_sp labels (e.g., "Crassostrea hongkongensis c34_n97")
+    in both the tree and alignment files.
+
+    Parameters
+    ----------
+    tree_file : str
+        Path to input Newick tree file
+    alignment_file : str
+        Path to input aligned FASTA file
+    taxonomy_csv : str
+        Path to taxonomy CSV with consensus_group and consensus_group_sp columns
+    output_tree : str
+        Path for output relabeled tree file
+    output_alignment : str
+        Path for output relabeled alignment file
+    label_column : str, optional
+        Column in taxonomy CSV containing new labels (default: "consensus_group_sp")
+    id_column : str, optional
+        Column in taxonomy CSV containing original IDs (default: "consensus_group")
+
+    Returns
+    -------
+    tuple[str, str]
+        Paths to output tree and alignment files
+
+    Raises
+    ------
+    FileNotFoundError
+        If input files don't exist
+    ValueError
+        If required columns are missing from taxonomy CSV
+
+    Examples
+    --------
+    >>> relabel_tree_and_alignment(
+    ...     tree_file="Crassostrea_tree.nwk",
+    ...     alignment_file="Crassostrea_aligned.fasta",
+    ...     taxonomy_csv="Crassostrea_consensus_taxonomy.csv",
+    ...     output_tree="Crassostrea_tree_relabeled.nwk",
+    ...     output_alignment="Crassostrea_aligned_relabeled.fasta"
+    ... )
+    """
+    import pandas as pd
+
+    logger.info(f"Relabeling tree and alignment with {label_column} labels")
+
+    # Check input files exist
+    if not Path(tree_file).exists():
+        raise FileNotFoundError(f"Tree file not found: {tree_file}")
+    if not Path(alignment_file).exists():
+        raise FileNotFoundError(f"Alignment file not found: {alignment_file}")
+    if not Path(taxonomy_csv).exists():
+        raise FileNotFoundError(f"Taxonomy CSV not found: {taxonomy_csv}")
+
+    # Load taxonomy mapping
+    try:
+        taxonomy_df = pd.read_csv(taxonomy_csv)
+    except Exception as e:
+        raise ValueError(f"Failed to read taxonomy CSV: {e}")
+
+    # Validate required columns
+    if id_column not in taxonomy_df.columns:
+        raise ValueError(f"Column '{id_column}' not found in taxonomy CSV")
+    if label_column not in taxonomy_df.columns:
+        raise ValueError(f"Column '{label_column}' not found in taxonomy CSV")
+
+    # Create mapping dictionary: consensus_group -> consensus_group_sp
+    label_map = dict(zip(taxonomy_df[id_column], taxonomy_df[label_column]))
+    logger.info(f"Loaded {len(label_map)} label mappings from taxonomy CSV")
+
+    # Relabel tree
+    try:
+        tree = Phylo.read(tree_file, "newick")
+        n_relabeled = 0
+
+        for clade in tree.get_terminals():
+            if clade.name in label_map:
+                original_name = clade.name
+                clade.name = label_map[original_name]
+                n_relabeled += 1
+                logger.debug(f"Relabeled tree tip: {original_name} -> {clade.name}")
+
+        # Write relabeled tree
+        Phylo.write(tree, output_tree, "newick")
+        logger.info(f"Relabeled {n_relabeled} tree tips, wrote to: {output_tree}")
+
+    except Exception as e:
+        error_msg = f"Failed to relabel tree: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+    # Relabel alignment
+    try:
+        relabeled_records = []
+        n_relabeled = 0
+
+        for record in SeqIO.parse(alignment_file, "fasta"):
+            original_id = record.id
+            if original_id in label_map:
+                record.id = label_map[original_id]
+                record.description = label_map[original_id]
+                n_relabeled += 1
+                logger.debug(f"Relabeled sequence: {original_id} -> {record.id}")
+            relabeled_records.append(record)
+
+        # Write relabeled alignment
+        SeqIO.write(relabeled_records, output_alignment, "fasta")
+        logger.info(f"Relabeled {n_relabeled} sequences, wrote to: {output_alignment}")
+
+    except Exception as e:
+        error_msg = f"Failed to relabel alignment: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+    return output_tree, output_alignment

@@ -200,16 +200,21 @@ def plot_distribution_map(
 
     plt.figure(figsize=figsize)
     if use_cartopy:
-        ax = plt.axes(projection=ccrs.Robinson())
-        ax.add_feature(cfeature.LAND, zorder=0, edgecolor="black", linewidth=0.2, facecolor="#f2f2f2")
-        ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
-        ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
-        # Add gridlines with coordinate labels
-        gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, x_inline=False, y_inline=False)
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        # Suppress cartopy download warnings (these are informational only)
+        import warnings
+        from cartopy.io import DownloadWarning
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=DownloadWarning)
+            ax.add_feature(cfeature.LAND, zorder=0, edgecolor="black", linewidth=0.2, facecolor="#f2f2f2")
+            ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
+        # Add gridlines with labels (PlateCarree projection supports proper gridline labels)
+        gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, linestyle='--')
         gl.top_labels = False
         gl.right_labels = False
-        gl.xlabel_style = {'size': 9}
-        gl.ylabel_style = {'size': 9}
+        gl.xlabel_style = {'size': 10}
+        gl.ylabel_style = {'size': 10}
         for g in genos:
             sub = d[d[genotype_column] == g]
             ax.scatter(
@@ -411,22 +416,26 @@ def plot_distribution_map_faceted(
     all_colors = get_genotype_colors(len(all_genotypes))
     color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
 
-    # Check cartopy availability
+    # Check if cartopy is available
     use_cartopy = True
     try:
         _ = ccrs.PlateCarree()
     except Exception:
         use_cartopy = False
-        logger.warning("Cartopy unavailable; drawing scatter without basemap.")
+        logger.warning("Cartopy unavailable; drawing faceted maps without basemap.")
 
-    # Create figure with facets (reduced spacing)
+    # Create figure with cartopy projection for each subplot
+    logger.info(f"Creating faceted distribution map with {'cartopy' if use_cartopy else 'simple'} backgrounds")
     fig_height = height_per_species * n_species
-    fig, axes = plt.subplots(n_species, 1, figsize=(width, fig_height),
-                             subplot_kw={'projection': ccrs.Robinson()} if use_cartopy else {})
+    fig = plt.figure(figsize=(width, fig_height))
 
-    # Handle single species case
-    if n_species == 1:
-        axes = [axes]
+    axes = []
+    for i in range(n_species):
+        if use_cartopy:
+            ax = fig.add_subplot(n_species, 1, i + 1, projection=ccrs.PlateCarree())
+        else:
+            ax = fig.add_subplot(n_species, 1, i + 1)
+        axes.append(ax)
 
     for idx, species in enumerate(species_list):
         ax = axes[idx]
@@ -441,54 +450,52 @@ def plot_distribution_map_faceted(
             species_data['_size'] = 50
 
         if use_cartopy:
-            ax.add_feature(cfeature.LAND, zorder=0, edgecolor="black", linewidth=0.2, facecolor="#f2f2f2")
-            ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
-            ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
-            # Add gridlines with coordinate labels
-            gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, x_inline=False, y_inline=False)
+            # Add cartopy map features
+            import warnings
+            from cartopy.io import DownloadWarning
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=DownloadWarning)
+                ax.add_feature(cfeature.LAND, zorder=0, edgecolor="black", linewidth=0.2, facecolor="#f2f2f2")
+                ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
+                ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
+
+            # Add gridlines with labels
+            gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, linestyle='--')
             gl.top_labels = False
             gl.right_labels = False
-            gl.xlabel_style = {'size': 8}
-            gl.ylabel_style = {'size': 8}
+            gl.xlabel_style = {'size': 10}
+            gl.ylabel_style = {'size': 10}
 
+            # Plot scatter points for each genotype with transform
             for g in species_genotypes:
                 sub = species_data[species_data[genotype_column] == g]
-                ax.scatter(
-                    sub[longitude_col], sub[latitude_col],
-                    transform=ccrs.PlateCarree(), s=sub['_size'], alpha=0.8, label=str(g),
-                    color=color_map[g], edgecolors="black", linewidths=0.2,
-                )
+                if len(sub) > 0:
+                    ax.scatter(
+                        sub[longitude_col], sub[latitude_col],
+                        transform=ccrs.PlateCarree(),
+                        s=sub['_size'], alpha=0.8,
+                        color=color_map[g], edgecolors="black", linewidths=0.2,
+                    )
         else:
+            # Fallback to simple scatter without cartopy
             for g in species_genotypes:
                 sub = species_data[species_data[genotype_column] == g]
-                ax.scatter(
-                    sub[longitude_col], sub[latitude_col],
-                    s=sub['_size'], alpha=0.8, label=str(g),
-                    color=color_map[g], edgecolors="black", linewidths=0.2,
-                )
-            ax.set_xlabel("Longitude")
-            ax.set_ylabel("Latitude")
+                if len(sub) > 0:
+                    ax.scatter(
+                        sub[longitude_col], sub[latitude_col],
+                        s=sub['_size'], alpha=0.8,
+                        color=color_map[g], edgecolors="black", linewidths=0.2,
+                    )
+            ax.set_xlabel("Longitude", fontsize=10)
+            ax.set_ylabel("Latitude", fontsize=10)
             ax.set_xlim(-180, 180)
             ax.set_ylim(-90, 90)
             ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
 
-    # Reduce vertical spacing between facets and adjust margins
-    plt.subplots_adjust(hspace=0.1, left=0.08, right=0.85)
+        # Add species name as title (genotype info is in the species name itself)
+        ax.set_title(species, fontsize=11, fontweight='bold', fontstyle='italic', loc='left', pad=10)
 
-    # Now add species labels and legends positioned based on actual axes positions
-    for idx, (species, ax) in enumerate(zip(species_list, axes)):
-        # Get axes position in figure coordinates
-        pos = ax.get_position()
-        y_center = (pos.y0 + pos.y1) / 2  # center of this axes in figure coords
-
-        # Add italicized species label (outside left margin, centered on facet y-axis)
-        fig.text(0.01, y_center, species,
-                fontsize=12, fontweight='bold', fontstyle='italic',
-                verticalalignment='center', rotation=90, transform=fig.transFigure)
-
-        # Add legend for THIS facet (centered on facet y-axis, on the right)
-        ax.legend(title="Genotype", loc="center left", bbox_to_anchor=(1.02, 0.5),
-                 frameon=False, fontsize=9)
+    plt.tight_layout()
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
     else:
