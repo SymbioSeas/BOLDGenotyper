@@ -239,6 +239,225 @@ def calculate_identity(edit_distance: int, len1: int, len2: int) -> float:
     return 1.0 - (edit_distance / max_length)
 
 
+def parse_cigar(cigar: str) -> Dict[str, int]:
+    """
+    Parse CIGAR string and return operation counts.
+
+    CIGAR format uses extended CIGAR notation:
+    - '=' : Match (bases are identical)
+    - 'X' : Mismatch (bases differ)
+    - 'I' : Insertion to target (extra bases in query)
+    - 'D' : Deletion from target (missing bases in query)
+
+    Parameters
+    ----------
+    cigar : str
+        CIGAR string from edlib alignment (e.g., "5=1X4=2I")
+
+    Returns
+    -------
+    Dict[str, int]
+        Dictionary with keys '=', 'X', 'I', 'D' and their counts
+
+    Examples
+    --------
+    >>> parse_cigar("10=")
+    {'=': 10, 'X': 0, 'I': 0, 'D': 0}
+    >>> parse_cigar("5=1X4=")
+    {'=': 9, 'X': 1, 'I': 0, 'D': 0}
+    >>> parse_cigar("10=5I")
+    {'=': 10, 'X': 0, 'I': 5, 'D': 0}
+    """
+    operations = {'=': 0, 'X': 0, 'I': 0, 'D': 0}
+
+    # Parse CIGAR: numbers followed by operation symbols
+    # Pattern matches: one or more digits followed by operation character
+    pattern = r'(\d+)([=XIDM])'
+    for count_str, op in re.findall(pattern, cigar):
+        count = int(count_str)
+        if op in operations:
+            operations[op] += count
+        elif op == 'M':
+            # 'M' can mean match or mismatch in standard CIGAR
+            # In edlib extended CIGAR, this shouldn't occur, but handle it
+            logger.warning(f"Found 'M' operation in CIGAR (ambiguous). CIGAR: {cigar}")
+            operations['='] += count
+
+    return operations
+
+
+def calculate_identity_with_cigar(
+    seq1: str,
+    seq2: str,
+    use_edlib: bool = True
+) -> Dict[str, Any]:
+    """
+    Calculate identity using alignment path (CIGAR string).
+
+    This function uses edlib's full alignment path to compute a more accurate
+    identity metric that is robust to length differences. It calculates:
+
+    - **target_identity**: matches / len(target)
+      This asks: "What fraction of the consensus is represented in the sample?"
+      Recommended for genotype assignment where consensus is the reference.
+
+    - **classic_identity**: 1 - (edit_distance / max_length)
+      The original method (kept for comparison and backwards compatibility).
+
+    The target_identity metric is more lenient when samples have extra bases
+    (e.g., noisy 5'/3' ends) but still penalizes missing bases appropriately.
+
+    Parameters
+    ----------
+    seq1 : str
+        Query sequence (typically the sample)
+    seq2 : str
+        Target sequence (typically the consensus)
+    use_edlib : bool, optional
+        If True and edlib available, use edlib with task='path' (default: True)
+        If False or edlib unavailable, falls back to classic calculation
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing:
+        - edit_distance : int - Total edit operations
+        - matches : int - Number of matching bases (from CIGAR '=')
+        - mismatches : int - Number of mismatching bases (from CIGAR 'X')
+        - insertions : int - Insertions to target (from CIGAR 'I')
+        - deletions : int - Deletions from target (from CIGAR 'D')
+        - target_length : int - Length of target sequence
+        - query_length : int - Length of query sequence
+        - target_identity : float - matches / target_length
+        - classic_identity : float - 1 - (edit_dist / max_length)
+        - cigar : str - Full CIGAR string (or None if not using edlib)
+        - method : str - "edlib_cigar" or "classic_fallback"
+
+    Raises
+    ------
+    ValueError
+        If both sequences are empty
+
+    Notes
+    -----
+    When edlib is not available or use_edlib=False, the function falls back
+    to the classic identity calculation. In this case, CIGAR-derived fields
+    (matches, mismatches, insertions, deletions, cigar) will be None or 0.
+
+    Examples
+    --------
+    >>> result = calculate_identity_with_cigar("ACTGACTG", "ACTGACTG")
+    >>> result['target_identity']
+    1.0
+    >>> result['matches']
+    8
+
+    >>> # Sample with noisy 3' end
+    >>> result = calculate_identity_with_cigar("ACTGNNNN", "ACTG")
+    >>> result['target_identity']  # 100% of consensus is represented
+    1.0
+    >>> result['classic_identity']  # Penalized for extra bases
+    0.5
+    """
+    # Handle empty sequences
+    if len(seq1) == 0 and len(seq2) == 0:
+        raise ValueError("Cannot calculate identity for two empty sequences")
+
+    if len(seq1) == 0 or len(seq2) == 0:
+        return {
+            'edit_distance': max(len(seq1), len(seq2)),
+            'matches': 0,
+            'mismatches': 0,
+            'insertions': 0,
+            'deletions': 0,
+            'target_length': len(seq2),
+            'query_length': len(seq1),
+            'target_identity': 0.0,
+            'classic_identity': 0.0,
+            'cigar': None,
+            'method': 'empty_sequence'
+        }
+
+    # Fast path for identical sequences
+    if seq1 == seq2:
+        return {
+            'edit_distance': 0,
+            'matches': len(seq1),
+            'mismatches': 0,
+            'insertions': 0,
+            'deletions': 0,
+            'target_length': len(seq2),
+            'query_length': len(seq1),
+            'target_identity': 1.0,
+            'classic_identity': 1.0,
+            'cigar': f"{len(seq1)}=",
+            'method': 'identical'
+        }
+
+    # Use edlib with CIGAR if available
+    if use_edlib and EDLIB_AVAILABLE:
+        try:
+            # Request full alignment path
+            result = edlib.align(seq1, seq2, mode="NW", task="path")
+
+            if result['editDistance'] == -1:
+                # Alignment failed (shouldn't happen with mode="NW")
+                logger.warning(f"Edlib alignment failed for sequences of length {len(seq1)}, {len(seq2)}")
+                raise RuntimeError("Edlib alignment failed")
+
+            # Parse CIGAR to get operation counts
+            cigar = result['cigar']
+            ops = parse_cigar(cigar)
+
+            # Calculate identities
+            target_length = len(seq2)
+            max_length = max(len(seq1), len(seq2))
+
+            target_identity = ops['='] / target_length if target_length > 0 else 0.0
+            classic_identity = 1.0 - (result['editDistance'] / max_length) if max_length > 0 else 0.0
+
+            return {
+                'edit_distance': result['editDistance'],
+                'matches': ops['='],
+                'mismatches': ops['X'],
+                'insertions': ops['I'],
+                'deletions': ops['D'],
+                'target_length': target_length,
+                'query_length': len(seq1),
+                'target_identity': target_identity,
+                'classic_identity': classic_identity,
+                'cigar': cigar,
+                'method': 'edlib_cigar'
+            }
+
+        except Exception as e:
+            logger.warning(f"Error using edlib CIGAR calculation: {e}. Falling back to classic method.")
+            # Fall through to classic method
+
+    # Fallback: classic identity calculation without CIGAR
+    edit_dist = calculate_edit_distance(seq1, seq2, use_edlib=False)
+    classic_identity = calculate_identity(edit_dist, len(seq1), len(seq2))
+
+    # Note: Without CIGAR, we can't distinguish matches from mismatches
+    # We approximate: matches ≈ max_length - edit_distance
+    max_length = max(len(seq1), len(seq2))
+    approx_matches = max_length - edit_dist
+
+    return {
+        'edit_distance': edit_dist,
+        'matches': approx_matches,
+        'mismatches': None,  # Unknown without CIGAR
+        'insertions': None,  # Unknown without CIGAR
+        'deletions': None,  # Unknown without CIGAR
+        'target_length': len(seq2),
+        'query_length': len(seq1),
+        'target_identity': approx_matches / len(seq2) if len(seq2) > 0 else 0.0,
+        'classic_identity': classic_identity,
+        'cigar': None,
+        'method': 'classic_fallback'
+    }
+
+
 def extract_processid_from_header(header: str) -> Optional[str]:
     """
     Extract processid from FASTA header.
@@ -347,10 +566,17 @@ def find_best_consensus_match(
     sequence: str,
     consensus_groups: List[Tuple[str, str]],
     min_identity: float = 0.90,
-    use_edlib: bool = True
+    use_edlib: bool = True,
+    identity_method: str = "target_based"
 ) -> Dict[str, Any]:
     """
     Find best matching consensus group for a sequence.
+
+    Supports two identity calculation methods:
+    - "target_based" (default): matches / consensus_length
+      More robust to length differences and noisy 5'/3' ends
+    - "classic": 1 - (edit_distance / max_length)
+      Original method for backwards compatibility
 
     Parameters
     ----------
@@ -362,13 +588,25 @@ def find_best_consensus_match(
         Minimum identity required for assignment (default: 0.90)
     use_edlib : bool, optional
         Use edlib if available (default: True)
+    identity_method : str, optional
+        Identity calculation method: "target_based" or "classic" (default: "target_based")
 
     Returns
     -------
     Dict[str, Any]
         Dictionary with keys:
         - 'best_group': Best matching group ID (or None if below threshold)
-        - 'best_identity': Identity to best match
+        - 'best_identity': Identity to best match (using selected method)
+        - 'classic_identity': Identity using classic metric (for comparison)
+        - 'target_identity': Identity using target-based metric (for comparison)
+        - 'matches': Number of matching bases
+        - 'mismatches': Number of mismatching bases
+        - 'insertions': Number of insertions
+        - 'deletions': Number of deletions
+        - 'edit_distance': Total edit distance
+        - 'cigar': CIGAR string for best match
+        - 'length_discrepancy': abs(query_length - target_length)
+        - 'identity_method': Which method was used for best_identity
         - 'runner_up_group': Second best group ID
         - 'runner_up_identity': Identity to runner-up
         - 'is_tie': Boolean, True if best and runner-up are very close (diff < 0.01)
@@ -385,16 +623,27 @@ def find_best_consensus_match(
     """
     best_group = None
     best_identity = -1.0
+    best_details = None  # Store detailed alignment info for best match
     runner_up_group = None
     runner_up_identity = -1.0
 
+    # Validate identity_method
+    if identity_method not in ["target_based", "classic"]:
+        raise ValueError(
+            f"identity_method must be 'target_based' or 'classic', "
+            f"got '{identity_method}'"
+        )
+
     # Compare to all consensus sequences
     for group_id, consensus_seq in consensus_groups:
-        # Calculate edit distance
-        edit_dist = calculate_edit_distance(sequence, consensus_seq, use_edlib=use_edlib)
+        # Calculate identity using CIGAR-based method
+        result = calculate_identity_with_cigar(sequence, consensus_seq, use_edlib=use_edlib)
 
-        # Convert to identity score
-        identity = calculate_identity(edit_dist, len(sequence), len(consensus_seq))
+        # Select identity metric based on method
+        if identity_method == "target_based":
+            identity = result['target_identity']
+        else:  # classic
+            identity = result['classic_identity']
 
         # Update best and runner-up
         if identity > best_identity:
@@ -404,6 +653,7 @@ def find_best_consensus_match(
             # New best
             best_group = group_id
             best_identity = identity
+            best_details = result  # Save full details for best match
         elif identity > runner_up_identity:
             # Update runner-up
             runner_up_group = group_id
@@ -423,9 +673,22 @@ def find_best_consensus_match(
     if best_group is not None and best_identity < (min_identity + 0.05):
         is_low_confidence = True
 
+    # Calculate length discrepancy
+    length_discrepancy = abs(best_details['query_length'] - best_details['target_length']) if best_details else 0
+
     return {
         'best_group': best_group,
         'best_identity': best_identity,
+        'target_identity': best_details['target_identity'] if best_details else 0.0,
+        'classic_identity': best_details['classic_identity'] if best_details else 0.0,
+        'identity_method': identity_method,
+        'matches': best_details['matches'] if best_details else 0,
+        'mismatches': best_details['mismatches'] if best_details else None,
+        'insertions': best_details['insertions'] if best_details else None,
+        'deletions': best_details['deletions'] if best_details else None,
+        'edit_distance': best_details['edit_distance'] if best_details else 0,
+        'cigar': best_details['cigar'] if best_details else None,
+        'length_discrepancy': length_discrepancy,
         'runner_up_group': runner_up_group,
         'runner_up_identity': runner_up_identity,
         'is_tie': is_tie,
@@ -437,7 +700,8 @@ def _assignment_worker(
     task: Tuple[str, Optional[str]],
     consensus_groups: List[Tuple[str, str]],
     min_identity: float,
-    use_edlib: bool
+    use_edlib: bool,
+    identity_method: str = "target_based"
 ) -> Dict[str, Any]:
     """
     Worker function for parallel genotype assignment.
@@ -452,6 +716,8 @@ def _assignment_worker(
         Minimum identity threshold
     use_edlib : bool
         Whether to use edlib
+    identity_method : str, optional
+        Identity calculation method (default: "target_based")
 
     Returns
     -------
@@ -466,6 +732,16 @@ def _assignment_worker(
             'processid': processid,
             'consensus_group': None,
             'identity': 0.0,
+            'target_identity': 0.0,
+            'classic_identity': 0.0,
+            'identity_method': identity_method,
+            'matches': 0,
+            'mismatches': None,
+            'insertions': None,
+            'deletions': None,
+            'edit_distance': 0,
+            'cigar': None,
+            'length_discrepancy': 0,
             'runner_up_group': None,
             'runner_up_identity': 0.0,
             'is_tie': False,
@@ -475,7 +751,7 @@ def _assignment_worker(
 
     # Find best match
     result = find_best_consensus_match(
-        sequence, consensus_groups, min_identity, use_edlib
+        sequence, consensus_groups, min_identity, use_edlib, identity_method
     )
 
     # Add processid and status
@@ -529,7 +805,8 @@ def assign_genotypes(
     output_path: str,
     min_identity: float = 0.90,
     n_processes: int = 1,
-    diagnostics_path: Optional[str] = None
+    diagnostics_path: Optional[str] = None,
+    identity_method: str = "target_based"
 ) -> Dict[str, Any]:
     """
     Assign genotype groups to sequences based on consensus matching.
@@ -557,6 +834,10 @@ def assign_genotypes(
         Number of parallel processes (default: 1)
     diagnostics_path : str, optional
         Path for diagnostics CSV output (default: None, no diagnostics)
+    identity_method : str, optional
+        Identity calculation method: "target_based" or "classic" (default: "target_based")
+        - "target_based": matches / consensus_length (robust to length differences)
+        - "classic": 1 - (edit_distance / max_length) (backwards compatibility)
 
     Returns
     -------
@@ -614,6 +895,12 @@ def assign_genotypes(
 
     if n_processes < 1:
         raise ValueError(f"n_processes must be >= 1, got {n_processes}")
+
+    if identity_method not in ["target_based", "classic"]:
+        raise ValueError(
+            f"identity_method must be 'target_based' or 'classic', "
+            f"got '{identity_method}'"
+        )
 
     # Check edlib availability
     use_edlib = EDLIB_AVAILABLE
@@ -683,12 +970,14 @@ def assign_genotypes(
 
     # Step 5: Perform parallel assignment
     logger.info(f"Step 5/6: Assigning genotypes (using {n_processes} processes)")
+    logger.info(f"Identity calculation method: {identity_method}")
 
     worker_func = partial(
         _assignment_worker,
         consensus_groups=consensus_groups,
         min_identity=min_identity,
-        use_edlib=use_edlib
+        use_edlib=use_edlib,
+        identity_method=identity_method
     )
 
     if n_processes > 1:
@@ -719,7 +1008,9 @@ def assign_genotypes(
         diagnostics_path = Path(diagnostics_path)
         with open(diagnostics_path, 'w', newline='') as f:
             fieldnames = [
-                'processid', 'consensus_group', 'identity',
+                'processid', 'consensus_group', 'identity', 'target_identity', 'classic_identity',
+                'identity_method', 'matches', 'mismatches', 'insertions', 'deletions',
+                'edit_distance', 'length_discrepancy',
                 'runner_up_group', 'runner_up_identity',
                 'is_tie', 'is_low_confidence', 'status'
             ]
@@ -731,6 +1022,15 @@ def assign_genotypes(
                     'processid': result['processid'],
                     'consensus_group': result['consensus_group'] or '',
                     'identity': round(result['identity'], 6),
+                    'target_identity': round(result['target_identity'], 6),
+                    'classic_identity': round(result['classic_identity'], 6),
+                    'identity_method': result['identity_method'],
+                    'matches': result['matches'],
+                    'mismatches': result['mismatches'] if result['mismatches'] is not None else '',
+                    'insertions': result['insertions'] if result['insertions'] is not None else '',
+                    'deletions': result['deletions'] if result['deletions'] is not None else '',
+                    'edit_distance': result['edit_distance'],
+                    'length_discrepancy': result['length_discrepancy'],
                     'runner_up_group': result['runner_up_group'] or '',
                     'runner_up_identity': round(result['runner_up_identity'], 6),
                     'is_tie': result['is_tie'],
