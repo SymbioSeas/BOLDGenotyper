@@ -912,12 +912,18 @@ def load_land_geometries(resolution: str = "110m") -> "BaseGeometry":
     logger.info(f"Loading Natural Earth land geometries (resolution: {resolution})")
 
     try:
-        # Download/load Natural Earth land shapefile
-        shapefile = shapereader.natural_earth(
-            resolution=resolution,
-            category="physical",
-            name="land"
-        )
+        # Suppress cartopy download warnings (these are informational only)
+        import warnings
+        from cartopy.io import DownloadWarning
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=DownloadWarning)
+
+            # Download/load Natural Earth land shapefile
+            shapefile = shapereader.natural_earth(
+                resolution=resolution,
+                category="physical",
+                name="land"
+            )
 
         # Read geometries
         reader = shapereader.Reader(shapefile)
