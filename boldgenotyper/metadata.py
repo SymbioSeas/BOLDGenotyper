@@ -265,7 +265,10 @@ def _log_data_quality(df: pd.DataFrame) -> None:
 # Coordinate Parsing and Validation
 # ============================================================================
 
-def extract_coordinates(coord_string: Union[str, float]) -> Optional[Tuple[float, float]]:
+def extract_coordinates(
+    coord_string: Union[str, float],
+    validate_ranges: bool = True
+) -> Optional[Tuple[float, float]]:
     """
     Parse BOLD coordinate string from format '[lat, lon]' to floats.
 
@@ -279,6 +282,8 @@ def extract_coordinates(coord_string: Union[str, float]) -> Optional[Tuple[float
     ----------
     coord_string : Union[str, float]
         Coordinate string from BOLD coord column
+    validate_ranges : bool
+        If True, validate lat/lon ranges (default: True)
 
     Returns
     -------
@@ -327,27 +332,104 @@ def extract_coordinates(coord_string: Union[str, float]) -> Optional[Tuple[float
             logger.debug(f"Coordinate string has wrong number of parts: '{coord_string}'")
             return None
 
-        # Parse latitude and longitude
-        lat = float(parts[0].strip())
-        lon = float(parts[1].strip())
+        # Parse values
+        val1 = float(parts[0].strip())
+        val2 = float(parts[1].strip())
 
-        # Validate ranges
-        if not (-90 <= lat <= 90):
-            logger.debug(f"Latitude out of range: {lat}")
-            return None
+        # Validate ranges if requested
+        if validate_ranges:
+            if not (-90 <= val1 <= 90):
+                logger.debug(f"First value out of latitude range: {val1}")
+                return None
 
-        if not (-180 <= lon <= 180):
-            logger.debug(f"Longitude out of range: {lon}")
-            return None
+            if not (-180 <= val2 <= 180):
+                logger.debug(f"Second value out of longitude range: {val2}")
+                return None
 
-        return (lat, lon)
+        return (val1, val2)
 
     except (ValueError, AttributeError, TypeError) as e:
         logger.debug(f"Failed to parse coordinates '{coord_string}': {e}")
         return None
 
 
-def parse_coordinates_column(df: pd.DataFrame, coord_column: str = 'coord') -> pd.DataFrame:
+def infer_coord_order(coord_pairs: List[Tuple[float, float]]) -> str:
+    """
+    Infer whether coordinates are in lat/lon or lon/lat order.
+
+    Uses heuristics to determine the most likely coordinate order:
+    - Latitude must be between -90 and 90
+    - Longitude can be between -180 and 180
+    - If first values exceed ±90, they must be longitudes
+
+    Parameters
+    ----------
+    coord_pairs : List[Tuple[float, float]]
+        List of coordinate pairs to analyze
+
+    Returns
+    -------
+    str
+        Either 'lat_lon' or 'lon_lat' indicating detected order
+
+    Examples
+    --------
+    >>> coords = [(34.5, -76.2), (-33.9, 151.2), (41.2, -8.9)]
+    >>> infer_coord_order(coords)
+    'lat_lon'
+    >>> coords = [(-76.2, 34.5), (151.2, -33.9), (-8.9, 41.2)]
+    >>> infer_coord_order(coords)
+    'lon_lat'
+
+    Notes
+    -----
+    The inference checks if the first value in pairs exceeds ±90, which
+    would indicate it's longitude. If any definitive evidence is found,
+    that determines the order. Otherwise defaults to 'lat_lon'.
+    """
+    if not coord_pairs:
+        logger.warning("No coordinate pairs provided for order inference, assuming lat/lon")
+        return 'lat_lon'
+
+    # Count definitive evidence for each order
+    lon_lat_evidence = 0  # first value > 90 (must be lon)
+    lat_lon_evidence = 0  # second value > 90 (must be lon)
+
+    for first, second in coord_pairs:
+        # If first value is outside latitude range, it MUST be longitude (lon/lat order)
+        if abs(first) > 90:
+            lon_lat_evidence += 1
+        # If second value is outside latitude range, it MUST be longitude (lat/lon order)
+        if abs(second) > 90:
+            lat_lon_evidence += 1
+
+    # If we have definitive evidence, use it
+    if lon_lat_evidence > 0 and lat_lon_evidence == 0:
+        logger.info(f"Inferred coordinate order: lon/lat ({lon_lat_evidence} definitive indicators)")
+        return 'lon_lat'
+    elif lat_lon_evidence > 0 and lon_lat_evidence == 0:
+        logger.info(f"Inferred coordinate order: lat/lon ({lat_lon_evidence} definitive indicators)")
+        return 'lat_lon'
+    elif lon_lat_evidence > 0 and lat_lon_evidence > 0:
+        # Conflicting evidence - this shouldn't happen with consistent data
+        logger.warning(
+            f"Conflicting coordinate order evidence detected! "
+            f"lon/lat indicators: {lon_lat_evidence}, lat/lon indicators: {lat_lon_evidence}. "
+            f"Defaulting to lat/lon."
+        )
+        return 'lat_lon'
+    else:
+        # No definitive evidence (all values within [-90, 90])
+        # Default to lat/lon as it's the more common convention
+        logger.info(f"No definitive coordinate order evidence found. Defaulting to lat/lon.")
+        return 'lat_lon'
+
+
+def parse_coordinates_column(
+    df: pd.DataFrame,
+    coord_column: str = 'coord',
+    infer_order: bool = False
+) -> pd.DataFrame:
     """
     Parse coordinates column and add latitude/longitude columns.
 
@@ -361,6 +443,8 @@ def parse_coordinates_column(df: pd.DataFrame, coord_column: str = 'coord') -> p
         DataFrame with coordinate column
     coord_column : str
         Name of coordinate column (default: 'coord')
+    infer_order : bool
+        If True, automatically detect and correct lon/lat vs lat/lon order (default: False)
 
     Returns
     -------
@@ -372,6 +456,11 @@ def parse_coordinates_column(df: pd.DataFrame, coord_column: str = 'coord') -> p
     >>> df = pd.DataFrame({'coord': ['[34.5, -76.2]', '[0, 0]', None]})
     >>> df_parsed = parse_coordinates_column(df)
     >>> print(df_parsed[['latitude', 'longitude']])
+
+    >>> # With order inference
+    >>> df = pd.DataFrame({'coord': ['[-76.2, 34.5]', '[151.2, -33.9]']})
+    >>> df_parsed = parse_coordinates_column(df, infer_order=True)
+    >>> print(df_parsed[['latitude', 'longitude']])
     """
     if coord_column not in df.columns:
         logger.warning(f"Coordinate column '{coord_column}' not found")
@@ -381,8 +470,29 @@ def parse_coordinates_column(df: pd.DataFrame, coord_column: str = 'coord') -> p
 
     logger.info(f"Parsing coordinates from '{coord_column}' column")
 
-    # Apply coordinate extraction
-    coords = df[coord_column].apply(extract_coordinates)
+    # If infer_order is True, extract without validation first
+    if infer_order:
+        # Extract coordinates without range validation
+        coords_raw = df[coord_column].apply(
+            lambda x: extract_coordinates(x, validate_ranges=False)
+        )
+
+        # Get valid coordinate pairs for inference
+        valid_coords = [c for c in coords_raw if c is not None]
+
+        if valid_coords:
+            detected_order = infer_coord_order(valid_coords)
+
+            if detected_order == 'lon_lat':
+                logger.info("Swapping coordinates from lon/lat to lat/lon order")
+                # Swap the coordinate pairs
+                coords_raw = coords_raw.apply(lambda x: (x[1], x[0]) if x is not None else None)
+
+        # Now validate the (possibly swapped) coordinates
+        coords = coords_raw.apply(lambda x: _validate_coordinate_ranges(x) if x is not None else None)
+    else:
+        # Apply coordinate extraction with validation
+        coords = df[coord_column].apply(extract_coordinates)
 
     # Split into separate columns
     df['latitude'] = coords.apply(lambda x: x[0] if x is not None else np.nan)
@@ -394,6 +504,35 @@ def parse_coordinates_column(df: pd.DataFrame, coord_column: str = 'coord') -> p
     logger.info(f"Parsed {n_parsed} coordinates successfully, {n_failed} failed")
 
     return df
+
+
+def _validate_coordinate_ranges(coord_pair: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    """
+    Validate that coordinate pair has valid latitude/longitude ranges.
+
+    Parameters
+    ----------
+    coord_pair : Tuple[float, float]
+        (latitude, longitude) tuple
+
+    Returns
+    -------
+    Optional[Tuple[float, float]]
+        The coordinate pair if valid, None otherwise
+    """
+    lat, lon = coord_pair
+
+    # Validate latitude range
+    if not (-90 <= lat <= 90):
+        logger.debug(f"Latitude out of range: {lat}")
+        return None
+
+    # Validate longitude range
+    if not (-180 <= lon <= 180):
+        logger.debug(f"Longitude out of range: {lon}")
+        return None
+
+    return coord_pair
 
 
 def filter_by_coordinate_quality(
