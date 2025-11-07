@@ -76,11 +76,24 @@ import numpy as np
 try:
     import geopandas as gpd
     from shapely.geometry import Point
+    from shapely.ops import nearest_points, unary_union
+    from shapely.geometry.base import BaseGeometry
     GEOPANDAS_AVAILABLE = True
 except ImportError:
     GEOPANDAS_AVAILABLE = False
     gpd = None
     Point = None
+    nearest_points = None
+    unary_union = None
+    BaseGeometry = None
+
+# Conditional import for cartopy
+try:
+    from cartopy.io import shapereader
+    CARTOPY_AVAILABLE = True
+except ImportError:
+    CARTOPY_AVAILABLE = False
+    shapereader = None
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -120,6 +133,28 @@ def check_geopandas_available() -> None:
             "GeoPandas and Shapely are required for geographic operations.\n"
             "Install with: pip install geopandas\n"
             "This will also install shapely, pyproj, and fiona."
+        )
+
+
+def check_cartopy_available() -> None:
+    """
+    Check if Cartopy is available.
+
+    Raises
+    ------
+    GeospatialLibraryError
+        If cartopy is not installed
+
+    Notes
+    -----
+    Cartopy is required for land/ocean classification and snap-to-coast features.
+
+    Install with: pip install cartopy
+    """
+    if not CARTOPY_AVAILABLE:
+        raise GeospatialLibraryError(
+            "Cartopy is required for land/ocean classification.\n"
+            "Install with: pip install cartopy\n"
         )
 
 
@@ -831,3 +866,276 @@ def filter_marine_samples(
     else:
         df_copy['is_marine'] = is_marine
         return df_copy
+
+
+def load_land_geometries(resolution: str = "110m") -> "BaseGeometry":
+    """
+    Load land geometries from Natural Earth data.
+
+    Parameters
+    ----------
+    resolution : str, default="110m"
+        Resolution of Natural Earth data: "110m", "50m", or "10m"
+        - 110m: Low resolution, faster loading (recommended for testing)
+        - 50m: Medium resolution
+        - 10m: High resolution, slower loading
+
+    Returns
+    -------
+    BaseGeometry
+        Unified land geometry (MultiPolygon)
+
+    Raises
+    ------
+    GeospatialLibraryError
+        If geopandas, shapely, or cartopy are not installed
+
+    Notes
+    -----
+    This function downloads Natural Earth land shapefiles on first use.
+    The data is cached by cartopy for subsequent use.
+
+    Natural Earth Data: https://www.naturalearthdata.com/
+
+    Examples
+    --------
+    >>> land = load_land_geometries(resolution="110m")
+    >>> # Check if a point is on land
+    >>> from shapely.geometry import Point
+    >>> point = Point(-99.1, 19.4)  # Mexico City
+    >>> is_land = land.contains(point)
+    >>> print(is_land)  # True
+    """
+    check_geopandas_available()
+    check_cartopy_available()
+
+    logger.info(f"Loading Natural Earth land geometries (resolution: {resolution})")
+
+    try:
+        # Download/load Natural Earth land shapefile
+        shapefile = shapereader.natural_earth(
+            resolution=resolution,
+            category="physical",
+            name="land"
+        )
+
+        # Read geometries
+        reader = shapereader.Reader(shapefile)
+        geometries = list(reader.geometries())
+
+        logger.info(f"Loaded {len(geometries)} land polygons")
+
+        # Combine all land geometries into a single union
+        land_union = unary_union(geometries)
+
+        logger.info("Successfully created unified land geometry")
+
+        return land_union
+
+    except Exception as e:
+        raise GeospatialLibraryError(
+            f"Failed to load Natural Earth land geometries: {e}\n"
+            "Make sure cartopy is properly installed: pip install cartopy"
+        )
+
+
+def classify_and_snap_coordinates(
+    df: pd.DataFrame,
+    lat_col: str = 'latitude',
+    lon_col: str = 'longitude',
+    policy: str = 'mark',
+    resolution: str = '110m',
+    location_type_col: str = 'location_type',
+    land_geometry: Optional["BaseGeometry"] = None
+) -> pd.DataFrame:
+    """
+    Classify coordinates as land or ocean and optionally snap land points to coast.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with latitude and longitude columns
+    lat_col : str, default='latitude'
+        Name of latitude column
+    lon_col : str, default='longitude'
+        Name of longitude column
+    policy : str, default='mark'
+        How to handle land-based coordinates:
+        - 'mark': Label land points as 'country_centroid', keep coordinates unchanged
+        - 'drop': Remove all land-based coordinates
+        - 'snap': Snap land points to nearest coastline
+    resolution : str, default='110m'
+        Natural Earth data resolution: '110m', '50m', or '10m'
+        Ignored if land_geometry is provided
+    location_type_col : str, default='location_type'
+        Name of output column for location type classification
+    land_geometry : BaseGeometry, optional
+        Pre-loaded land geometry (from load_land_geometries()).
+        If provided, this geometry will be used instead of loading from Natural Earth.
+        This allows reusing the same geometry across multiple calls for better performance.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with added location_type column and updated coordinates (if policy='snap')
+        Location types:
+        - 'precise': Ocean coordinates (original)
+        - 'country_centroid': Land coordinates (if policy='mark')
+        - 'snapped_to_coast': Land coordinates snapped to coast (if policy='snap')
+
+    Raises
+    ------
+    GeospatialLibraryError
+        If required libraries are not installed
+    ValueError
+        If invalid policy specified
+
+    Notes
+    -----
+    This function is useful for marine species datasets where some coordinates
+    may incorrectly fall on land due to imprecise GPS or data entry errors.
+
+    The 'snap' policy finds the nearest point on the coastline for each land
+    coordinate and updates the latitude/longitude to that coastal location.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({
+    ...     'sample': ['Ocean', 'InlandAustralia', 'Coastal'],
+    ...     'latitude': [0.0, -25.0, -33.0],
+    ...     'longitude': [-150.0, 133.0, 151.0]
+    ... })
+    >>>
+    >>> # Mark land points
+    >>> df_marked = classify_and_snap_coordinates(df, policy='mark')
+    >>> print(df_marked[['sample', 'location_type']])
+    >>>
+    >>> # Snap land points to coast
+    >>> df_snapped = classify_and_snap_coordinates(df, policy='snap')
+    >>> print(df_snapped[['sample', 'latitude', 'longitude', 'location_type']])
+    >>>
+    >>> # Drop land points
+    >>> df_ocean_only = classify_and_snap_coordinates(df, policy='drop')
+    >>> print(len(df_ocean_only))  # Only ocean points remain
+    >>>
+    >>> # Reuse land geometry for better performance with multiple calls
+    >>> land = load_land_geometries(resolution="110m")
+    >>> df_marked = classify_and_snap_coordinates(df, land_geometry=land, policy='mark')
+    >>> df_snapped = classify_and_snap_coordinates(df, land_geometry=land, policy='snap')
+    """
+    check_geopandas_available()
+    check_cartopy_available()
+
+    # Validate policy
+    valid_policies = ['mark', 'drop', 'snap']
+    if policy not in valid_policies:
+        raise ValueError(
+            f"Invalid policy '{policy}'. Must be one of: {valid_policies}"
+        )
+
+    # Validate columns exist
+    if lat_col not in df.columns:
+        raise ValueError(f"Latitude column '{lat_col}' not found in DataFrame")
+    if lon_col not in df.columns:
+        raise ValueError(f"Longitude column '{lon_col}' not found in DataFrame")
+
+    # Create copy to avoid modifying original
+    df_copy = df.copy()
+
+    # Load land geometries if not provided
+    logger.info(f"Classifying coordinates (policy: {policy})")
+    if land_geometry is not None:
+        logger.debug("Using pre-loaded land geometry")
+        land_union = land_geometry
+    else:
+        land_union = load_land_geometries(resolution=resolution)
+
+    # Initialize location_type column
+    df_copy[location_type_col] = 'precise'
+
+    # Classify each point as land or ocean
+    def is_on_land(row):
+        """Check if a coordinate point falls on land."""
+        try:
+            lat = float(row[lat_col])
+            lon = float(row[lon_col])
+
+            # Skip invalid coordinates
+            if pd.isna(lat) or pd.isna(lon):
+                return False
+
+            # Create point geometry
+            point = Point(lon, lat)  # Note: Point(x, y) = Point(lon, lat)
+
+            # Check if point is contained in land union
+            return land_union.contains(point)
+
+        except Exception as e:
+            logger.warning(f"Error checking land status for row: {e}")
+            return False
+
+    # Apply land classification
+    logger.info("Checking which coordinates fall on land...")
+    on_land = df_copy.apply(is_on_land, axis=1)
+    n_land = on_land.sum()
+    n_ocean = (~on_land).sum()
+
+    logger.info(
+        f"Classification complete: {n_ocean} ocean points, {n_land} land points"
+    )
+
+    # Mark land points
+    df_copy.loc[on_land, location_type_col] = 'country_centroid'
+
+    # Handle based on policy
+    if policy == 'drop':
+        logger.info(f"Dropping {n_land} land-based coordinates")
+        return df_copy[df_copy[location_type_col] == 'precise'].copy()
+
+    elif policy == 'snap':
+        if n_land > 0:
+            logger.info(f"Snapping {n_land} land points to nearest coastline...")
+
+            # Get land boundary (coastline)
+            land_boundary = land_union.boundary
+
+            def snap_point(row):
+                """Snap a land point to the nearest coastline."""
+                if row[location_type_col] == 'country_centroid':
+                    try:
+                        lat = float(row[lat_col])
+                        lon = float(row[lon_col])
+                        point = Point(lon, lat)
+
+                        # Find nearest point on coastline
+                        _, nearest_coastal_point = nearest_points(point, land_boundary)
+
+                        # Return new coordinates (lon, lat)
+                        return nearest_coastal_point.x, nearest_coastal_point.y
+
+                    except Exception as e:
+                        logger.warning(f"Error snapping point: {e}")
+                        return row[lon_col], row[lat_col]
+
+                # Return original coordinates for ocean points
+                return row[lon_col], row[lat_col]
+
+            # Apply snapping
+            snapped_coords = df_copy.apply(
+                snap_point, axis=1, result_type='expand'
+            )
+            snapped_coords.columns = [lon_col, lat_col]
+
+            # Update coordinates
+            df_copy[[lon_col, lat_col]] = snapped_coords
+
+            # Update location type for snapped points
+            df_copy.loc[
+                df_copy[location_type_col] == 'country_centroid',
+                location_type_col
+            ] = 'snapped_to_coast'
+
+            logger.info("Snapping complete")
+
+    return df_copy
