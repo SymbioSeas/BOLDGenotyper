@@ -16,6 +16,11 @@ setup(
         "matplotlib>=3.4.0",
         "seaborn>=0.11.0",
     ],
+    entry_points={
+        'console_scripts': [
+            'boldgenotyper=boldgenotyper.cli:main',
+        ],
+    },
     python_requires=">=3.8",
     classifiers=[
         "Development Status :: 3 - Alpha",
