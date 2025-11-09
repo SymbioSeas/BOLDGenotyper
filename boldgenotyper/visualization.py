@@ -515,10 +515,11 @@ def plot_ocean_basin_abundance_faceted(
     dpi: int = 300,
 ) -> None:
     """
-    Create stacked bar chart with separate facets for each species.
+    Create bar chart with separate facets for each genotype.
 
-    Each facet shows genotype proportions by ocean basin for a single species,
-    stacked vertically in a single column. Species labels are italicized.
+    Each facet shows sample counts by ocean basin for a single genotype,
+    with n-values annotated above each bar. Genotype labels use consensus_group_sp
+    when available for clearer species identification.
 
     Parameters
     ----------
@@ -533,9 +534,9 @@ def plot_ocean_basin_abundance_faceted(
     basin_column : str, optional
         Column containing ocean basin names
     width : int, optional
-        Figure width in inches (default: 10)
+        Figure width in inches (default: 9)
     height_per_species : int, optional
-        Height per species facet in inches (default: 4)
+        Height per species facet in inches (default: 5)
     dpi : int, optional
         Resolution for PNG output (default: 300)
     """
@@ -559,82 +560,85 @@ def plot_ocean_basin_abundance_faceted(
         logger.warning("No rows with valid species; skipping faceted basin plot.")
         return
 
-    # Get unique species (sorted)
-    species_list = sorted(d[species_column].unique())
-    n_species = len(species_list)
+    # Create label map for genotypes (consensus_group -> consensus_group_sp)
+    label_map = {}
+    if "consensus_group_sp" in d.columns:
+        tmp = d[[genotype_column, "consensus_group_sp"]].dropna().drop_duplicates()
+        label_map = dict(zip(tmp[genotype_column], tmp["consensus_group_sp"]))
 
-    if n_species == 0:
-        logger.warning("No species found; skipping faceted basin plot.")
+    # Get unique genotypes (sorted) - these will be our facets
+    genotype_list = sorted(d[genotype_column].unique())
+    n_genotypes = len(genotype_list)
+
+    if n_genotypes == 0:
+        logger.warning("No genotypes found; skipping faceted basin plot.")
         return
 
     # Get all genotypes and assign consistent colors
-    all_genotypes = sorted(d[genotype_column].unique())
-    all_colors = get_genotype_colors(len(all_genotypes))
-    color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
+    all_colors = get_genotype_colors(n_genotypes)
+    color_map = {g: all_colors[i] for i, g in enumerate(genotype_list)}
 
-    # Get ALL ocean basins across all species (so we show all basins even if 0)
+    # Get ALL ocean basins across all genotypes (so we show all basins even if 0)
     all_basins = sorted(d[basin_column].unique())
 
-    # Create figure with facets
-    fig_height = height_per_species * n_species
-    fig, axes = plt.subplots(n_species, 1, figsize=(width, fig_height))
+    # Create figure with facets (one per genotype)
+    fig_height = height_per_species * n_genotypes
+    fig, axes = plt.subplots(n_genotypes, 1, figsize=(width, fig_height))
 
-    # Handle single species case
-    if n_species == 1:
+    # Handle single genotype case
+    if n_genotypes == 1:
         axes = [axes]
 
-    for idx, species in enumerate(species_list):
+    for idx, genotype in enumerate(genotype_list):
         ax = axes[idx]
-        species_data = d[d[species_column] == species]
+        genotype_data = d[d[genotype_column] == genotype]
 
-        # Calculate proportions for this species
+        # Count samples by basin for this genotype
         counts = (
-            species_data.groupby([basin_column, genotype_column])
-            .size().rename("n").reset_index()
+            genotype_data.groupby(basin_column)
+            .size().reset_index(name="n")
         )
-        totals = counts.groupby(basin_column)["n"].transform("sum")
-        counts["prop"] = counts["n"] / totals
 
-        species_genotypes = sorted(counts[genotype_column].unique())
+        # Create series indexed by basin for easier plotting
+        count_series = counts.set_index(basin_column)["n"]
+        # Reindex to include ALL basins (even if this genotype has 0 in some basins)
+        count_series = count_series.reindex(index=all_basins, fill_value=0)
 
-        # Pivot to wide format for stacking
-        wide = counts.pivot(index=basin_column, columns=genotype_column, values="prop").fillna(0.0)
-        # Reindex to include ALL basins (even if this species has 0 in some basins)
-        wide = wide.reindex(index=all_basins, fill_value=0.0)
-        wide = wide[[g for g in species_genotypes if g in wide.columns]]
+        # Plot bars
+        bars = ax.bar(count_series.index, count_series.values, color=color_map[genotype])
 
-        # Plot stacked bars
-        bottom = None
-        for g in wide.columns:
-            vals = wide[g].values
-            ax.bar(wide.index, vals, bottom=bottom, label=str(g), color=color_map[g])
-            bottom = vals if bottom is None else bottom + vals
+        # Add n-value annotations above each bar
+        for i, (basin, count) in enumerate(count_series.items()):
+            if count > 0:  # Only annotate bars with data
+                ax.text(i, count, f"n={int(count)}",
+                       ha='center', va='bottom', fontsize=9)
 
-        ax.set_ylabel("Relative abundance")
-        # Show x-axis labels on ALL facets (not just bottom)
+        ax.set_ylabel("Sample count")
         ax.set_xlabel("Ocean basin")
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=20, ha="right")
 
-        ax.set_ylim(0, 1.0)
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v*100)}%"))
+        # Set y-axis to start at 0 and add a bit of padding for annotations
+        max_count = count_series.max()
+        ax.set_ylim(0, max_count * 1.15 if max_count > 0 else 1)
 
-    # Adjust margins: more space on left for species labels, reduce plot width for narrower bars
-    plt.subplots_adjust(left=0.15, right=0.75, hspace=0.85)
+    # Adjust margins: more space on left for genotype labels
+    plt.subplots_adjust(left=0.15, right=0.95, hspace=0.85)
 
-    # Now add species labels and legends positioned based on actual axes positions
-    for idx, (species, ax) in enumerate(zip(species_list, axes)):
+    # Now add genotype labels positioned based on actual axes positions
+    for idx, (genotype, ax) in enumerate(zip(genotype_list, axes)):
         # Get axes position in figure coordinates
         pos = ax.get_position()
         y_center = (pos.y0 + pos.y1) / 2  # center of this axes in figure coords
 
-        # Add italicized species label (outside left margin, centered on facet y-axis)
-        fig.text(0.02, y_center, species,
+        # Use consensus_group_sp label if available, otherwise use genotype ID
+        display_label = label_map.get(genotype, str(genotype))
+
+        # Add genotype label (outside left margin, centered on facet y-axis)
+        # Use italic style for species names (consensus_group_sp format)
+        fig.text(0.02, y_center, display_label,
                 fontsize=12, fontweight='bold', fontstyle='italic',
                 verticalalignment='center', rotation=90, transform=fig.transFigure)
 
-        # Add legend for THIS facet (centered on facet y-axis, on the right)
-        ax.legend(title="Genotype", loc="center left", bbox_to_anchor=(1.02, 0.5),
-                 frameon=False, fontsize=9)
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
     else:
