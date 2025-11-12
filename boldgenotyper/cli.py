@@ -63,6 +63,7 @@ def run_pipeline(
     organism: str,
     output_dir: Path,
     cfg: config.PipelineConfig,
+    skip_geo: bool = False,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -105,16 +106,34 @@ def run_pipeline(
 
         # Assign ocean basins
         logger.info("1.3: Assigning ocean basins...")
-        if cfg.geographic.goas_shapefile_path.exists():
-            goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
-            df_with_basins = geographic.assign_ocean_basins(
-                df_filtered, goas_data=goas_data, coord_col="coord"
-            )
-            logger.info(f"  ✓ Assigned ocean basins to samples")
-        else:
-            logger.warning(f"  ⚠ GOaS shapefile not found, skipping basin assignment")
+        if skip_geo:
+            logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
             df_with_basins = df_filtered.copy()
             df_with_basins['ocean_basin'] = 'Unknown'
+        elif not cfg.geographic.goas_shapefile_path.exists():
+            logger.warning(f"  ⚠ GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
+            logger.warning("")
+            logger.warning("  To enable geographic analysis, download the GOaS shapefile:")
+            logger.warning("  1. Run: python -m boldgenotyper.goas_downloader")
+            logger.warning("  2. Or download manually from: https://www.marineregions.org/download_file.php?name=World_Seas_IHO_v3.zip")
+            logger.warning(f"  3. Extract to: {cfg.geographic.goas_shapefile_path.parent}")
+            logger.warning("  4. Ensure the .shp file is named: goas_v01.shp")
+            logger.warning("")
+            logger.warning("  Pipeline will continue without geographic analysis...")
+            df_with_basins = df_filtered.copy()
+            df_with_basins['ocean_basin'] = 'Unknown'
+        else:
+            try:
+                goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
+                df_with_basins = geographic.assign_ocean_basins(
+                    df_filtered, goas_data=goas_data, coord_col="coord"
+                )
+                logger.info(f"  ✓ Assigned ocean basins to samples")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to load GOaS data: {e}")
+                logger.warning("  Pipeline will continue without geographic analysis...")
+                df_with_basins = df_filtered.copy()
+                df_with_basins['ocean_basin'] = 'Unknown'
 
         basins_tsv = dirs['geographic'] / "samples_with_ocean_basins.tsv"
         df_with_basins.to_csv(basins_tsv, sep='\t', index=False)
@@ -590,6 +609,13 @@ For more information: https://github.com/your-repo/boldgenotyper
     )
 
     parser.add_argument(
+        '--no-geo',
+        action='store_true',
+        help='Skip geographic analysis (ocean basin assignment and related visualizations). '
+             'Use this if you only need genotyping and phylogeny without geographic distribution.'
+    )
+
+    parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         default='INFO',
@@ -652,7 +678,8 @@ For more information: https://github.com/your-repo/boldgenotyper
             tsv_path=args.tsv,
             organism=organism,
             output_dir=output_dir,
-            cfg=cfg
+            cfg=cfg,
+            skip_geo=args.no_geo
         )
 
         return 0 if success else 1

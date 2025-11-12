@@ -26,11 +26,12 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 ## Features
 
 - **Automated genotyping**: Identifies unique COI genotypes through sequence clustering and consensus generation
-- **Geographic analysis**: Filters coordinates and assigns samples to ocean basins
+- **Geographic analysis**: Filters coordinates and assigns samples to ocean basins (marine organisms only in v1.0)
 - **Visualization**: Creates publication-ready maps showing genotype distributions with territory polygons
 - **Statistical analysis**: Chi-square tests and standardized residuals for genotype × ocean basin associations
 - **Reproducibility**: Standardized workflow for any organism in BOLD database
 - **Flexibility**: Customizable parameters for clustering, filtering, and visualization
+- **Modular design**: Skip geographic analysis with `--no-geo` flag for non-marine organisms or when GOaS is unavailable
 
 ---
 
@@ -81,7 +82,146 @@ python -c "import Bio, pandas, numpy, scipy, matplotlib, cartopy, edlib; print('
 
 ---
 
+## GOaS Shapefile Setup (Required for Geographic Analysis)
+
+### What is GOaS?
+
+GOaS (Global Oceans and Seas) is a shapefile dataset that defines standardized ocean basin boundaries. BOLDGenotyper uses this dataset to:
+- Assign samples to ocean basins (e.g., North Atlantic, South Pacific)
+- Create geographic distribution maps
+- Analyze genotype-by-basin patterns
+
+**Important Notes:**
+- The GOaS shapefile (~100-200 MB) is **not included** in this repository due to size constraints
+- Geographic analysis is **currently designed for marine organisms only**
+- If you're only interested in genotyping and phylogeny (not geography), you can skip this setup using the `--no-geo` flag
+
+### Downloading and Installing GOaS
+
+Choose one of the following options:
+
+#### Option 1: Automated Download (Recommended)
+
+```bash
+# Navigate to the BOLDGenotyper directory
+cd BOLDGenotyper
+
+# Activate your conda environment
+conda activate depredation
+
+# Run the GOaS downloader
+python -m boldgenotyper.goas_downloader
+
+# This will:
+# 1. Download World_Seas_IHO_v3.zip from Marine Regions
+# 2. Extract it to boldgenotyper/GOaS_v1_20211214/
+# 3. Verify all required files are present
+```
+
+#### Option 2: Manual Download
+
+If the automated download fails or you prefer manual setup:
+
+1. **Download the shapefile:**
+   - Visit: https://www.marineregions.org/download_file.php?name=World_Seas_IHO_v3.zip
+   - Or alternative: https://github.com/iobis/mregions-static/raw/master/shapefiles/World_Seas_IHO_v3.zip
+
+2. **Extract the ZIP file:**
+   ```bash
+   unzip World_Seas_IHO_v3.zip
+   ```
+
+3. **Move files to the correct location:**
+   ```bash
+   # Create the directory if it doesn't exist
+   mkdir -p boldgenotyper/GOaS_v1_20211214
+
+   # Move all files (must include .shp, .shx, .dbf, .prj, .cpg)
+   mv World_Seas_IHO_v3.* boldgenotyper/GOaS_v1_20211214/
+
+   # Rename the main shapefile
+   cd boldgenotyper/GOaS_v1_20211214/
+   ln -s World_Seas_IHO_v3.shp goas_v01.shp
+   ln -s World_Seas_IHO_v3.shx goas_v01.shx
+   ln -s World_Seas_IHO_v3.dbf goas_v01.dbf
+   ln -s World_Seas_IHO_v3.prj goas_v01.prj
+   ln -s World_Seas_IHO_v3.cpg goas_v01.cpg
+   ```
+
+4. **Verify the installation:**
+   ```bash
+   # Check that the files exist
+   ls -lh boldgenotyper/GOaS_v1_20211214/
+
+   # You should see:
+   # goas_v01.shp (or World_Seas_IHO_v3.shp)
+   # goas_v01.shx (or World_Seas_IHO_v3.shx)
+   # goas_v01.dbf (or World_Seas_IHO_v3.dbf)
+   # goas_v01.prj (or World_Seas_IHO_v3.prj)
+   # goas_v01.cpg (or World_Seas_IHO_v3.cpg)
+   ```
+
+#### Option 3: Skip Geographic Analysis
+
+If you don't need geographic distribution analysis, you can run BOLDGenotyper without GOaS:
+
+```bash
+# Add the --no-geo flag to skip geographic analysis
+boldgenotyper data/Euprymna_scolopes.tsv --no-geo
+
+# This will:
+# - Perform sequence clustering and genotyping
+# - Generate phylogenetic trees (if --build-tree is specified)
+# - Skip ocean basin assignment
+# - Skip geographic visualizations
+```
+
+### Geographic Limitations
+
+**Current Version (v1.0):**
+- BOLDGenotyper is currently designed for **marine organisms only**
+- Ocean basin assignment uses marine-specific GOaS boundaries
+- Terrestrial and freshwater organisms are not yet supported for geographic analysis
+
+**Future Development:**
+- We plan to add modules for terrestrial environments
+- Additional GOaS packages will support freshwater and terrestrial distributions
+- Geographic analysis will be extended to non-marine taxa
+
+**For Non-Marine Organisms:**
+- Use the `--no-geo` flag to skip geographic modules
+- You can still perform genotyping and phylogenetic analysis
+- Geographic visualizations will be skipped
+
+### Verifying GOaS Setup
+
+To verify that GOaS is correctly installed, run a quick test:
+
+```bash
+python -c "from boldgenotyper import config, geographic; \
+cfg = config.get_default_config(); \
+print(f'GOaS path: {cfg.geographic.goas_shapefile_path}'); \
+print(f'GOaS exists: {cfg.geographic.goas_shapefile_path.exists()}'); \
+if cfg.geographic.goas_shapefile_path.exists(): \
+    goas = geographic.load_goas_data(cfg.geographic.goas_shapefile_path); \
+    print(f'Loaded {len(goas)} ocean basins')"
+```
+
+Expected output:
+```
+GOaS path: /path/to/BOLDGenotyper/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+GOaS exists: True
+Loaded [number] ocean basins
+```
+
+---
+
 ## Quick Start
+
+**Prerequisites:**
+- Complete the [Installation](#installation) steps
+- (Optional) Set up [GOaS shapefile](#goas-shapefile-setup-required-for-geographic-analysis) for geographic analysis
+  - Skip this if using `--no-geo` flag
 
 ### 1. Download Data from BOLD
 
@@ -92,6 +232,8 @@ python -c "import Bio, pandas, numpy, scipy, matplotlib, cartopy, edlib; print('
    - Example: `Sphyrna_lewini_scallopedhammerhead.tsv`
 
 ### 2. Run the Pipeline
+
+**With Geographic Analysis (requires GOaS setup):**
 
 The pipeline consists of sequential steps that can be run individually:
 
@@ -117,6 +259,20 @@ python plot_shark_genotypes_ocean_basins_complex.py \
   --csv ../data/Sphyrna_lewini_scallopedhammerhead_with_consensus.tsv \
   --outdir ../results/
 ```
+
+**Without Geographic Analysis (no GOaS required):**
+
+```bash
+# Navigate to reference_scripts directory
+cd reference_scripts
+
+# Steps 1-3 are the same as above...
+
+# Step 4: Skip geographic visualizations
+# (Ocean basin plots will not be generated)
+```
+
+**Note:** When running without GOaS, the pipeline will automatically skip geographic analysis and continue with genotyping and phylogeny.
 
 ---
 
@@ -599,6 +755,32 @@ The pipeline extracts the organism name from the filename for all output files.
 
 ## Advanced Options
 
+### Skipping Geographic Analysis
+
+If you don't need geographic distribution analysis or don't have the GOaS shapefile installed, use the `--no-geo` flag:
+
+```bash
+# Run pipeline without geographic analysis
+boldgenotyper data/Euprymna_scolopes.tsv --no-geo
+
+# Combine with other options
+boldgenotyper data/Euprymna_scolopes.tsv --no-geo --build-tree --threads 8
+```
+
+**What happens when using `--no-geo`:**
+- ✓ Sequence clustering and genotyping proceed normally
+- ✓ Phylogenetic tree building works (if `--build-tree` specified)
+- ✓ Identity distribution plots are generated
+- ✗ Ocean basin assignment is skipped (all samples marked as "Unknown")
+- ✗ Geographic distribution maps are not generated
+- ✗ Basin-specific visualizations are skipped
+
+**Use cases for `--no-geo`:**
+- Working with non-marine organisms (terrestrial, freshwater)
+- GOaS shapefile not available or failed to download
+- Only interested in genotype identification and phylogeny
+- Samples lack precise geographic coordinates
+
 ### Parallel Processing
 
 Speed up genotype assignment with multiple threads:
@@ -686,7 +868,28 @@ python plot_shark_genotypes_ocean_basins_complex.py \
 
 ### Common Issues
 
-**1. "MAFFT not found in PATH"**
+**1. "GOaS shapefile not found"**
+```bash
+# Solution 1: Run automated download
+python -m boldgenotyper.goas_downloader
+
+# Solution 2: Use --no-geo flag to skip geographic analysis
+boldgenotyper data/input.tsv --no-geo
+
+# Solution 3: Verify GOaS path
+python -c "from boldgenotyper import config; \
+cfg = config.get_default_config(); \
+print(f'Expected GOaS location: {cfg.geographic.goas_shapefile_path}'); \
+print(f'File exists: {cfg.geographic.goas_shapefile_path.exists()}')"
+```
+
+**2. "Pipeline continues but no geographic plots"**
+- This is expected behavior when GOaS file is not found
+- Pipeline will skip geographic analysis and continue with genotyping
+- Check the log for warnings about missing GOaS file
+- Install GOaS shapefile or use `--no-geo` flag explicitly
+
+**3. "MAFFT not found in PATH"**
 ```bash
 # Check if MAFFT is installed
 conda list mafft
@@ -695,21 +898,21 @@ conda list mafft
 conda install -c bioconda mafft
 ```
 
-**2. "Column 'processid' not found"**
+**4. "Column 'processid' not found"**
 - Verify your TSV has required columns: `processid`, `species`, `nuc`
 - Check that column headers are exact (case-sensitive)
 
-**3. "No consensus sequences generated"**
+**5. "No consensus sequences generated"**
 - Check that FASTA file has sequences
 - Verify MAFFT and trimAl are working: `mafft --version`, `trimal --version`
 - Try relaxing threshold: `--threshold 0.02`
 
-**4. "Unassigned samples"**
+**6. "Unassigned samples"**
 - Lower the minimum identity: `--min-identity 0.85`
 - Check diagnostics file to see identity scores
 - Verify consensus sequences are representative
 
-**5. "Empty territory polygons"**
+**7. "Empty territory polygons"**
 - Increase buffer radius: `--territory-buffer-deg 2.0`
 - Change clip mode: `--territory-clip ocean` or `--territory-clip none`
 - Use convex hull method: `--territory-method convex`

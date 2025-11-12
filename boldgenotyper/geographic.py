@@ -207,10 +207,18 @@ def load_goas_data(shapefile_path: Union[str, Path]) -> "gpd.GeoDataFrame":
     if not shapefile_path.exists():
         raise FileNotFoundError(
             f"GOaS shapefile not found: {shapefile_path}\n\n"
-            "Please download GOaS shapefiles from:\n"
-            "https://www.fao.org/geonetwork/srv/en/main.home\n\n"
-            "Or use the setup script:\n"
-            "    python scripts/setup_goas.py --download\n"
+            "BOLDGenotyper requires the GOaS (Global Oceans and Seas) shapefile for ocean basin assignment.\n"
+            "This file is not included in the repository due to its size (~100-200 MB).\n\n"
+            "To download and set up the GOaS shapefile:\n\n"
+            "Option 1 - Automated download (recommended):\n"
+            "    python -m boldgenotyper.goas_downloader\n\n"
+            "Option 2 - Manual download:\n"
+            "    1. Download from: https://www.marineregions.org/download_file.php?name=World_Seas_IHO_v3.zip\n"
+            f"    2. Extract to: {shapefile_path.parent}\n"
+            "    3. Rename the .shp file to: goas_v01.shp\n\n"
+            "Option 3 - Skip geographic analysis:\n"
+            "    Run BOLDGenotyper with the --no-geo flag to skip ocean basin assignment\n"
+            "    and continue with genotyping and phylogeny only.\n"
         )
 
     logger.info(f"Loading GOaS shapefile from: {shapefile_path}")
