@@ -48,7 +48,6 @@ def setup_directories(base_output: Path) -> dict:
         'taxonomy': base_output / 'taxonomy',
         'geographic': base_output / 'geographic',
         'phylogenetic': base_output / 'phylogenetic',
-        'visualization': base_output / 'visualization',
         'reports': base_output / 'reports',
     }
 
@@ -106,6 +105,8 @@ def run_pipeline(
 
         # Assign ocean basins
         logger.info("1.3: Assigning ocean basins...")
+        geo_analysis_performed = False  # Track whether geographic analysis was successful
+
         if skip_geo:
             logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
             df_with_basins = df_filtered.copy()
@@ -129,6 +130,7 @@ def run_pipeline(
                     df_filtered, goas_data=goas_data, coord_col="coord"
                 )
                 logger.info(f"  ✓ Assigned ocean basins to samples")
+                geo_analysis_performed = True  # Geographic analysis was successful
             except Exception as e:
                 logger.error(f"  ✗ Failed to load GOaS data: {e}")
                 logger.warning("  Pipeline will continue without geographic analysis...")
@@ -403,36 +405,69 @@ def run_pipeline(
 
         # Generate visualizations for each format
         for fmt in cfg.visualization.figure_format:
-            # Distribution maps
-            if 'lat' in df_final.columns and 'lon' in df_final.columns:
-                try:
-                    visualization.plot_distribution_map(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
-                        genotype_column='consensus_group_sp',
-                        latitude_col='lat',
-                        longitude_col='lon'
-                    )
-                except Exception as e:
-                    logger.debug(f"Distribution map skipped: {e}")
+            # Geographic visualizations - only if geographic analysis was performed
+            if geo_analysis_performed:
+                # Distribution maps
+                if 'lat' in df_final.columns and 'lon' in df_final.columns:
+                    try:
+                        visualization.plot_distribution_map(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_map.{fmt}"),
+                            genotype_column='consensus_group_sp',
+                            latitude_col='lat',
+                            longitude_col='lon'
+                        )
+                    except Exception as e:
+                        logger.debug(f"Distribution map skipped: {e}")
 
-            # Ocean basin abundance bar plot
-            if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
-                try:
-                    visualization.plot_ocean_basin_abundance(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
-                        genotype_column='consensus_group_sp',
-                        basin_column='ocean_basin'
-                    )
-                except Exception as e:
-                    logger.debug(f"Ocean basin bar plot skipped: {e}")
+                # Ocean basin abundance bar plot
+                if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                    try:
+                        visualization.plot_ocean_basin_abundance(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_bar.{fmt}"),
+                            genotype_column='consensus_group_sp',
+                            basin_column='ocean_basin'
+                        )
+                    except Exception as e:
+                        logger.debug(f"Ocean basin bar plot skipped: {e}")
 
-            # Identity distribution
+                # Faceted distribution map by consensus_group_sp
+                if ('lat' in df_final.columns and 'lon' in df_final.columns and
+                    'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
+                    try:
+                        visualization.plot_distribution_map_faceted(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_map_faceted.{fmt}"),
+                            genotype_column='consensus_group',
+                            species_column='consensus_group_sp',
+                            latitude_col='lat',
+                            longitude_col='lon'
+                        )
+                    except Exception as e:
+                        logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
+
+                # Faceted ocean basin bar plot by consensus_group_sp
+                if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
+                    'consensus_group' in df_final.columns):
+                    try:
+                        visualization.plot_ocean_basin_abundance_faceted(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_bar_faceted.{fmt}"),
+                            genotype_column='consensus_group',
+                            species_column='consensus_group_sp',
+                            basin_column='ocean_basin'
+                        )
+                    except Exception as e:
+                        logger.debug(f"Faceted basin bar plot skipped: {e}")
+            else:
+                logger.info("  ⊘ Skipping geographic visualizations (geographic analysis not performed)")
+
+            # Identity distribution (always generated if diagnostics exist)
             if diagnostics_csv.exists():
                 visualization.plot_identity_distribution(
                     diagnostics_csv=str(diagnostics_csv),
-                    output_path=str(dirs['visualization'] / f"{organism}_identity_distribution.{fmt}"),
+                    output_path=str(dirs['assignments'] / f"{organism}_identity_distribution.{fmt}"),
                     figsize=(10, 6),
                     dpi=cfg.visualization.figure_dpi
                 )
@@ -448,7 +483,7 @@ def run_pipeline(
                     tree_to_plot = tree_path
 
                 # Load color map if it exists
-                color_map_path = dirs['visualization'] / f"{organism}_genotype_color_map.csv"
+                color_map_path = dirs['assignments'] / f"{organism}_genotype_color_map.csv"
                 genotype_colors = None
                 if color_map_path.exists():
                     color_df = pd.read_csv(color_map_path)
@@ -456,42 +491,13 @@ def run_pipeline(
 
                 visualization.plot_phylogenetic_tree(
                     tree_file=str(tree_to_plot),
-                    output_path=str(dirs['visualization'] / f"{organism}_tree.{fmt}"),
+                    output_path=str(dirs['phylogenetic'] / f"{organism}_tree.{fmt}"),
                     genotype_colors=genotype_colors,
                     show_bootstrap=True,
                     bootstrap_threshold=cfg.visualization.show_bootstrap_threshold,
                     figsize=None,  # Auto-scale based on tree size
                     dpi=cfg.visualization.figure_dpi
                 )
-
-            # Faceted distribution map by consensus_group_sp
-            if ('lat' in df_final.columns and 'lon' in df_final.columns and
-                'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
-                try:
-                    visualization.plot_distribution_map_faceted(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
-                        genotype_column='consensus_group',
-                        species_column='consensus_group_sp',
-                        latitude_col='lat',
-                        longitude_col='lon'
-                    )
-                except Exception as e:
-                    logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
-
-            # Faceted ocean basin bar plot by consensus_group_sp
-            if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
-                'consensus_group' in df_final.columns):
-                try:
-                    visualization.plot_ocean_basin_abundance_faceted(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
-                        genotype_column='consensus_group',
-                        species_column='consensus_group_sp',
-                        basin_column='ocean_basin'
-                    )
-                except Exception as e:
-                    logger.debug(f"Faceted basin bar plot skipped: {e}")
 
         logger.info(f"  ✓ Generated visualization plots")
 
