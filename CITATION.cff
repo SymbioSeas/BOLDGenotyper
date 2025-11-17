@@ -1,0 +1,76 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "BOLDGenotyper: Automated COI Sequence Genotyping and Biogeographic Analysis"
+version: 0.1.0
+date-released: "2025-11-17"
+authors:
+  - family-names: Smith
+    given-names: Steph
+    email: steph.smith@unc.edu
+    affiliation: "University of North Carolina, Institute of Marine Sciences"
+repository-code: "https://github.com/SymbioSeas/BOLDGenotyper"
+url: "https://github.com/SymbioSeas/BOLDGenotyper"
+abstract: >-
+  BOLDGenotyper is a Python package for automated COI (Cytochrome Oxidase I)
+  sequence genotyping and biogeographic analysis from BOLD (Barcode of Life
+  Database) data. The package enables researchers to identify genetic
+  partitioning patterns in any organism with publicly available COI barcode
+  sequences through sequence dereplication, genotype assignment, geographic
+  coordinate filtering, ocean basin assignment, and publication-ready
+  visualization generation.
+keywords:
+  - bioinformatics
+  - DNA barcoding
+  - COI
+  - cytochrome oxidase I
+  - genotyping
+  - phylogeography
+  - biogeography
+  - ocean basins
+  - BOLD database
+  - population genetics
+license: MIT
+preferred-citation:
+  type: software
+  title: "BOLDGenotyper: Automated COI Sequence Genotyping and Biogeographic Analysis"
+  authors:
+    - family-names: Smith
+      given-names: Steph
+      email: steph.smith@unc.edu
+  year: 2025
+  url: "https://github.com/SymbioSeas/BOLDGenotyper"
+  notes: "If a DOI is available, please use it for citation."
+references:
+  - type: article
+    title: "BOLD: The Barcode of Life Data System"
+    authors:
+      - family-names: Ratnasingham
+        given-names: Sujeevan
+      - family-names: Hebert
+        given-names: Paul D. N.
+    journal: "Molecular Ecology Notes"
+    volume: 7
+    issue: 3
+    start: 355
+    end: 364
+    year: 2007
+    doi: 10.1111/j.1471-8286.2007.01678.x
+  - type: article
+    title: "Biological identifications through DNA barcodes"
+    authors:
+      - family-names: Hebert
+        given-names: Paul D. N.
+      - family-names: Cywinska
+        given-names: Alina
+      - family-names: Ball
+        given-names: Shelley L.
+      - family-names: deWaard
+        given-names: Jeremy R.
+    journal: "Proceedings of the Royal Society B: Biological Sciences"
+    volume: 270
+    issue: 1512
+    start: 313
+    end: 321
+    year: 2003
+    doi: 10.1098/rspb.2002.2218

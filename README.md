@@ -1,5 +1,10 @@
 # BOLDGenotyper
 
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DOI](https://img.shields.io/badge/DOI-pending-lightgrey.svg)](https://zenodo.org/)
+[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/SymbioSeas/BOLDGenotyper/releases)
+
 **Automated COI sequence genotyping and biogeographic analysis from BOLD database data**
 
 BOLDGenotyper is a bioinformatics pipeline that enables researchers to identify and analyze COI (Cytochrome Oxidase I) genotypes from the BOLD (Barcode of Life Database) for any taxonomic group. The pipeline performs sequence dereplication, genotype assignment, geographic filtering, ocean basin classification, and visualization of biogeographic patterns.
@@ -18,8 +23,11 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - [Usage Guide](#usage-guide)
 - [Output Files](#output-files)
 - [Advanced Options](#advanced-options)
+- [Troubleshooting](#troubleshooting)
 - [Citation](#citation)
+- [Contributing](#contributing)
 - [License](#license)
+- [Version History](#version-history)
 
 ---
 
@@ -921,15 +929,36 @@ conda install -c bioconda mafft
 
 ## Citation
 
-If you use BOLDGenotyper in your research, please cite:
+If you use BOLDGenotyper in your research, please cite both the software and the publication:
 
-**Primary Citation**:
-```
-Smith, S. and Black, C. (2025). Ocean basin-scale genetic partitioning in Sphyrna lewini
-revealed through COI sequence analysis. [Journal TBD].
+### Software Citation
+
+```bibtex
+@software{boldgenotyper2025,
+  author = {Smith, Steph},
+  title = {BOLDGenotyper: Automated COI Sequence Genotyping and Biogeographic Analysis},
+  year = {2025},
+  version = {0.1.0},
+  url = {https://github.com/SymbioSeas/BOLDGenotyper},
+  doi = {10.5281/zenodo.XXXXXXX}
+}
 ```
 
-**Dependencies**:
+**Note**: Once published, a DOI will be assigned via Zenodo. Please use the DOI for citation when available.
+
+### Primary Publication
+
+```bibtex
+@article{smith2025ocean,
+  author = {Smith, S. and Black, C.},
+  title = {Ocean basin-scale genetic partitioning in Sphyrna lewini revealed through COI sequence analysis},
+  journal = {[Journal TBD]},
+  year = {2025},
+  note = {In preparation}
+}
+```
+
+### Key Dependencies to Cite
 
 - **BOLD Database**: Ratnasingham, S. & Hebert, P.D.N. (2007). BOLD: The Barcode of Life Data System. *Molecular Ecology Notes*, 7(3), 355-364. doi:[10.1111/j.1471-8286.2007.01678.x](https://doi.org/10.1111/j.1471-8286.2007.01678.x)
 
@@ -943,13 +972,19 @@ revealed through COI sequence analysis. [Journal TBD].
 
 ## Contributing
 
-We welcome contributions! Please:
+We welcome contributions from the community! BOLDGenotyper is open-source and benefits from user feedback, bug reports, and code contributions.
 
+**Quick Start for Contributors**:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+3. Make your changes with tests and documentation
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
+
+For detailed information on development setup, coding standards, and testing guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md) (coming soon).
+
+**Reporting Issues**: Please use [GitHub Issues](https://github.com/SymbioSeas/BOLDGenotyper/issues) to report bugs or request features.
 
 ---
 
@@ -965,9 +1000,9 @@ We welcome contributions! Please:
 
 ## License
 
-[Choose appropriate license - MIT recommended for open science tools]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+**MIT License Summary**: You are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of this software, provided that the copyright notice and permission notice are included in all copies or substantial portions of the software.
 
 ---
 
@@ -981,13 +1016,26 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Version History
 
-- **v0.1.0** (2025): Initial release with core pipeline functionality
-  - TSV to FASTA conversion
-  - Sequence clustering and consensus generation
-  - Genotype assignment
-  - Geographic visualization with ocean basins
-  - Statistical analysis framework
+### Current Release: v0.1.0 (2025-11-17)
+
+**Core Features**:
+- Complete pipeline from BOLD TSV to annotated results
+- Sequence dereplication and consensus generation
+- Genotype assignment with CIGAR-based identity
+- Geographic analysis with GOaS integration
+- Phylogenetic tree building (optional)
+- Publication-ready visualizations
+
+**For detailed version history and changelog**, see [CHANGELOG.md](CHANGELOG.md).
+
+**Planned Features** (v0.2.0 and beyond):
+- Terrestrial and freshwater organism support
+- Enhanced phylogenetic analysis
+- Performance optimizations for large datasets
+- Docker container support
 
 ---
 
 **Built with ❤️ for open science and marine conservation**
+
+**Need Help?** Check out our [documentation](https://github.com/SymbioSeas/BOLDGenotyper), file an [issue](https://github.com/SymbioSeas/BOLDGenotyper/issues), or contact steph.smith@unc.edu
