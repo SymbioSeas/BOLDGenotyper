@@ -108,6 +108,120 @@ def check_external_tools() -> Dict[str, bool]:
     return tools
 
 
+def filter_by_ungapped_length(
+    alignment: List[SeqRecord],
+    min_length: int
+) -> List[SeqRecord]:
+    """
+    Filter alignment by ungapped sequence length.
+
+    Removes sequences where the ungapped (non-gap) length is below the threshold.
+    This prevents short sequence fragments from being included in clustering.
+
+    Parameters
+    ----------
+    alignment : List[SeqRecord]
+        List of aligned sequence records
+    min_length : int
+        Minimum ungapped sequence length to retain
+
+    Returns
+    -------
+    List[SeqRecord]
+        Filtered alignment with only sequences >= min_length (ungapped)
+
+    Examples
+    --------
+    >>> from Bio.SeqRecord import SeqRecord
+    >>> from Bio.Seq import Seq
+    >>> seqs = [
+    ...     SeqRecord(Seq("ATCG--ATCG"), id="seq1"),  # 8 bp ungapped
+    ...     SeqRecord(Seq("AT----ATCG"), id="seq2"),  # 6 bp ungapped
+    ... ]
+    >>> filtered = filter_by_ungapped_length(seqs, min_length=7)
+    >>> len(filtered)
+    1
+    """
+    filtered = []
+    for record in alignment:
+        # Calculate ungapped length (remove gaps and ambiguous positions)
+        ungapped_seq = str(record.seq).replace('-', '').replace('N', '')
+        ungapped_length = len(ungapped_seq)
+
+        if ungapped_length >= min_length:
+            filtered.append(record)
+        else:
+            logger.debug(
+                f"  Filtering {record.id}: ungapped length {ungapped_length} < {min_length}"
+            )
+
+    return filtered
+
+
+def filter_consensus_by_length(
+    consensus_records: Dict[str, SeqRecord],
+    min_length_ratio: float
+) -> Dict[str, SeqRecord]:
+    """
+    Filter consensus sequences by relative length.
+
+    Removes consensus sequences that are suspiciously short compared to the median,
+    as these likely represent sequence fragments rather than true genotypes.
+
+    Parameters
+    ----------
+    consensus_records : Dict[str, SeqRecord]
+        Dictionary of consensus sequence records (id -> SeqRecord)
+    min_length_ratio : float
+        Minimum length as fraction of median (e.g., 0.75 = 75% of median)
+
+    Returns
+    -------
+    Dict[str, SeqRecord]
+        Filtered consensus records
+
+    Examples
+    --------
+    >>> consensus = {
+    ...     'c1': SeqRecord(Seq("A" * 500), id="c1"),  # Full length
+    ...     'c2': SeqRecord(Seq("A" * 490), id="c2"),  # Full length
+    ...     'c3': SeqRecord(Seq("A" * 200), id="c3"),  # Fragment
+    ... }
+    >>> filtered = filter_consensus_by_length(consensus, min_length_ratio=0.75)
+    >>> len(filtered)  # c3 removed (200 < 0.75 * 495)
+    2
+    """
+    if len(consensus_records) <= 1:
+        return consensus_records
+
+    # Calculate ungapped lengths
+    lengths = {}
+    for cons_id, record in consensus_records.items():
+        ungapped_seq = str(record.seq).replace('-', '')
+        lengths[cons_id] = len(ungapped_seq)
+
+    # Calculate median length
+    median_length = np.median(list(lengths.values()))
+    min_allowed_length = median_length * min_length_ratio
+
+    logger.debug(f"  Consensus length stats: median={median_length:.0f} bp, "
+                 f"minimum={min_allowed_length:.0f} bp (ratio={min_length_ratio})")
+
+    # Filter by length
+    filtered = {}
+    for cons_id, record in consensus_records.items():
+        if lengths[cons_id] >= min_allowed_length:
+            filtered[cons_id] = record
+        else:
+            logger.info(
+                f"  Filtering short consensus {cons_id}: "
+                f"{lengths[cons_id]} bp < {min_allowed_length:.0f} bp "
+                f"({min_length_ratio:.0%} of median)"
+            )
+
+    return filtered
+
+
 def dereplicate_from_fasta(
     input_fasta: Union[str, Path],
     output_dir: Union[str, Path],
@@ -116,7 +230,9 @@ def dereplicate_from_fasta(
     mafft_options: Optional[List[str]] = None,
     trimal_options: Optional[List[str]] = None,
     cleanup_intermediates: bool = False,
-    organism_name: Optional[str] = None
+    organism_name: Optional[str] = None,
+    min_post_trim_length: int = 300,
+    min_consensus_length_ratio: float = 0.75
     ) -> Dict[str, SeqRecord]:
     input_fasta = Path(input_fasta)
     output_dir = Path(output_dir)
@@ -141,6 +257,21 @@ def dereplicate_from_fasta(
     run_trimal_trimming(str(aligned_fasta), str(trimmed_fasta), trimal_options=trimal_options)
     # Load trimmed alignment
     alignment = list(AlignIO.read(str(trimmed_fasta), "fasta"))
+
+    # Stage 2: Post-trimming length filtering
+    # Remove sequences that became too short after trimming
+    if min_post_trim_length > 0:
+        original_count = len(alignment)
+        alignment = filter_by_ungapped_length(alignment, min_post_trim_length)
+        filtered_count = original_count - len(alignment)
+        if filtered_count > 0:
+            logger.info(f"  Filtered {filtered_count} sequences shorter than {min_post_trim_length} bp after trimming")
+            if len(alignment) == 0:
+                raise DereplicationError(
+                    f"All sequences were filtered out after trimming. "
+                    f"Consider lowering min_post_trim_length (currently {min_post_trim_length})"
+                )
+
     # Distances
     distances = calculate_pairwise_distances(alignment)
     # Cluster
@@ -153,6 +284,19 @@ def dereplicate_from_fasta(
     for cid, seqs in sorted(clusters.items()):
         cons = generate_consensus(seqs, cid, frequency_cutoff=frequency_cutoff)
         consensus_records[cons.id] = cons
+
+    # Stage 3: Consensus length filtering
+    # Remove consensus sequences that are suspiciously short compared to median
+    if min_consensus_length_ratio > 0 and len(consensus_records) > 1:
+        original_count = len(consensus_records)
+        consensus_records = filter_consensus_by_length(
+            consensus_records,
+            min_consensus_length_ratio
+        )
+        filtered_count = original_count - len(consensus_records)
+        if filtered_count > 0:
+            logger.info(f"  Filtered {filtered_count} consensus sequences with length <{min_consensus_length_ratio:.0%} of median")
+
     SeqIO.write(consensus_records.values(), str(consensus_fasta), "fasta")
 
     if cleanup_intermediates:

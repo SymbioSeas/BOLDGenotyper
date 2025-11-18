@@ -102,16 +102,31 @@ class DereplicationConfig:
         trimAl automated method (default: "automated1")
 
     min_sequence_length : int
-        Minimum sequence length to include (default: 400 bp)
+        Minimum sequence length to include before alignment (default: 400 bp)
 
     max_n_content : float
         Maximum fraction of ambiguous bases (N) allowed (default: 0.1 = 10%)
+
+    min_post_trim_length : int
+        Minimum ungapped sequence length after trimming (default: 300 bp)
+        Sequences that become too short after trimAl are removed before clustering
+        to prevent fragment-based spurious genotypes.
+
+    min_consensus_length_ratio : float
+        Minimum consensus length as fraction of median consensus length (default: 0.75)
+        Consensus sequences shorter than this ratio relative to the median are filtered out.
+        Set to 0.0 to disable consensus length filtering.
 
     Notes
     -----
     The default clustering threshold of 0.01 (99% identity) is based on:
     - Hebert et al. (2003) "Biological identifications through DNA barcodes"
     - Standard practice for COI barcode gap analysis
+
+    Three-stage length filtering prevents fragment-based spurious genotypes:
+    1. Pre-alignment: Remove sequences <400bp (configurable)
+    2. Post-trimming: Remove sequences <300bp ungapped after trimAl
+    3. Post-consensus: Remove consensus sequences <75% of median length
     """
     clustering_threshold: float = 0.01
     clustering_method: str = "average"
@@ -121,6 +136,8 @@ class DereplicationConfig:
     trimal_method: str = "automated1"
     min_sequence_length: int = 400
     max_n_content: float = 0.1
+    min_post_trim_length: int = 300
+    min_consensus_length_ratio: float = 0.75
 
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -132,6 +149,15 @@ class DereplicationConfig:
             raise ValueError(f"Invalid clustering_method: {self.clustering_method}")
         if self.min_sequence_length < 100:
             raise ValueError("min_sequence_length must be at least 100")
+        if self.min_post_trim_length < 100:
+            raise ValueError("min_post_trim_length must be at least 100")
+        if not 0 <= self.min_consensus_length_ratio <= 1:
+            raise ValueError("min_consensus_length_ratio must be between 0 and 1")
+        if self.min_post_trim_length > self.min_sequence_length:
+            logger.warning(
+                f"min_post_trim_length ({self.min_post_trim_length}) is greater than "
+                f"min_sequence_length ({self.min_sequence_length}). This is unusual but allowed."
+            )
 
 
 # ============================================================================
