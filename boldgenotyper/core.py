@@ -292,6 +292,7 @@ def run_pipeline(
 
         # Generate FASTA from sequences
         logger.info("2.1: Generating FASTA from sequences...")
+        logger.info(f"  Minimum sequence length: {cfg.dereplication.min_sequence_length} bp")
         fasta_records = []
         skipped = 0
 
@@ -303,7 +304,10 @@ def run_pipeline(
                 skipped += 1
                 continue
 
-            is_valid, reason = utils.validate_sequence(sequence, min_length=100)
+            is_valid, reason = utils.validate_sequence(
+                sequence,
+                min_length=cfg.dereplication.min_sequence_length
+            )
             if is_valid:
                 fasta_records.append((header, sequence))
             else:
@@ -324,7 +328,9 @@ def run_pipeline(
             input_fasta=str(fasta_path),
             output_dir=str(dirs['dereplication']),
             threshold=cfg.dereplication.clustering_threshold,
-            frequency_cutoff=cfg.dereplication.consensus_frequency_cutoff
+            frequency_cutoff=cfg.dereplication.consensus_frequency_cutoff,
+            min_post_trim_length=cfg.dereplication.min_post_trim_length,
+            min_consensus_length_ratio=cfg.dereplication.min_consensus_length_ratio
         )
         results['n_genotypes'] = len(consensus_records)
         logger.info(f"  ✓ Identified {len(consensus_records)} consensus genotypes")

@@ -10,6 +10,7 @@ Author: Steph Smith (steph.smith@unc.edu)
 
 import argparse
 import sys
+import os
 import logging
 from pathlib import Path
 from typing import Optional
@@ -37,16 +38,44 @@ def extract_organism_from_path(path: Path) -> str:
     return parts[0].capitalize()
 
 
+def remove_empty_directories(base_path: Path) -> None:
+    """
+    Remove empty directories recursively, starting from leaf directories.
+
+    Parameters
+    ----------
+    base_path : Path
+        Base directory to scan for empty subdirectories
+    """
+    # Walk bottom-up to remove leaf directories first
+    for dirpath, dirnames, filenames in os.walk(base_path, topdown=False):
+        dir_path = Path(dirpath)
+
+        # Skip the base directory itself
+        if dir_path == base_path:
+            continue
+
+        # Check if directory is empty (no files and no subdirectories)
+        try:
+            if not any(dir_path.iterdir()):
+                dir_path.rmdir()
+                logger.debug(f"Removed empty directory: {dir_path}")
+        except OSError:
+            # Directory not empty or can't be removed
+            pass
+
+
 def setup_directories(base_output: Path) -> dict:
     """Create organized output directory structure."""
     dirs = {
         'base': base_output,
         'intermediate': base_output / 'intermediate',
         'dereplication': base_output / 'intermediate' / 'dereplication',
-        'consensus': base_output / 'consensus_sequences',
+        'intermediate_phylo': base_output / 'intermediate' / 'phylogenetic',
+        'intermediate_assignments': base_output / 'intermediate' / 'genotype_assignments',
+        'intermediate_geographic': base_output / 'intermediate' / 'geographic',
         'assignments': base_output / 'genotype_assignments',
         'taxonomy': base_output / 'taxonomy',
-        'geographic': base_output / 'geographic',
         'phylogenetic': base_output / 'phylogenetic',
         'visualization': base_output / 'visualization',
         'reports': base_output / 'reports',
@@ -116,7 +145,7 @@ def run_pipeline(
             df_with_basins = df_filtered.copy()
             df_with_basins['ocean_basin'] = 'Unknown'
 
-        basins_tsv = dirs['geographic'] / "samples_with_ocean_basins.tsv"
+        basins_tsv = dirs['intermediate_geographic'] / "samples_with_ocean_basins.tsv"
         df_with_basins.to_csv(basins_tsv, sep='\t', index=False)
 
     except Exception as e:
@@ -133,8 +162,10 @@ def run_pipeline(
     try:
         # Generate FASTA
         logger.info("2.1: Generating FASTA from sequences...")
+        logger.info(f"  Minimum sequence length: {cfg.dereplication.min_sequence_length} bp")
         fasta_records = []
         skipped_count = 0
+        skipped_reasons = {}
         for _, row in df_filtered.iterrows():
             header = f"{organism}_{row['processid']}.COI-5P"
             sequence = row['nuc']
@@ -142,16 +173,23 @@ def run_pipeline(
             # Skip if sequence is missing or not a string
             if not isinstance(sequence, str) or not sequence.strip():
                 skipped_count += 1
+                skipped_reasons['missing_or_empty'] = skipped_reasons.get('missing_or_empty', 0) + 1
                 continue
 
-            is_valid, reason = utils.validate_sequence(sequence, min_length=100)
+            is_valid, reason = utils.validate_sequence(
+                sequence,
+                min_length=cfg.dereplication.min_sequence_length
+            )
             if is_valid:
                 fasta_records.append((header, sequence))
             else:
                 skipped_count += 1
+                skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
 
         if skipped_count > 0:
             logger.warning(f"  ⚠ Skipped {skipped_count} samples with missing or invalid sequences")
+            for reason, count in skipped_reasons.items():
+                logger.debug(f"    - {reason}: {count}")
 
         fasta_path = dirs['intermediate'] / f"{organism}.fasta"
         utils.write_fasta(fasta_records, fasta_path)
@@ -163,16 +201,14 @@ def run_pipeline(
             input_fasta=str(fasta_path),
             output_dir=str(dirs['dereplication']),
             threshold=cfg.dereplication.clustering_threshold,
-            frequency_cutoff=cfg.dereplication.consensus_frequency_cutoff
+            frequency_cutoff=cfg.dereplication.consensus_frequency_cutoff,
+            min_post_trim_length=cfg.dereplication.min_post_trim_length,
+            min_consensus_length_ratio=cfg.dereplication.min_consensus_length_ratio
         )
         logger.info(f"  ✓ Identified {len(consensus_records)} unique genotypes")
 
-        # Save consensus sequences
-        consensus_path = dirs['consensus'] / f"{organism}_consensus.fasta"
-        utils.write_fasta(
-            [(rec.id, str(rec.seq)) for rec in consensus_records.values()],
-            consensus_path
-        )
+        # Consensus sequences are saved in intermediate/dereplication/
+        consensus_path = dirs['dereplication'] / f"{organism}_consensus.fasta"
 
     except Exception as e:
         logger.error(f"Phase 2 failed: {e}", exc_info=True)
@@ -187,7 +223,7 @@ def run_pipeline(
 
     try:
         logger.info("3.1: Assigning samples to genotypes...")
-        annotated_tsv = dirs['assignments'] / f"{organism}_with_genotypes.tsv"
+        annotated_tsv = dirs['intermediate_assignments'] / f"{organism}_with_genotypes.tsv"
         diagnostics_csv = dirs['assignments'] / f"{organism}_diagnostics.csv"
 
         stats = genotype_assignment.assign_genotypes(
@@ -328,13 +364,21 @@ def run_pipeline(
                 logger.warning("  ⚠ FastTree not found, skipping tree building")
             else:
                 # Build phylogenetic tree
+                # Save alignment files to intermediate, tree files to final phylogenetic directory
+                intermediate_prefix = dirs['intermediate_phylo'] / organism
                 output_prefix = dirs['phylogenetic'] / organism
+
                 tree = phylogenetics.build_phylogeny(
                     consensus_fasta=str(consensus_path),
-                    output_prefix=str(output_prefix),
+                    output_prefix=str(intermediate_prefix),
                     threads=cfg.n_threads
                 )
+
+                # Move tree files from intermediate to final directory
+                intermediate_tree = f"{intermediate_prefix}_tree.nwk"
                 tree_path = f"{output_prefix}_tree.nwk"
+                if Path(intermediate_tree).exists():
+                    Path(intermediate_tree).rename(tree_path)
 
                 # Verify tree file was actually created
                 if tree is not None and Path(tree_path).exists():
@@ -343,12 +387,12 @@ def run_pipeline(
                     # Create relabeled versions with consensus_group_sp labels
                     logger.info("5.2: Creating relabeled tree and alignment files...")
                     try:
-                        alignment_path = f"{output_prefix}_aligned.fasta"
+                        alignment_path = f"{intermediate_prefix}_aligned.fasta"
                         taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_consensus_taxonomy.csv"
 
                         if Path(alignment_path).exists() and taxonomy_csv_path.exists():
                             relabeled_tree_path = f"{output_prefix}_tree_relabeled.nwk"
-                            relabeled_alignment_path = f"{output_prefix}_aligned_relabeled.fasta"
+                            relabeled_alignment_path = f"{intermediate_prefix}_aligned_relabeled.fasta"
 
                             phylogenetics.relabel_tree_and_alignment(
                                 tree_file=tree_path,
@@ -358,7 +402,7 @@ def run_pipeline(
                                 output_alignment=relabeled_alignment_path
                             )
                             logger.info(f"  ✓ Created relabeled tree: {relabeled_tree_path}")
-                            logger.info(f"  ✓ Created relabeled alignment: {relabeled_alignment_path}")
+                            logger.info(f"  ✓ Created relabeled alignment (intermediate): {relabeled_alignment_path}")
                         else:
                             logger.warning("  ⚠ Skipping relabeling: alignment or taxonomy file not found")
                     except Exception as e:
@@ -503,6 +547,17 @@ def run_pipeline(
 
     except Exception as e:
         logger.warning(f"Report generation failed (non-critical): {e}")
+
+    # ========================================================================
+    # Cleanup: Remove Empty Directories
+    # ========================================================================
+    logger.info("")
+    logger.info("Cleaning up empty directories...")
+    try:
+        remove_empty_directories(output_dir)
+        logger.info("  ✓ Removed empty directories")
+    except Exception as e:
+        logger.debug(f"Directory cleanup encountered minor issues: {e}")
 
     # ========================================================================
     # Pipeline Complete
