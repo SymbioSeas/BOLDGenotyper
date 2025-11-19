@@ -186,7 +186,7 @@ class TestConsensusGeneration(unittest.TestCase):
         ]
         consensus = dereplication.generate_consensus(sequences, cluster_id=1)
         self.assertEqual(str(consensus.seq), "ACGT")
-        self.assertEqual(consensus.id, "consensus_c1_n3")
+        self.assertEqual(consensus.id, "consensus_c1")
 
     def test_generate_consensus_majority_rule(self):
         """Test majority rule consensus calling."""
@@ -275,9 +275,9 @@ class TestConsensusGeneration(unittest.TestCase):
         """Test consensus sequence naming convention."""
         sequences = [SeqRecord(Seq("ACGT"), id=f"seq{i}") for i in range(5)]
         consensus = dereplication.generate_consensus(sequences, cluster_id=42)
-        self.assertEqual(consensus.id, "consensus_c42_n5")
+        self.assertEqual(consensus.id, "consensus_c42")
         self.assertIn("cluster 42", consensus.description)
-        self.assertIn("5 sequences", consensus.description)
+        self.assertIn("5 reference sequences", consensus.description)
 
 
 class TestClustering(unittest.TestCase):
@@ -647,7 +647,7 @@ class TestEdgeCases(unittest.TestCase):
         sequences = [SeqRecord(Seq("ACGT"), id="seq1")]
         consensus = dereplication.generate_consensus(sequences, cluster_id=1)
         self.assertEqual(str(consensus.seq), "ACGT")
-        self.assertEqual(consensus.id, "consensus_c1_n1")
+        self.assertEqual(consensus.id, "consensus_c1")
 
     def test_distance_calculation_two_sequences(self):
         """Test distance calculation with minimum number of sequences."""

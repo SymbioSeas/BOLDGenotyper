@@ -567,7 +567,9 @@ def find_best_consensus_match(
     consensus_groups: List[Tuple[str, str]],
     min_identity: float = 0.90,
     use_edlib: bool = True,
-    identity_method: str = "target_based"
+    identity_method: str = "target_based",
+    tie_margin: float = 0.003,
+    tie_min_identity: float = 0.95,
 ) -> Dict[str, Any]:
     """
     Find best matching consensus group for a sequence.
@@ -590,6 +592,10 @@ def find_best_consensus_match(
         Use edlib if available (default: True)
     identity_method : str, optional
         Identity calculation method: "target_based" or "classic" (default: "target_based")
+    tie_margin : float, optional
+        Maximum allowed difference between best and runner-up identity to be considered a tie (default: 0.003 = 0.3%).
+    tie_min_identity : float, optional
+        Minimum best-identity required before we even consider calling a tie (default: 0.95).
 
     Returns
     -------
@@ -665,12 +671,17 @@ def find_best_consensus_match(
 
     # Detect ties (best and runner-up are very close)
     is_tie = False
-    if runner_up_identity > 0 and (best_identity - runner_up_identity) < 0.01:
+    if (
+        best_group is not None
+        and runner_up_identity > 0
+        and best_identity >= tie_min_identity
+        and (best_identity - runner_up_identity) < tie_margin
+    ):
         is_tie = True
 
     # Detect low-confidence assignments (barely above threshold)
     is_low_confidence = False
-    if best_group is not None and best_identity < (min_identity + 0.05):
+    if best_group is not None and best_identity < (min_identity + 0.03):
         is_low_confidence = True
 
     # Calculate length discrepancy
@@ -701,7 +712,9 @@ def _assignment_worker(
     consensus_groups: List[Tuple[str, str]],
     min_identity: float,
     use_edlib: bool,
-    identity_method: str = "target_based"
+    identity_method: str = "target_based",
+    tie_margin: float = 0.003,
+    tie_min_identity: float = 0.95,
 ) -> Dict[str, Any]:
     """
     Worker function for parallel genotype assignment.
@@ -718,6 +731,11 @@ def _assignment_worker(
         Whether to use edlib
     identity_method : str, optional
         Identity calculation method (default: "target_based")
+    tie_margin : float, optional
+        Maximum allowed difference between best and runner-up identity to be considered a tie.
+    tie_min_identity : float, optional
+        Minimum best-identity required before we consider calling a tie.
+
 
     Returns
     -------
@@ -751,7 +769,13 @@ def _assignment_worker(
 
     # Find best match
     result = find_best_consensus_match(
-        sequence, consensus_groups, min_identity, use_edlib, identity_method
+        sequence=sequence,
+        consensus_groups=consensus_groups,
+        min_identity=min_identity,
+        use_edlib=use_edlib,
+        identity_method=identity_method,
+        tie_margin=tie_margin,
+        tie_min_identity=tie_min_identity,
     )
 
     # Add processid and status
@@ -806,7 +830,9 @@ def assign_genotypes(
     min_identity: float = 0.90,
     n_processes: int = 1,
     diagnostics_path: Optional[str] = None,
-    identity_method: str = "target_based"
+    identity_method: str = "target_based",
+    tie_margin: float = 0.003,
+    tie_min_identity: float = 0.95,
 ) -> Dict[str, Any]:
     """
     Assign genotype groups to sequences based on consensus matching.
@@ -838,6 +864,11 @@ def assign_genotypes(
         Identity calculation method: "target_based" or "classic" (default: "target_based")
         - "target_based": matches / consensus_length (robust to length differences)
         - "classic": 1 - (edit_distance / max_length) (backwards compatibility)
+    tie_margin : float, optional
+        Maximum allowed difference between best and runner-up identity to be considered a tie (default: 0.003 = 0.3%).
+    tie_min_identity : float, optional
+        Minimum best-identity required before we consider calling a tie (default: 0.95).
+
 
     Returns
     -------
@@ -971,13 +1002,16 @@ def assign_genotypes(
     # Step 5: Perform parallel assignment
     logger.info(f"Step 5/6: Assigning genotypes (using {n_processes} processes)")
     logger.info(f"Identity calculation method: {identity_method}")
+    logger.info(f"Tie margin: {tie_margin}, tie_min_identity: {tie_min_identity}")
 
     worker_func = partial(
         _assignment_worker,
         consensus_groups=consensus_groups,
         min_identity=min_identity,
         use_edlib=use_edlib,
-        identity_method=identity_method
+        identity_method=identity_method,
+        tie_margin=tie_margin,
+        tie_min_identity=tie_min_identity,
     )
 
     if n_processes > 1:
@@ -998,6 +1032,34 @@ def assign_genotypes(
 
     # Add consensus_group column to metadata
     metadata_df['consensus_group'] = metadata_df['processid'].map(processid_to_group)
+
+    # Count samples assigned to each consensus group
+    # Filter out None values (unassigned samples)
+    assigned_groups = metadata_df[metadata_df['consensus_group'].notna()]['consensus_group']
+    group_counts = assigned_groups.value_counts().to_dict()
+
+    # Create mapping from old names (consensus_cX) to new names (consensus_cX_nZ)
+    # where Z = number of samples assigned to that group
+    old_to_new_names = {}
+    for group, count in group_counts.items():
+        # group is like "consensus_c7" and count is number of samples
+        new_name = f"{group}_n{count}"
+        old_to_new_names[group] = new_name
+        logger.debug(f"Renaming {group} to {new_name} ({count} samples assigned)")
+
+    # Update consensus group names in metadata
+    metadata_df['consensus_group'] = metadata_df['consensus_group'].map(
+        lambda x: old_to_new_names.get(x, x) if pd.notna(x) else x
+    )
+
+    # Update consensus group names in results list for diagnostics
+    for result in results:
+        if result['consensus_group'] is not None:
+            result['consensus_group'] = old_to_new_names.get(result['consensus_group'], result['consensus_group'])
+        if result['runner_up_group'] is not None:
+            result['runner_up_group'] = old_to_new_names.get(result['runner_up_group'], result['runner_up_group'])
+
+    logger.info(f"Renamed {len(old_to_new_names)} consensus groups with sample counts (_nZ suffix)")
 
     # Write updated metadata
     metadata_df.to_csv(output_path, sep='\t', index=False)

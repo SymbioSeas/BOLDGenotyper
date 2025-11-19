@@ -438,12 +438,32 @@ class VisualizationConfig:
     show_bootstrap_threshold : int
         Minimum bootstrap value to display on trees (default: 70)
 
+    facet_by : str
+        Faceting mode for multi-panel plots (default: "species")
+        Options: "species" or "genotype"
+        - "species": One facet per species, multiple genotypes per facet (reduces file size)
+        - "genotype": One facet per genotype (more granular)
+
+    map_buffer_degrees : float
+        Buffer margin in degrees for faceted map zoom (default: 20.0)
+        Extends map bounds beyond data points for geographic context.
+        Automatically constrained to valid lat/lon ranges [-90,90] × [-180,180]
+
+    show_unknown_geography_annotation : bool
+        Show count of samples without coordinates on faceted maps (default: True)
+
+    show_scale_bar : bool
+        Show scale bar indicating point size → sample count on maps (default: True)
+
     Notes
     -----
     Reference colors are chosen for consistency with the original analysis:
     - Purple (#9D7ABE)
     - Teal (#5AB4AC)
     - Yellow (#F2CC8F)
+
+    Faceting by species significantly reduces output file sizes while maintaining
+    all information (e.g., 2 species with 5 genotypes each = 2 facets, not 10).
     """
     color_palette: str = "colorblind"
     reference_colors: List[str] = field(default_factory=lambda: [
@@ -459,6 +479,10 @@ class VisualizationConfig:
     font_family: str = "sans-serif"
     font_size: int = 11
     show_bootstrap_threshold: int = 70
+    facet_by: str = "species"
+    map_buffer_degrees: float = 20.0
+    show_unknown_geography_annotation: bool = True
+    show_scale_bar: bool = True
 
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -466,6 +490,15 @@ class VisualizationConfig:
             raise ValueError("figure_dpi must be at least 72")
         if self.font_size < 6:
             raise ValueError("font_size must be at least 6")
+        if self.facet_by not in ["species", "genotype"]:
+            raise ValueError("facet_by must be 'species' or 'genotype'")
+        if self.map_buffer_degrees < 0:
+            raise ValueError("map_buffer_degrees must be non-negative")
+        if self.map_buffer_degrees > 90:
+            logger.warning(
+                f"map_buffer_degrees ({self.map_buffer_degrees}) is very large. "
+                "This may result in overly zoomed-out maps."
+            )
 
 
 # ============================================================================

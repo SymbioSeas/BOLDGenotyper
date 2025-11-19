@@ -64,6 +64,7 @@ Author: Steph Smith (steph.smith@unc.edu)
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import logging
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -77,6 +78,50 @@ logger = logging.getLogger(__name__)
 
 # Define reference color palette
 REFERENCE_COLORS = ['#9D7ABE', '#5AB4AC', '#F2CC8F']
+
+
+def calculate_map_extent_with_buffer(
+    latitudes: pd.Series,
+    longitudes: pd.Series,
+    buffer_degrees: float = 20.0
+) -> Tuple[float, float, float, float]:
+    """
+    Calculate map extent with buffer, constrained to valid lat/lon ranges.
+
+    Adds buffer around data extent while ensuring bounds don't exceed
+    valid geographic coordinates.
+
+    Parameters
+    ----------
+    latitudes : pd.Series
+        Latitude values
+    longitudes : pd.Series
+        Longitude values
+    buffer_degrees : float, optional
+        Buffer margin in degrees (default: 20.0)
+
+    Returns
+    -------
+    lon_min, lon_max, lat_min, lat_max : floats
+        Map extent constrained to [-180, 180] × [-90, 90]
+
+    Examples
+    --------
+    >>> lats = pd.Series([10, 20, 30])
+    >>> lons = pd.Series([-100, -90, -80])
+    >>> calculate_map_extent_with_buffer(lats, lons, buffer_degrees=10)
+    (-110.0, -70.0, 0.0, 40.0)
+    """
+    lat_min, lat_max = latitudes.min(), latitudes.max()
+    lon_min, lon_max = longitudes.min(), longitudes.max()
+
+    # Add buffer
+    lat_min = max(-90, lat_min - buffer_degrees)
+    lat_max = min(90, lat_max + buffer_degrees)
+    lon_min = max(-180, lon_min - buffer_degrees)
+    lon_max = min(180, lon_max + buffer_degrees)
+
+    return lon_min, lon_max, lat_min, lat_max
 
 
 def get_genotype_colors(n_genotypes: int) -> List[str]:
@@ -325,7 +370,90 @@ def plot_ocean_basin_abundance(
         plt.savefig(out, bbox_inches="tight")
     plt.close()
 
-    pass
+    logger.info(f"Saved ocean basin abundance (relative) plot: {out}")
+
+
+def plot_ocean_basin_abundance_total(
+    df: pd.DataFrame,
+    output_path: str,
+    genotype_column: str = "consensus_group",
+    basin_column: str = "ocean_basin",
+    figsize: Tuple[int, int] = (10, 6),
+    dpi: int = 300,
+) -> None:
+    """
+    Create stacked bar chart showing total genotype counts by ocean basin.
+
+    Similar to plot_ocean_basin_abundance() but shows absolute counts
+    instead of relative abundance (proportions).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Metadata with genotype and ocean basin assignments
+    output_path : str
+        Path for output figure (PNG or PDF)
+    genotype_column : str, optional
+        Column containing genotype assignments
+    basin_column : str, optional
+        Column containing ocean basin names
+    figsize : Tuple[int, int], optional
+        Figure size in inches (default: 10x6)
+    dpi : int, optional
+        Resolution for PNG output (default: 300)
+    """
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    need = [genotype_column, basin_column]
+    for c in need:
+        if c not in df.columns:
+            raise ValueError(f"Column '{c}' not found in dataframe")
+    d = df.copy()
+    d[basin_column] = d[basin_column].fillna("Unknown")
+    d[genotype_column] = d[genotype_column].fillna("Unassigned")
+
+    # Total counts by basin and genotype (no proportion calculation)
+    counts = (
+        d.groupby([basin_column, genotype_column]).size().rename("n").reset_index()
+    )
+
+    basins = counts[basin_column].unique().tolist()
+    genos  = counts[genotype_column].unique().tolist()
+    colors = get_genotype_colors(len(genos))
+    color_map = {g: colors[i] for i, g in enumerate(genos)}
+    label_map = {}
+    if "consensus_group" in df.columns and "consensus_group_sp" in df.columns:
+        tmp = df[["consensus_group", "consensus_group_sp"]].dropna().drop_duplicates()
+        label_map = dict(zip(tmp["consensus_group"], tmp["consensus_group_sp"]))
+
+    # Pivot to stacked counts (not proportions)
+    wide = counts.pivot(index=basin_column, columns=genotype_column, values="n").fillna(0)
+    wide = wide.reindex(index=sorted(wide.index))  # sort basins
+    wide = wide[[g for g in genos if g in wide.columns]]
+
+    plt.figure(figsize=figsize)
+    ax = plt.gca()
+    bottom = None
+    for g in wide.columns:
+        vals = wide[g].values
+        ax.bar(wide.index, vals, bottom=bottom, label=str(g), color=color_map[g])
+        bottom = vals if bottom is None else bottom + vals
+
+    ax.set_ylabel("Total sample count")
+    ax.set_xlabel("Ocean basin")
+    # Don't set ylim to 1.0 - let it auto-scale based on counts
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v)}"))
+    ax.legend(title="Genotype", bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False)
+    plt.xticks(rotation=20, ha="right")
+    plt.tight_layout()
+    if out.suffix.lower() == ".png":
+        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.savefig(out, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved ocean basin abundance (total counts) plot: {out}")
 
 
 def plot_distribution_map_faceted(
@@ -336,14 +464,18 @@ def plot_distribution_map_faceted(
     latitude_col: str = "latitude",
     longitude_col: str = "longitude",
     width: int = 10,
-    height_per_species: int = 5,
+    height_per_facet: int = 5,
     dpi: int = 300,
+    facet_by: str = "species",
+    map_buffer_degrees: float = 20.0,
+    show_unknown_annotation: bool = True,
+    show_scale_bar: bool = True,
 ) -> None:
     """
-    Create distribution map with separate facets for each species.
+    Create distribution map with separate facets.
 
-    Each facet shows genotypes for a single species, stacked vertically
-    in a single column. Species labels are italicized. Point sizes are
+    Facets can be created by species (fewer facets, multiple genotypes per facet)
+    or by genotype (more facets, one genotype per facet). Point sizes are
     scaled by the number of samples at each location.
 
     Parameters
@@ -355,23 +487,45 @@ def plot_distribution_map_faceted(
     genotype_column : str, optional
         Column containing genotype assignments
     species_column : str, optional
-        Column containing species assignments for faceting
+        Column containing species assignments
     latitude_col : str, optional
         Column containing latitude values
     longitude_col : str, optional
         Column containing longitude values
     width : int, optional
         Figure width in inches (default: 10)
-    height_per_species : int, optional
-        Height per species facet in inches (default: 5)
+    height_per_facet : int, optional
+        Height per facet in inches (default: 5)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+    facet_by : str, optional
+        Faceting mode: "species" or "genotype" (default: "species")
+        - "species": One facet per species, multiple genotypes per facet (fewer facets)
+        - "genotype": One facet per genotype
+    map_buffer_degrees : float, optional
+        Buffer margin in degrees for map zoom (default: 20.0)
+    show_unknown_annotation : bool, optional
+        Show count of samples without coordinates (default: True)
+    show_scale_bar : bool, optional
+        Show scale bar for point sizes (default: True)
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    # Validate required columns
-    need = [genotype_column, species_column, latitude_col, longitude_col]
+    # Validate facet_by parameter
+    if facet_by not in ["species", "genotype"]:
+        raise ValueError(f"facet_by must be 'species' or 'genotype', got '{facet_by}'")
+
+    # Validate required columns based on facet_by
+    if facet_by == "species":
+        need = [genotype_column, species_column, latitude_col, longitude_col]
+        facet_col = species_column
+        color_col = genotype_column
+    else:  # facet_by == "genotype"
+        need = [genotype_column, latitude_col, longitude_col]
+        facet_col = genotype_column
+        color_col = genotype_column
+
     for c in need:
         if c not in df.columns:
             raise ValueError(f"Column '{c}' not found in dataframe")
@@ -380,20 +534,22 @@ def plot_distribution_map_faceted(
     total_samples = len(df)
     samples_with_coords = df[[latitude_col, longitude_col]].notna().all(axis=1).sum()
     samples_with_genotype = df[genotype_column].notna().sum()
-    samples_with_species = df[species_column].notna().sum()
 
-    # Filter to valid rows
-    d = df.dropna(subset=[genotype_column, species_column, latitude_col, longitude_col]).copy()
+    # Filter to valid rows - require coordinates and genotype at minimum
+    required_cols = [genotype_column, latitude_col, longitude_col]
+    if facet_by == "species":
+        required_cols.append(species_column)
+
+    d = df.dropna(subset=required_cols).copy()
     samples_with_all = len(d)
 
     if d.empty or samples_with_all < 5:
         msg = (
-            f"Insufficient data for faceted distribution map (need at least 5 samples with coordinates, genotypes, and species). "
+            f"Insufficient data for faceted distribution map (need at least 5 samples with coordinates and {facet_by}). "
             f"Total samples: {total_samples}, "
             f"with coordinates: {samples_with_coords} ({samples_with_coords/total_samples*100:.1f}%), "
             f"with genotypes: {samples_with_genotype} ({samples_with_genotype/total_samples*100:.1f}%), "
-            f"with species: {samples_with_species} ({samples_with_species/total_samples*100:.1f}%), "
-            f"with ALL: {samples_with_all} ({samples_with_all/total_samples*100:.1f}%). "
+            f"with ALL required: {samples_with_all} ({samples_with_all/total_samples*100:.1f}%). "
             f"Skipping faceted map generation for: {output_path}"
         )
         logger.warning(msg)
@@ -401,14 +557,17 @@ def plot_distribution_map_faceted(
         return
 
     # Count samples at each location for sizing
-    d['_count'] = d.groupby([latitude_col, longitude_col, genotype_column, species_column])[genotype_column].transform('count')
+    grouping_cols = [latitude_col, longitude_col, genotype_column]
+    if facet_by == "species":
+        grouping_cols.append(species_column)
+    d['_count'] = d.groupby(grouping_cols)[genotype_column].transform('count')
 
-    # Get unique species (sorted)
-    species_list = sorted(d[species_column].unique())
-    n_species = len(species_list)
+    # Get unique facet groups (sorted)
+    facet_list = sorted(d[facet_col].unique())
+    n_facets = len(facet_list)
 
-    if n_species == 0:
-        logger.warning("No species found; skipping faceted map.")
+    if n_facets == 0:
+        logger.warning(f"No {facet_by} found; skipping faceted map.")
         return
 
     # Get all genotypes and assign consistent colors
@@ -425,29 +584,37 @@ def plot_distribution_map_faceted(
         logger.warning("Cartopy unavailable; drawing faceted maps without basemap.")
 
     # Create figure with cartopy projection for each subplot
-    logger.info(f"Creating faceted distribution map with {'cartopy' if use_cartopy else 'simple'} backgrounds")
-    fig_height = height_per_species * n_species
+    logger.info(f"Creating faceted distribution map with {'cartopy' if use_cartopy else 'simple'} backgrounds, "
+                f"faceting by {facet_by}")
+    fig_height = height_per_facet * n_facets
     fig = plt.figure(figsize=(width, fig_height))
 
     axes = []
-    for i in range(n_species):
+    for i in range(n_facets):
         if use_cartopy:
-            ax = fig.add_subplot(n_species, 1, i + 1, projection=ccrs.PlateCarree())
+            ax = fig.add_subplot(n_facets, 1, i + 1, projection=ccrs.PlateCarree())
         else:
-            ax = fig.add_subplot(n_species, 1, i + 1)
+            ax = fig.add_subplot(n_facets, 1, i + 1)
         axes.append(ax)
 
-    for idx, species in enumerate(species_list):
+    for idx, facet_value in enumerate(facet_list):
         ax = axes[idx]
-        species_data = d[d[species_column] == species].copy()
-        species_genotypes = sorted(species_data[genotype_column].unique())
+        facet_data = d[d[facet_col] == facet_value].copy()
+        facet_genotypes = sorted(facet_data[genotype_column].unique())
 
-        # Scale point sizes for this species
+        # Scale point sizes for this facet
         min_size, max_size = 20, 200
-        if species_data['_count'].max() > 1:
-            species_data['_size'] = min_size + (species_data['_count'] - species_data['_count'].min()) / (species_data['_count'].max() - species_data['_count'].min()) * (max_size - min_size)
+        if facet_data['_count'].max() > 1:
+            facet_data['_size'] = min_size + (facet_data['_count'] - facet_data['_count'].min()) / (facet_data['_count'].max() - facet_data['_count'].min()) * (max_size - min_size)
         else:
-            species_data['_size'] = 50
+            facet_data['_size'] = 50
+
+        # Calculate map extent with buffer
+        lon_min, lon_max, lat_min, lat_max = calculate_map_extent_with_buffer(
+            facet_data[latitude_col],
+            facet_data[longitude_col],
+            buffer_degrees=map_buffer_degrees
+        )
 
         if use_cartopy:
             # Add cartopy map features
@@ -459,6 +626,9 @@ def plot_distribution_map_faceted(
                 ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
                 ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
 
+            # Set extent with buffer
+            ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
             # Add gridlines with labels
             gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, linestyle='--')
             gl.top_labels = False
@@ -467,33 +637,92 @@ def plot_distribution_map_faceted(
             gl.ylabel_style = {'size': 10}
 
             # Plot scatter points for each genotype with transform
-            for g in species_genotypes:
-                sub = species_data[species_data[genotype_column] == g]
+            for g in facet_genotypes:
+                sub = facet_data[facet_data[genotype_column] == g]
                 if len(sub) > 0:
                     ax.scatter(
                         sub[longitude_col], sub[latitude_col],
                         transform=ccrs.PlateCarree(),
                         s=sub['_size'], alpha=0.8,
                         color=color_map[g], edgecolors="black", linewidths=0.2,
+                        label=str(g) if facet_by == "species" else None
                     )
         else:
             # Fallback to simple scatter without cartopy
-            for g in species_genotypes:
-                sub = species_data[species_data[genotype_column] == g]
+            for g in facet_genotypes:
+                sub = facet_data[facet_data[genotype_column] == g]
                 if len(sub) > 0:
                     ax.scatter(
                         sub[longitude_col], sub[latitude_col],
                         s=sub['_size'], alpha=0.8,
                         color=color_map[g], edgecolors="black", linewidths=0.2,
+                        label=str(g) if facet_by == "species" else None
                     )
             ax.set_xlabel("Longitude", fontsize=10)
             ax.set_ylabel("Latitude", fontsize=10)
-            ax.set_xlim(-180, 180)
-            ax.set_ylim(-90, 90)
+            ax.set_xlim(lon_min, lon_max)
+            ax.set_ylim(lat_min, lat_max)
             ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
 
-        # Add species name as title (genotype info is in the species name itself)
-        ax.set_title(species, fontsize=11, fontweight='bold', fontstyle='italic', loc='left', pad=10)
+        # Add scale bar if requested
+        if show_scale_bar:
+            from matplotlib.lines import Line2D
+            # Determine representative sizes
+            count_vals = facet_data['_count'].values
+            max_count = count_vals.max()
+
+            size_legend_elements = [
+                Line2D([0], [0], marker='o', color='w',
+                       markerfacecolor='gray', markersize=np.sqrt(min_size/3.14),
+                       label='n=1', markeredgecolor='black', markeredgewidth=0.2),
+            ]
+            if max_count >= 5:
+                mid_size = (min_size + max_size) / 2
+                size_legend_elements.append(
+                    Line2D([0], [0], marker='o', color='w',
+                           markerfacecolor='gray', markersize=np.sqrt(mid_size/3.14),
+                           label=f'n≈{int(max_count/2)}', markeredgecolor='black', markeredgewidth=0.2)
+                )
+            if max_count > 1:
+                size_legend_elements.append(
+                    Line2D([0], [0], marker='o', color='w',
+                           markerfacecolor='gray', markersize=np.sqrt(max_size/3.14),
+                           label=f'n={int(max_count)}', markeredgecolor='black', markeredgewidth=0.2)
+                )
+
+            ax.legend(handles=size_legend_elements,
+                     loc='lower left',
+                     frameon=True,
+                     title='Sample Count',
+                     fontsize=8,
+                     title_fontsize=8)
+
+        # Add unknown geography annotation if requested
+        if show_unknown_annotation:
+            # Count samples in this facet that are missing coordinates in original df
+            facet_samples = df[df[facet_col] == facet_value]
+            missing_coords = facet_samples[
+                facet_samples[[latitude_col, longitude_col]].isna().any(axis=1)
+            ]
+            n_unknown = len(missing_coords)
+
+            if n_unknown > 0:
+                ax.text(
+                    0.98, 0.98,
+                    f'Unknown Geography\nn={n_unknown}',
+                    transform=ax.transAxes,
+                    fontsize=9,
+                    verticalalignment='top',
+                    horizontalalignment='right',
+                    bbox=dict(boxstyle='round', facecolor='white',
+                             alpha=0.8, edgecolor='gray', linewidth=0.5)
+                )
+
+        # Add facet title
+        if facet_by == "species":
+            ax.set_title(facet_value, fontsize=11, fontweight='bold', fontstyle='italic', loc='left', pad=10)
+        else:
+            ax.set_title(facet_value, fontsize=11, fontweight='bold', loc='left', pad=10)
 
     plt.tight_layout()
     if out.suffix.lower() == ".png":
@@ -511,15 +740,16 @@ def plot_ocean_basin_abundance_faceted(
     species_column: str = "assigned_sp",
     basin_column: str = "ocean_basin",
     width: int = 9,
-    height_per_species: int = 5,
+    height_per_facet: int = 5,
     dpi: int = 300,
+    facet_by: str = "species",
 ) -> None:
     """
-    Create bar chart with separate facets for each genotype.
+    Create bar chart with separate facets.
 
-    Each facet shows sample counts by ocean basin for a single genotype,
-    with n-values annotated above each bar. Genotype labels use consensus_group_sp
-    when available for clearer species identification.
+    Facets can be by species (fewer facets, multiple genotypes per facet)
+    or by genotype (more facets). Each facet shows sample counts by ocean basin
+    with n-values annotated above each bar.
 
     Parameters
     ----------
@@ -530,21 +760,33 @@ def plot_ocean_basin_abundance_faceted(
     genotype_column : str, optional
         Column containing genotype assignments
     species_column : str, optional
-        Column containing species assignments for faceting
+        Column containing species assignments
     basin_column : str, optional
         Column containing ocean basin names
     width : int, optional
         Figure width in inches (default: 9)
-    height_per_species : int, optional
-        Height per species facet in inches (default: 5)
+    height_per_facet : int, optional
+        Height per facet in inches (default: 5)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+    facet_by : str, optional
+        Faceting mode: "species" or "genotype" (default: "species")
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    # Validate facet_by parameter
+    if facet_by not in ["species", "genotype"]:
+        raise ValueError(f"facet_by must be 'species' or 'genotype', got '{facet_by}'")
+
     # Validate required columns
-    need = [genotype_column, species_column, basin_column]
+    if facet_by == "species":
+        need = [genotype_column, species_column, basin_column]
+        facet_col = species_column
+    else:
+        need = [genotype_column, basin_column]
+        facet_col = genotype_column
+
     for c in need:
         if c not in df.columns:
             raise ValueError(f"Column '{c}' not found in dataframe")
@@ -554,11 +796,12 @@ def plot_ocean_basin_abundance_faceted(
     d[basin_column] = d[basin_column].fillna("Unknown")
     d[genotype_column] = d[genotype_column].fillna("Unassigned")
 
-    # Filter to valid species
-    d = d.dropna(subset=[species_column])
-    if d.empty:
-        logger.warning("No rows with valid species; skipping faceted basin plot.")
-        return
+    # Filter to valid facet values
+    if facet_by == "species":
+        d = d.dropna(subset=[species_column])
+        if d.empty:
+            logger.warning("No rows with valid species; skipping faceted basin plot.")
+            return
 
     # Create label map for genotypes (consensus_group -> consensus_group_sp)
     label_map = {}
@@ -566,72 +809,96 @@ def plot_ocean_basin_abundance_faceted(
         tmp = d[[genotype_column, "consensus_group_sp"]].dropna().drop_duplicates()
         label_map = dict(zip(tmp[genotype_column], tmp["consensus_group_sp"]))
 
-    # Get unique genotypes (sorted) - these will be our facets
-    genotype_list = sorted(d[genotype_column].unique())
-    n_genotypes = len(genotype_list)
+    # Get unique facet values (sorted)
+    facet_list = sorted(d[facet_col].unique())
+    n_facets = len(facet_list)
 
-    if n_genotypes == 0:
-        logger.warning("No genotypes found; skipping faceted basin plot.")
+    if n_facets == 0:
+        logger.warning(f"No {facet_by} found; skipping faceted basin plot.")
         return
 
-    # Get all genotypes and assign consistent colors
-    all_colors = get_genotype_colors(n_genotypes)
-    color_map = {g: all_colors[i] for i, g in enumerate(genotype_list)}
+    # Get all genotypes for consistent coloring
+    all_genotypes = sorted(d[genotype_column].unique())
+    all_colors = get_genotype_colors(len(all_genotypes))
+    color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
 
-    # Get ALL ocean basins across all genotypes (so we show all basins even if 0)
+    # Get ALL ocean basins (so we show all basins even if 0)
     all_basins = sorted(d[basin_column].unique())
 
-    # Create figure with facets (one per genotype)
-    fig_height = height_per_species * n_genotypes
-    fig, axes = plt.subplots(n_genotypes, 1, figsize=(width, fig_height))
+    # Create figure with facets
+    fig_height = height_per_facet * n_facets
+    fig, axes = plt.subplots(n_facets, 1, figsize=(width, fig_height))
 
-    # Handle single genotype case
-    if n_genotypes == 1:
+    # Handle single facet case
+    if n_facets == 1:
         axes = [axes]
 
-    for idx, genotype in enumerate(genotype_list):
+    for idx, facet_value in enumerate(facet_list):
         ax = axes[idx]
-        genotype_data = d[d[genotype_column] == genotype]
+        facet_data = d[d[facet_col] == facet_value]
 
-        # Count samples by basin for this genotype
-        counts = (
-            genotype_data.groupby(basin_column)
-            .size().reset_index(name="n")
-        )
+        # If faceting by species, we need to plot stacked bars by genotype
+        if facet_by == "species":
+            # Group by both genotype and basin within this species
+            counts = facet_data.groupby([genotype_column, basin_column]).size().reset_index(name="n")
 
-        # Create series indexed by basin for easier plotting
-        count_series = counts.set_index(basin_column)["n"]
-        # Reindex to include ALL basins (even if this genotype has 0 in some basins)
-        count_series = count_series.reindex(index=all_basins, fill_value=0)
+            # Plot stacked bars for each genotype
+            bottom = None
+            for genotype in sorted(facet_data[genotype_column].unique()):
+                geno_counts = counts[counts[genotype_column] == genotype]
+                count_series = geno_counts.set_index(basin_column)["n"]
+                count_series = count_series.reindex(index=all_basins, fill_value=0)
 
-        # Plot bars
-        bars = ax.bar(count_series.index, count_series.values, color=color_map[genotype])
+                ax.bar(count_series.index, count_series.values,
+                      bottom=bottom,
+                      label=label_map.get(genotype, genotype),
+                      color=color_map[genotype])
+                bottom = count_series.values if bottom is None else bottom + count_series.values
 
-        # Add n-value annotations above each bar
-        for i, (basin, count) in enumerate(count_series.items()):
-            if count > 0:  # Only annotate bars with data
-                ax.text(i, count, f"n={int(count)}",
-                       ha='center', va='bottom', fontsize=9)
+            # Add legend for genotypes
+            ax.legend(loc='upper right', frameon=False, fontsize=9)
+        else:
+            # Faceting by genotype - simple bars
+            counts = facet_data.groupby(basin_column).size().reset_index(name="n")
+            count_series = counts.set_index(basin_column)["n"]
+            count_series = count_series.reindex(index=all_basins, fill_value=0)
+
+            # Plot bars with genotype color
+            bars = ax.bar(count_series.index, count_series.values, color=color_map[facet_value])
+
+        # Skip annotations for facet_by species (too crowded with stacked bars)
+        # Only annotate when faceting by genotype
+        if facet_by == "genotype":
+            for i, (basin, count) in enumerate(count_series.items()):
+                if count > 0:  # Only annotate bars with data
+                    ax.text(i, count, f"n={int(count)}",
+                           ha='center', va='bottom', fontsize=9)
 
         ax.set_ylabel("Sample count")
         ax.set_xlabel("Ocean basin")
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=20, ha="right")
 
         # Set y-axis to start at 0 and add a bit of padding for annotations
-        max_count = count_series.max()
+        if facet_by == "species":
+            max_count = facet_data.groupby(basin_column).size().max()
+        else:
+            max_count = count_series.max()
         ax.set_ylim(0, max_count * 1.15 if max_count > 0 else 1)
 
-    # Adjust margins: more space on left for genotype labels
+    # Adjust margins: more space on left for facet labels
     plt.subplots_adjust(left=0.15, right=0.95, hspace=0.85)
 
-    # Now add genotype labels positioned based on actual axes positions
-    for idx, (genotype, ax) in enumerate(zip(genotype_list, axes)):
+    # Now add facet labels positioned based on actual axes positions
+    for idx, (facet_value, ax) in enumerate(zip(facet_list, axes)):
         # Get axes position in figure coordinates
         pos = ax.get_position()
         y_center = (pos.y0 + pos.y1) / 2  # center of this axes in figure coords
 
-        # Use consensus_group_sp label if available, otherwise use genotype ID
-        display_label = label_map.get(genotype, str(genotype))
+        # Use consensus_group_sp label if available, otherwise use facet value
+        if facet_by == "genotype":
+            display_label = label_map.get(facet_value, str(facet_value))
+        else:
+            display_label = str(facet_value)
 
         # Add genotype label (outside left margin, centered on facet y-axis)
         # Use italic style for species names (consensus_group_sp format)
