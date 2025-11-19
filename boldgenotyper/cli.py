@@ -19,7 +19,8 @@ import pandas as pd
 # Local imports
 from . import (
     utils, config, metadata, geographic, dereplication,
-    genotype_assignment, phylogenetics, visualization, reports
+    genotype_assignment, phylogenetics, visualization, reports,
+    cluster_diagnostics,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,11 +93,28 @@ def run_pipeline(
     organism: str,
     output_dir: Path,
     cfg: config.PipelineConfig,
+    no_report: bool = False,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
 
-    Returns True if successful, False otherwise.
+    Parameters
+    ----------
+    tsv_path : Path
+        Path to input BOLD TSV file
+    organism : str
+        Organism name
+    output_dir : Path
+        Output directory
+    cfg : config.PipelineConfig
+        Pipeline configuration
+    no_report : bool, optional
+        Skip HTML report generation (default: False)
+
+    Returns
+    -------
+    bool
+        True if successful, False otherwise
     """
     logger.info("=" * 80)
     logger.info(f"BOLDGenotyper Pipeline - {organism}")
@@ -441,7 +459,7 @@ def run_pipeline(
                 except Exception as e:
                     logger.debug(f"Distribution map skipped: {e}")
 
-            # Ocean basin abundance bar plot
+            # Ocean basin abundance bar plot (relative)
             if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
                 try:
                     visualization.plot_ocean_basin_abundance(
@@ -452,6 +470,18 @@ def run_pipeline(
                     )
                 except Exception as e:
                     logger.debug(f"Ocean basin bar plot skipped: {e}")
+
+            # Ocean basin abundance bar plot (total counts)
+            if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                try:
+                    visualization.plot_ocean_basin_abundance_total(
+                        df=df_final,
+                        output_path=str(dirs['visualization'] / f"{organism}_totaldistribution_bar.{fmt}"),
+                        genotype_column='consensus_group_sp',
+                        basin_column='ocean_basin'
+                    )
+                except Exception as e:
+                    logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
 
             # Identity distribution
             if diagnostics_csv.exists():
@@ -499,7 +529,11 @@ def run_pipeline(
                         genotype_column='consensus_group',
                         species_column='consensus_group_sp',
                         latitude_col='lat',
-                        longitude_col='lon'
+                        longitude_col='lon',
+                        facet_by=cfg.visualization.facet_by,
+                        map_buffer_degrees=cfg.visualization.map_buffer_degrees,
+                        show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
+                        show_scale_bar=cfg.visualization.show_scale_bar
                     )
                 except Exception as e:
                     logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
@@ -513,7 +547,8 @@ def run_pipeline(
                         output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
                         genotype_column='consensus_group',
                         species_column='consensus_group_sp',
-                        basin_column='ocean_basin'
+                        basin_column='ocean_basin',
+                        facet_by=cfg.visualization.facet_by
                     )
                 except Exception as e:
                     logger.debug(f"Faceted basin bar plot skipped: {e}")
@@ -560,6 +595,33 @@ def run_pipeline(
         logger.debug(f"Directory cleanup encountered minor issues: {e}")
 
     # ========================================================================
+    # HTML Summary Report
+    # ========================================================================
+    html_report_path = None
+    if not no_report:
+        logger.info("")
+        logger.info("Generating HTML summary report...")
+        try:
+            html_report_path = reports.generate_html_report(
+                organism=organism,
+                output_dir=output_dir,
+                version="1.0.0"
+            )
+            if html_report_path:
+                logger.info(f"  ✓ Generated HTML report: {html_report_path}")
+            else:
+                logger.warning("  ⚠ HTML report generation returned None")
+        except ImportError as e:
+            logger.warning(f"  ⚠ HTML report generation skipped: {e}")
+            logger.warning("    Install jinja2 to enable HTML reports: pip install jinja2")
+        except Exception as e:
+            logger.warning(f"  ⚠ HTML report generation failed (non-critical): {e}")
+            logger.debug("HTML report error details:", exc_info=True)
+    else:
+        logger.info("")
+        logger.info("HTML report generation skipped (--no-report)")
+
+    # ========================================================================
     # Pipeline Complete
     # ========================================================================
     logger.info("")
@@ -571,13 +633,145 @@ def run_pipeline(
     logger.info(f"    - Consensus sequences: {consensus_path}")
     if tree_path:
         logger.info(f"    - Phylogenetic tree: {tree_path}")
+    if html_report_path:
+        logger.info(f"    - HTML summary report: {html_report_path}")
     logger.info("=" * 80)
 
     return True
 
+def main_cluster_diagnostics(argv=None) -> int:
+    """
+    CLI entry point for the 'cluster-diagnostics' subcommand.
+
+    Example:
+        boldgenotyper cluster-diagnostics \
+            --consensus data/Sphyrnidae_consensus.fasta \
+            --diagnostics data/Sphyrnidae_assignment_diagnostics.tsv \
+            --alignment data/Sphyrnidae_trimmed_alignment.fasta \
+            --threshold 0.01 \
+            --output-dir diagnostics/Sphyrnidae
+    """
+    parser = argparse.ArgumentParser(
+        prog="boldgenotyper cluster-diagnostics",
+        description="Cluster-level diagnostics for dereplication and genotype assignment",
+    )
+
+    parser.add_argument(
+        "--consensus",
+        required=True,
+        type=Path,
+        help="Path to consensus FASTA (e.g., consensus_Sphyrnidae.fasta)",
+    )
+    parser.add_argument(
+        "--diagnostics",
+        required=True,
+        type=Path,
+        help="Path to genotype assignment diagnostics TSV",
+    )
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        type=Path,
+        help="Directory to write diagnostics outputs",
+    )
+    parser.add_argument(
+        "--alignment",
+        required=False,
+        type=Path,
+        default=None,
+        help=(
+            "Optional trimmed alignment FASTA used in dereplication. "
+            "If provided, intra-cluster distance stats and a dendrogram "
+            "will be generated."
+        ),
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.01,
+        help=(
+            "Distance threshold used during dereplication clustering "
+            "(must match your dereplication threshold). Default: 0.01"
+        ),
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging verbosity (default: INFO)",
+    )
+
+    args = parser.parse_args(argv)
+
+    # Resolve and create output directory
+    output_dir = args.output_dir.resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Setup logging to a dedicated diagnostics log file
+    log_file = output_dir / "cluster_diagnostics.log"
+    utils.setup_logging(log_level=args.log_level, log_file=str(log_file))
+
+    logger.info("=== Cluster diagnostics ===")
+    logger.info(f"Consensus FASTA: {args.consensus}")
+    logger.info(f"Diagnostics TSV: {args.diagnostics}")
+    if args.alignment:
+        logger.info(f"Alignment FASTA: {args.alignment}")
+        logger.info(f"Dereplication threshold: {args.threshold}")
+    logger.info(f"Output directory: {output_dir}")
+
+    # Load inputs via cluster_diagnostics helpers
+    consensus_df = cluster_diagnostics.parse_consensus_fasta(args.consensus)
+    diag_df = cluster_diagnostics.load_diagnostics(args.diagnostics)
+
+    # Per-cluster assignment statistics
+    stats_df = cluster_diagnostics.compute_cluster_assignment_stats(
+        consensus_df, diag_df
+    )
+
+    # Optional intra-cluster distances + dendrogram
+    if args.alignment:
+        (
+            intra_df,
+            dist_condensed,
+            seq_ids,
+            cluster_labels,
+        ) = cluster_diagnostics.compute_intracluster_distance_stats(
+            alignment_path=args.alignment,
+            threshold=args.threshold,
+        )
+
+        # Merge intra-cluster stats into main table
+        stats_df = stats_df.merge(
+            intra_df,
+            on="cluster_id",
+            how="left",
+            suffixes=("", "_intra"),
+        )
+
+        # Global dendrogram
+        cluster_diagnostics.plot_global_dendrogram(
+            dist_condensed=dist_condensed,
+            seq_ids=seq_ids,
+            output_dir=output_dir,
+            title="Global sequence dendrogram (trimmed alignment)",
+        )
+
+    # Write summary table
+    out_tsv = output_dir / "cluster_diagnostics.tsv"
+    stats_df.to_csv(out_tsv, sep="\t", index=False)
+    logger.info(f"Wrote cluster diagnostics to {out_tsv}")
+
+    logger.info("Cluster diagnostics completed.")
+    return 0
 
 def main():
     """Main CLI entry point."""
+    # Support subcommands such as:
+    #   boldgenotyper cluster-diagnostics ...
+    if len(sys.argv) > 1 and sys.argv[1] == "cluster-diagnostics":
+        # Pass everything after 'cluster-diagnostics' into the subcommand parser
+        return main_cluster_diagnostics(sys.argv[2:])
+
     parser = argparse.ArgumentParser(
         description='BOLDGenotyper: Automated genotyping pipeline for BOLD barcode data',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -597,6 +791,14 @@ Examples:
 
   # Enable phylogenetic tree building
   boldgenotyper data/Euprymna.tsv --build-tree
+
+  # Skip HTML report generation
+  boldgenotyper data/Euprymna.tsv --no-report
+
+Notes:
+  - An HTML summary report is generated by default in the reports/ directory
+  - Use --no-report to skip HTML report generation
+  - HTML reports require jinja2 (included in default installation)
 
 For more information: https://github.com/your-repo/boldgenotyper
         """
@@ -642,6 +844,12 @@ For more information: https://github.com/your-repo/boldgenotyper
         '--build-tree',
         action='store_true',
         help='Build phylogenetic tree (requires MAFFT and FastTree)'
+    )
+
+    parser.add_argument(
+        '--no-report',
+        action='store_true',
+        help='Skip generating HTML summary report'
     )
 
     parser.add_argument(
@@ -707,7 +915,8 @@ For more information: https://github.com/your-repo/boldgenotyper
             tsv_path=args.tsv,
             organism=organism,
             output_dir=output_dir,
-            cfg=cfg
+            cfg=cfg,
+            no_report=args.no_report
         )
 
         return 0 if success else 1

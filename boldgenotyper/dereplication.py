@@ -15,7 +15,7 @@ The dereplication workflow:
 7. Generate consensus sequences for each cluster using majority rule
 
 Key Concepts:
-- Default clustering threshold: 0.01 (99% sequence identity)
+- Default clustering threshold: 0.02 (98% sequence identity)
   Rationale: This is the standard threshold for COI-based species delimitation
   and captures meaningful intraspecific genetic variation while distinguishing
   genotypes that may represent distinct evolutionary lineages.
@@ -40,7 +40,7 @@ Example Usage:
     >>> consensus_seqs = dereplicate_sequences(
     ...     tsv_path="Sphyrna_lewini.tsv",
     ...     output_dir="results/",
-    ...     threshold=0.01
+    ...     threshold=0.02
     ... )
 
 Author: Steph Smith (steph.smith@unc.edu)
@@ -225,7 +225,7 @@ def filter_consensus_by_length(
 def dereplicate_from_fasta(
     input_fasta: Union[str, Path],
     output_dir: Union[str, Path],
-    threshold: float = 0.01,
+    threshold: float = 0.02,
     frequency_cutoff: float = 0.7,
     mafft_options: Optional[List[str]] = None,
     trimal_options: Optional[List[str]] = None,
@@ -281,9 +281,16 @@ def dereplicate_from_fasta(
     for rec, cid in zip(alignment, labels):
         clusters.setdefault(cid, []).append(rec)
     consensus_records = {}
+    consensus_metadata = []  # Track reference counts for metadata file
     for cid, seqs in sorted(clusters.items()):
         cons = generate_consensus(seqs, cid, frequency_cutoff=frequency_cutoff)
         consensus_records[cons.id] = cons
+        # Store metadata: consensus_group, cluster_id, n_reference
+        consensus_metadata.append({
+            'consensus_group': cons.id,
+            'cluster_id': cid,
+            'n_reference': len(seqs)
+        })
 
     # Stage 3: Consensus length filtering
     # Remove consensus sequences that are suspiciously short compared to median
@@ -296,8 +303,17 @@ def dereplicate_from_fasta(
         filtered_count = original_count - len(consensus_records)
         if filtered_count > 0:
             logger.info(f"  Filtered {filtered_count} consensus sequences with length <{min_consensus_length_ratio:.0%} of median")
+        # Also filter metadata to match
+        filtered_ids = set(consensus_records.keys())
+        consensus_metadata = [m for m in consensus_metadata if m['consensus_group'] in filtered_ids]
 
     SeqIO.write(consensus_records.values(), str(consensus_fasta), "fasta")
+
+    # Write consensus metadata CSV
+    consensus_metadata_csv = output_dir / f"{organism_name}_consensus_metadata.csv"
+    import pandas as pd
+    pd.DataFrame(consensus_metadata).to_csv(consensus_metadata_csv, index=False)
+    logger.info(f"Wrote consensus metadata to {consensus_metadata_csv}")
 
     if cleanup_intermediates:
         for p in (aligned_fasta, trimmed_fasta):
@@ -748,15 +764,15 @@ def generate_consensus(
     # This converts the aligned consensus (~7500 bp with padding) to raw consensus (~650 bp)
     consensus_seq_degapped = consensus_seq.replace('-', '').replace('N', '')
 
-    consensus_id = f"consensus_c{cluster_id}_n{n_seqs}"
+    consensus_id = f"consensus_c{cluster_id}"
 
     consensus_record = SeqRecord(
         Seq(consensus_seq_degapped),
         id=consensus_id,
-        description=f"Consensus sequence for cluster {cluster_id} ({n_seqs} sequences)"
+        description=f"Consensus sequence for cluster {cluster_id} ({n_seqs} reference sequences)"
     )
 
-    logger.debug(f"Generated consensus: {consensus_id} (degapped from {len(consensus_seq)} to {len(consensus_seq_degapped)} bp)")
+    logger.debug(f"Generated consensus: {consensus_id} (degapped from {len(consensus_seq)} to {len(consensus_seq_degapped)} bp, {n_seqs} reference sequences)")
 
     return consensus_record
 
@@ -986,6 +1002,7 @@ def dereplicate_sequences(
 
         # Generate consensus for each cluster
         consensus_records = {}
+        consensus_metadata = []  # Track reference counts for metadata file
         for cluster_id, cluster_seqs in sorted(clusters.items()):
             consensus = generate_consensus(
                 cluster_seqs,
@@ -993,9 +1010,20 @@ def dereplicate_sequences(
                 frequency_cutoff=frequency_cutoff
             )
             consensus_records[consensus.id] = consensus
+            # Store metadata: consensus_group, cluster_id, n_reference
+            consensus_metadata.append({
+                'consensus_group': consensus.id,
+                'cluster_id': cluster_id,
+                'n_reference': len(cluster_seqs)
+            })
 
         # Write consensus sequences to file
         SeqIO.write(consensus_records.values(), consensus_fasta, "fasta")
+
+        # Write consensus metadata CSV
+        consensus_metadata_csv = output_dir / f"{organism_name}_consensus_metadata.csv"
+        pd.DataFrame(consensus_metadata).to_csv(consensus_metadata_csv, index=False)
+        logger.info(f"Wrote consensus metadata to {consensus_metadata_csv}")
 
         logger.info(f"Generated {len(consensus_records)} consensus sequences")
         logger.info(f"Consensus sequences written to: {consensus_fasta}")

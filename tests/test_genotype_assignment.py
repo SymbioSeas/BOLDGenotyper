@@ -373,7 +373,7 @@ class TestParallelProcessing(unittest.TestCase):
 
         # Create consensus sequences
         consensus_records = [
-            SeqRecord(Seq("ACGTACGT" * 5), id="consensus_c1_n10", description=""),
+            SeqRecord(Seq("ACGTACGT" * 5), id="consensus_c1", description=""),
         ]
         self.consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, self.consensus_path, 'fasta')
@@ -473,7 +473,7 @@ class TestMissingSamples(unittest.TestCase):
 
         # Consensus
         consensus_records = [
-            SeqRecord(Seq('ACGTACGT'), id='consensus_c1_n3', description=''),
+            SeqRecord(Seq('ACGTACGT'), id='consensus_c1', description=''),
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')
@@ -512,7 +512,7 @@ class TestMissingSamples(unittest.TestCase):
             f.write(">no_processid_here\nACGT\n")
 
         consensus_records = [
-            SeqRecord(Seq('ACGT'), id='consensus_c1_n1', description=''),
+            SeqRecord(Seq('ACGT'), id='consensus_c1', description=''),
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')
@@ -545,7 +545,7 @@ class TestMissingSamples(unittest.TestCase):
         SeqIO.write(raw_records, fasta_path, 'fasta')
 
         consensus_records = [
-            SeqRecord(Seq('AAAAAAAA'), id='consensus_c1_n1', description=''),
+            SeqRecord(Seq('AAAAAAAA'), id='consensus_c1', description=''),
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')
@@ -592,7 +592,7 @@ class TestDiagnostics(unittest.TestCase):
         SeqIO.write(raw_records, fasta_path, 'fasta')
 
         consensus_records = [
-            SeqRecord(Seq('ACGTACGT'), id='consensus_c1_n2', description=''),
+            SeqRecord(Seq('ACGTACGT'), id='consensus_c1', description=''),
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')
@@ -640,8 +640,8 @@ class TestDiagnostics(unittest.TestCase):
 
         # Two consensus sequences equidistant from query
         consensus_records = [
-            SeqRecord(Seq('ACGTACGTACGTACGT'), id='consensus_c1_n1', description=''),
-            SeqRecord(Seq('ACGTACGTACGTACGA'), id='consensus_c2_n1', description=''),
+            SeqRecord(Seq('ACGTACGTACGTACGT'), id='consensus_c1', description=''),
+            SeqRecord(Seq('ACGTACGTACGTACGA'), id='consensus_c2', description=''),
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')
@@ -680,7 +680,7 @@ class TestDiagnostics(unittest.TestCase):
         SeqIO.write(raw_records, fasta_path, 'fasta')
 
         consensus_records = [
-            SeqRecord(Seq('ACGTACGTACGTACGT'), id='consensus_c1_n1', description=''),
+            SeqRecord(Seq('ACGTACGTACGTACGT'), id='consensus_c1', description=''),
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')
@@ -750,9 +750,9 @@ class TestIntegration(unittest.TestCase):
 
         # Create consensus sequences (one per cluster)
         consensus_records = [
-            SeqRecord(records[0].seq, id='consensus_c1_n4', description=''),  # Cluster 1
-            SeqRecord(records[4].seq, id='consensus_c2_n3', description=''),  # Cluster 2
-            SeqRecord(records[7].seq, id='consensus_c3_n3', description=''),  # Cluster 3
+            SeqRecord(records[0].seq, id='consensus_c1', description=''),  # Cluster 1
+            SeqRecord(records[4].seq, id='consensus_c2', description=''),  # Cluster 2
+            SeqRecord(records[7].seq, id='consensus_c3', description=''),  # Cluster 3
         ]
         consensus_path = self.temp_dir / 'consensus.fasta'
         SeqIO.write(consensus_records, consensus_path, 'fasta')

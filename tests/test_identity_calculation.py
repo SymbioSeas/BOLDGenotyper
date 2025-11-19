@@ -184,8 +184,8 @@ class TestFindBestConsensusMatch(unittest.TestCase):
     def setUp(self):
         """Set up test consensus groups."""
         self.consensus_groups = [
-            ("consensus_c1_n10", "ACTGACTGACTG"),
-            ("consensus_c2_n5", "TGCATGCATGCA"),
+            ("consensus_c1", "ACTGACTGACTG"),
+            ("consensus_c2", "TGCATGCATGCA"),
         ]
 
     @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
@@ -198,7 +198,7 @@ class TestFindBestConsensusMatch(unittest.TestCase):
             identity_method="target_based"
         )
 
-        self.assertEqual(result['best_group'], 'consensus_c1_n10')
+        self.assertEqual(result['best_group'], 'consensus_c1')
         self.assertEqual(result['best_identity'], 1.0)
         self.assertEqual(result['identity_method'], 'target_based')
         self.assertIsNotNone(result['best_group'])
@@ -213,7 +213,7 @@ class TestFindBestConsensusMatch(unittest.TestCase):
             identity_method="classic"
         )
 
-        self.assertEqual(result['best_group'], 'consensus_c1_n10')
+        self.assertEqual(result['best_group'], 'consensus_c1')
         self.assertEqual(result['best_identity'], 1.0)
         self.assertEqual(result['identity_method'], 'classic')
 
@@ -230,7 +230,7 @@ class TestFindBestConsensusMatch(unittest.TestCase):
 
         # Should pass 90% threshold with target-based
         self.assertIsNotNone(result['best_group'])
-        self.assertEqual(result['best_group'], 'consensus_c1_n10')
+        self.assertEqual(result['best_group'], 'consensus_c1')
         self.assertEqual(result['best_identity'], 1.0)
         self.assertGreaterEqual(result['best_identity'], 0.90)
 

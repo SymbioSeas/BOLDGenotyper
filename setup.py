@@ -15,6 +15,7 @@ setup(
         "numpy>=1.21.0",
         "matplotlib>=3.4.0",
         "seaborn>=0.11.0",
+        "jinja2>=3.0.0",
     ],
     entry_points={
         'console_scripts': [
