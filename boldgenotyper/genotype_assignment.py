@@ -1031,8 +1031,19 @@ def assign_genotypes(
         processid_to_group[result['processid']] = result['consensus_group']
 
     # Add consensus_group column to metadata
+    # NOTE:
+    # - consensus_group IDs come directly from the consensus FASTA headers
+    #   (e.g., "consensus_c1_n84") produced by the dereplication step.
+    # - These IDs must remain stable and unmodified so that downstream
+    #   taxonomy (Phase 4) and phylogenetic relabeling (Phase 5) can
+    #   match them exactly to the consensus_taxonomy.csv table and the
+    #   tree tip labels.
     metadata_df['consensus_group'] = metadata_df['processid'].map(processid_to_group)
 
+    # Write updated metadata
+    metadata_df.to_csv(output_path, sep='\t', index=False)
+    logger.info(f"Wrote updated metadata to {output_path}")
+        
     # Count samples assigned to each consensus group
     # Filter out None values (unassigned samples)
     assigned_groups = metadata_df[metadata_df['consensus_group'].notna()]['consensus_group']
@@ -1070,7 +1081,8 @@ def assign_genotypes(
         diagnostics_path = Path(diagnostics_path)
         with open(diagnostics_path, 'w', newline='') as f:
             fieldnames = [
-                'processid', 'consensus_group', 'identity', 'target_identity', 'classic_identity',
+                'processid', 'consensus_group', 'n_assigned_to_consensus',
+                'identity', 'target_identity', 'classic_identity',
                 'identity_method', 'matches', 'mismatches', 'insertions', 'deletions',
                 'edit_distance', 'length_discrepancy',
                 'runner_up_group', 'runner_up_identity',
@@ -1083,7 +1095,7 @@ def assign_genotypes(
                 writer.writerow({
                     'processid': result['processid'],
                     'consensus_group': result['consensus_group'] or '',
-                    'identity': round(result['identity'], 6),
+                    'n_assigned_to_consensus': result.get('n_assigned_to_consensus', ''),                    'identity': round(result['identity'], 6),
                     'target_identity': round(result['target_identity'], 6),
                     'classic_identity': round(result['classic_identity'], 6),
                     'identity_method': result['identity_method'],

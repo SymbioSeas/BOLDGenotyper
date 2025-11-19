@@ -1163,6 +1163,99 @@ def _build_taxonomy_section(
     return html
 
 
+def _build_parameters_section(output_dir: Path, organism: str) -> str:
+    """Build pipeline parameters section."""
+    html = '<div class="section" id="section-parameters">\n'
+    html += '<h2>Pipeline Parameters</h2>\n'
+
+    # Try to load parameters from JSON file
+    params_file = output_dir / f"{organism}_pipeline_parameters.json"
+    if not params_file.exists():
+        html += '<p class="alert alert-info">Parameter information not available</p>\n'
+        html += '</div>\n'
+        return html
+
+    try:
+        import json
+        with open(params_file, 'r') as f:
+            params = json.load(f)
+
+        html += '<p>The following parameters were used for this analysis:</p>\n'
+        html += '<table class="data-table">\n'
+        html += '<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>\n'
+        html += '<tbody>\n'
+
+        # Clustering threshold
+        ct = params.get('clustering_threshold', 'N/A')
+        html += '<tr>\n'
+        html += f'<td><strong>Clustering Threshold</strong></td>\n'
+        html += f'<td><code>{ct}</code>'
+        if isinstance(ct, (int, float)):
+            html += f' ({(1-ct)*100:.1f}% identity)'
+        html += '</td>\n'
+        html += '<td>Maximum genetic distance for grouping sequences into consensus genotypes. '
+        html += 'Lower values create more groups with tighter genetic similarity.</td>\n'
+        html += '</tr>\n'
+
+        # Similarity threshold
+        st = params.get('similarity_threshold', 'N/A')
+        html += '<tr>\n'
+        html += f'<td><strong>Similarity Threshold</strong></td>\n'
+        html += f'<td><code>{st}</code>'
+        if isinstance(st, (int, float)):
+            html += f' ({st*100:.0f}% identity)'
+        html += '</td>\n'
+        html += '<td>Minimum sequence identity required for assigning samples to genotypes. '
+        html += 'Samples below this threshold are marked as unassigned.</td>\n'
+        html += '</tr>\n'
+
+        # Tie margin
+        tm = params.get('tie_margin', 'N/A')
+        html += '<tr>\n'
+        html += f'<td><strong>Tie Margin</strong></td>\n'
+        html += f'<td><code>{tm}</code>'
+        if isinstance(tm, (int, float)):
+            html += f' ({tm*100:.1f}% difference)'
+        html += '</td>\n'
+        html += '<td>Maximum identity difference between top matches to flag as ambiguous. '
+        html += 'Samples with (best - runner-up) &lt; tie margin are flagged for manual review.</td>\n'
+        html += '</tr>\n'
+
+        # Tie threshold
+        tt = params.get('tie_threshold', 'N/A')
+        html += '<tr>\n'
+        html += f'<td><strong>Tie Threshold</strong></td>\n'
+        html += f'<td><code>{tt}</code>'
+        if isinstance(tt, (int, float)):
+            html += f' ({tt*100:.0f}% identity)'
+        html += '</td>\n'
+        html += '<td>Minimum best-match identity required to consider tie detection. '
+        html += 'Prevents flagging low-quality matches as ties.</td>\n'
+        html += '</tr>\n'
+
+        # Additional parameters
+        html += '<tr>\n'
+        html += f'<td><strong>Threads</strong></td>\n'
+        html += f'<td><code>{params.get("threads", "N/A")}</code></td>\n'
+        html += '<td>Number of parallel processing threads used.</td>\n'
+        html += '</tr>\n'
+
+        html += '<tr>\n'
+        html += f'<td><strong>Phylogenetic Tree</strong></td>\n'
+        html += f'<td><code>{params.get("build_tree", False)}</code></td>\n'
+        html += '<td>Whether phylogenetic tree was constructed.</td>\n'
+        html += '</tr>\n'
+
+        html += '</tbody>\n'
+        html += '</table>\n'
+
+    except Exception as e:
+        html += f'<p class="alert alert-warning">Could not load parameters: {e}</p>\n'
+
+    html += '</div>\n'
+    return html
+
+
 def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
     """Build geographic distribution section."""
     html = '<div class="section" id="section-geographic">\n'
@@ -1173,28 +1266,56 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
         html += '</div>\n'
         return html
 
-    # Basin distribution
+    # Count total samples and samples with Unknown geography
+    total_samples = len(annotated_df)
+    unknown_geography = (annotated_df['ocean_basin'].fillna('Unknown') == 'Unknown').sum()
+    samples_with_geography = total_samples - unknown_geography
+
+    # Add summary information
+    html += '<div class="alert alert-info">\n'
+    html += f'<strong>Geographic Analysis Summary:</strong> {_format_number(samples_with_geography, 0)} of '
+    html += f'{_format_number(total_samples, 0)} samples '
+    html += f'({_format_percentage(samples_with_geography / total_samples * 100)}) have defined geographic locations. '
+    if unknown_geography > 0:
+        html += f'{_format_number(unknown_geography, 0)} samples '
+        html += f'({_format_percentage(unknown_geography / total_samples * 100)}) '
+        html += 'with unknown or missing geography were excluded from geographic analyses.\n'
+    html += '</div>\n'
+
+    # Basin distribution (excluding Unknown)
     html += '<h3>Sample Distribution by Ocean Basin</h3>\n'
 
-    basin_counts = annotated_df['ocean_basin'].fillna('Unknown').value_counts().reset_index()
-    basin_counts.columns = ['Ocean Basin', 'Sample Count']
-    basin_counts['Percentage'] = (basin_counts['Sample Count'] / len(annotated_df) * 100).round(1)
+    # Filter out Unknown geography for the table
+    basin_series = annotated_df['ocean_basin'].fillna('Unknown')
+    basin_counts = basin_series[basin_series != 'Unknown'].value_counts().reset_index()
 
-    html += _dataframe_to_html(basin_counts, max_rows=20)
+    if len(basin_counts) > 0:
+        basin_counts.columns = ['Ocean Basin', 'Sample Count']
+        # Calculate percentages based on samples with defined geography
+        basin_counts['Percentage'] = (basin_counts['Sample Count'] / samples_with_geography * 100).round(1)
+        html += _dataframe_to_html(basin_counts, max_rows=20)
+    else:
+        html += '<p class="alert alert-warning">No samples with defined ocean basin assignments</p>\n'
 
-    # Genotype × Basin distribution
+    # Genotype × Basin distribution (excluding Unknown)
     if 'consensus_group' in annotated_df.columns:
         html += '<h3>Genotypes per Ocean Basin</h3>\n'
 
-        # Create crosstab
-        ct = pd.crosstab(
-            annotated_df['consensus_group'].fillna('Unassigned'),
-            annotated_df['ocean_basin'].fillna('Unknown')
-        )
+        # Filter out Unknown geography before creating crosstab
+        df_with_geography = annotated_df[annotated_df['ocean_basin'].fillna('Unknown') != 'Unknown'].copy()
 
-        # Convert to long format for better display
-        ct_reset = ct.reset_index()
-        html += _dataframe_to_html(ct_reset, max_rows=30)
+        if len(df_with_geography) > 0:
+            # Create crosstab
+            ct = pd.crosstab(
+                df_with_geography['consensus_group'].fillna('Unassigned'),
+                df_with_geography['ocean_basin']
+            )
+
+            # Convert to long format for better display
+            ct_reset = ct.reset_index()
+            html += _dataframe_to_html(ct_reset, max_rows=30)
+        else:
+            html += '<p class="alert alert-warning">No genotyped samples with defined ocean basin assignments</p>\n'
 
     # Missing geography
     if 'lat' in annotated_df.columns and 'lon' in annotated_df.columns:
@@ -1437,6 +1558,7 @@ def generate_html_report(
 
         # Build sections
         builder.add_section(_build_executive_summary_section(assignment_summary, annotated_df))
+        builder.add_section(_build_parameters_section(output_dir, organism))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
         builder.add_section(_build_geographic_section(annotated_df))
@@ -1446,7 +1568,7 @@ def generate_html_report(
         html_content = builder.render()
 
         # Save report
-        output_file = reports_dir / f"{organism}_summary_report.html"
+        output_file = output_dir / f"{organism}_summary_report.html"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         with open(output_file, 'w', encoding='utf-8') as f:

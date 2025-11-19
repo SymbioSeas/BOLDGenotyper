@@ -415,17 +415,46 @@ def relabel_tree_and_alignment(
     label_map = dict(zip(taxonomy_df[id_column], taxonomy_df[label_column]))
     logger.info(f"Loaded {len(label_map)} label mappings from taxonomy CSV")
 
+    # Create alternative mapping for base names (consensus_cX -> consensus_cX_nZ)
+    # This handles cases where tree tips are named consensus_c1 but taxonomy has consensus_c1_n84
+    base_name_map = {}
+    for consensus_group, label in label_map.items():
+        # Extract base name: consensus_c1_n84 -> consensus_c1
+        import re
+        match = re.match(r'(consensus_c\d+)(?:_n\d+)?$', str(consensus_group))
+        if match:
+            base_name = match.group(1)
+            # Store mapping from base name to full label
+            # If multiple entries have same base (shouldn't happen), use first one
+            if base_name not in base_name_map:
+                base_name_map[base_name] = label
+                logger.debug(f"Base name mapping: {base_name} -> {label}")
+
+    logger.info(f"Created {len(base_name_map)} base name mappings")
+
     # Relabel tree
     try:
         tree = Phylo.read(tree_file, "newick")
         n_relabeled = 0
 
         for clade in tree.get_terminals():
-            if clade.name in label_map:
-                original_name = clade.name
-                clade.name = label_map[original_name]
+            original_name = clade.name
+            new_name = None
+
+            # Try exact match first
+            if original_name in label_map:
+                new_name = label_map[original_name]
+            # Try base name match if exact match fails
+            elif original_name in base_name_map:
+                new_name = base_name_map[original_name]
+                logger.debug(f"Using base name match for: {original_name}")
+
+            if new_name:
+                clade.name = new_name
                 n_relabeled += 1
                 logger.debug(f"Relabeled tree tip: {original_name} -> {clade.name}")
+            else:
+                logger.warning(f"No mapping found for tree tip: {original_name}")
 
         # Write relabeled tree
         Phylo.write(tree, output_tree, "newick")
@@ -443,11 +472,24 @@ def relabel_tree_and_alignment(
 
         for record in SeqIO.parse(alignment_file, "fasta"):
             original_id = record.id
+            new_id = None
+
+            # Try exact match first
             if original_id in label_map:
-                record.id = label_map[original_id]
-                record.description = label_map[original_id]
+                new_id = label_map[original_id]
+            # Try base name match if exact match fails
+            elif original_id in base_name_map:
+                new_id = base_name_map[original_id]
+                logger.debug(f"Using base name match for sequence: {original_id}")
+
+            if new_id:
+                record.id = new_id
+                record.description = new_id
                 n_relabeled += 1
                 logger.debug(f"Relabeled sequence: {original_id} -> {record.id}")
+            else:
+                logger.warning(f"No mapping found for sequence: {original_id}")
+
             relabeled_records.append(record)
 
         # Write relabeled alignment
