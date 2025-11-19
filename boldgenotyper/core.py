@@ -362,7 +362,9 @@ def run_pipeline(
             output_path=str(annotated_tsv),
             min_identity=cfg.genotype_assignment.min_identity,
             n_processes=cfg.n_threads,
-            diagnostics_path=str(diagnostics_csv)
+            diagnostics_path=str(diagnostics_csv),
+            tie_margin=cfg.genotype_assignment.tie_margin,
+            tie_min_identity=cfg.genotype_assignment.tie_threshold
         )
 
         results['n_assigned'] = stats['assigned']
@@ -508,6 +510,36 @@ def run_pipeline(
         try:
             logger.info("6.1: Generating visualizations...")
 
+            # Create consistent genotype color map based on abundance
+            # This ensures all visualizations use the same colors for each genotype
+            from boldgenotyper.visualization import _get_genotype_order_by_abundance, get_genotype_colors
+
+            if 'consensus_group' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                # Order genotypes by abundance (most abundant gets first color)
+                genotype_order = _get_genotype_order_by_abundance(df_final, 'consensus_group')
+                colors = get_genotype_colors(len(genotype_order))
+
+                # Create color map DataFrame
+                color_map_data = []
+                for i, geno in enumerate(genotype_order):
+                    # Get corresponding consensus_group_sp label
+                    sp_label = df_final[df_final['consensus_group'] == geno]['consensus_group_sp'].iloc[0]
+                    color_map_data.append({
+                        'consensus_group': geno,
+                        'consensus_group_sp': sp_label,
+                        'color': colors[i],
+                        'rank': i + 1  # 1-indexed rank by abundance
+                    })
+
+                # Save color map to multiple directories for easy access
+                color_map_df = pd.DataFrame(color_map_data)
+                for dir_key in ['visualization', 'phylogenetic', 'geographic']:
+                    if dir_key in dirs:
+                        color_map_path = dirs[dir_key] / f"{organism_name}_genotype_color_map.csv"
+                        color_map_df.to_csv(color_map_path, index=False)
+
+                logger.debug(f"Created genotype color map with {len(genotype_order)} genotypes ordered by abundance")
+
             for fmt in cfg.visualization.figure_format:
                 # Geographic visualizations (if analysis was performed)
                 if geographic_analysis_performed:
@@ -556,10 +588,33 @@ def run_pipeline(
                 # Phylogenetic tree visualization
                 if tree_path and tree_path.exists():
                     try:
+                        # Use relabeled tree if it exists (so tips show consensus_group_sp labels)
+                        relabeled_tree_path = Path(str(tree_path).replace("_tree.nwk", "_tree_relabeled.nwk"))
+                        if relabeled_tree_path.exists():
+                            tree_to_plot = relabeled_tree_path
+                            logger.debug(f"Using relabeled tree for visualization: {relabeled_tree_path}")
+                        else:
+                            tree_to_plot = tree_path
+                            logger.debug(f"Using original tree for visualization: {tree_path}")
+
+                        # Load genotype color map if it exists
+                        genotype_colors = None
+                        color_map_path = dirs['phylogenetic'] / f"{organism_name}_genotype_color_map.csv"
+                        if color_map_path.exists():
+                            try:
+                                import pandas as pd
+                                color_df = pd.read_csv(color_map_path)
+                                if 'consensus_group_sp' in color_df.columns and 'color' in color_df.columns:
+                                    genotype_colors = dict(zip(color_df['consensus_group_sp'], color_df['color']))
+                                    logger.debug(f"Loaded {len(genotype_colors)} genotype colors")
+                            except Exception as e:
+                                logger.debug(f"Could not load color map: {e}")
+
                         tree_plot_path = dirs['phylogenetic'] / f"{organism_name}_tree.{fmt}"
                         visualization.plot_phylogenetic_tree(
-                            tree_file=str(tree_path),
+                            tree_file=str(tree_to_plot),
                             output_path=str(tree_plot_path),
+                            genotype_colors=genotype_colors,
                             show_bootstrap=True,
                             dpi=cfg.visualization.figure_dpi
                         )

@@ -35,9 +35,11 @@ Figure Types:
 Design Specifications:
 - Color palette: Colorblind-friendly (seaborn 'colorblind' or 'tab10')
   For consistency with reference analysis, first 3 colors approximate:
-  * Purple (#9D7ABE)
-  * Teal (#5AB4AC)
-  * Yellow (#F2CC8F)
+  * Purple (#8545C1)
+  * Teal (#10B3A5)
+  * Yellow (#FFB031)
+  * Blue (#3874F4)
+  * Pink (#D975C7)
 - Output formats: PNG (300 DPI) and PDF (vector)
 - Figure size: Publication-ready (e.g., 10x6 inches for maps)
 - Font: Arial or Helvetica, 10-12pt
@@ -77,7 +79,69 @@ import cartopy.feature as cfeature
 logger = logging.getLogger(__name__)
 
 # Define reference color palette
-REFERENCE_COLORS = ['#9D7ABE', '#5AB4AC', '#F2CC8F']
+REFERENCE_COLORS = ['#8545C1', '#10B3A5', '#FFB031', '#3874F4', '#D975C7']
+
+
+def _get_genotype_order_by_abundance(
+    df: pd.DataFrame,
+    genotype_column: str = "consensus_group"
+) -> List[str]:
+    """
+    Get genotypes ordered by sample count (descending).
+
+    This ensures consistent color assignment across all visualizations,
+    with the most abundant genotype always receiving the first color.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe containing genotype assignments
+    genotype_column : str, optional
+        Column containing genotype assignments (default: "consensus_group")
+
+    Returns
+    -------
+    List[str]
+        Genotypes ordered by descending sample count
+    """
+    # Count samples per genotype and sort by count (descending)
+    genotype_counts = df[genotype_column].dropna().value_counts()
+    return genotype_counts.index.tolist()
+
+
+def _format_ocean_basin_labels() -> Tuple[List[str], Dict[str, str]]:
+    """
+    Get standardized ocean basin label formatting and ordering.
+
+    Returns formatted labels with line breaks for compact display and
+    defines the preferred display order for ocean basins.
+
+    Returns
+    -------
+    tuple
+        (basin_order, label_map) where basin_order is the list of basin names
+        in preferred display order, and label_map maps original names to
+        formatted display names with line breaks.
+    """
+    label_map = {
+        "North Atlantic Ocean": "North\nAtlantic",
+        "South Atlantic Ocean": "South\nAtlantic",
+        "Indian Ocean": "Indian\nOcean",
+        "South China and Easter Archipelagic Seas": "S. China\nSeas",
+        "North Pacific Ocean": "North\nPacific",
+        "South Pacific Ocean": "South\nPacific"
+    }
+
+    basin_order = [
+        "North Atlantic Ocean",
+        "South Atlantic Ocean",
+        "Indian Ocean",
+        "South China and Easter Archipelagic Seas",
+        "North Pacific Ocean",
+        "South Pacific Ocean"
+    ]
+
+    return basin_order, label_map
 
 
 def calculate_map_extent_with_buffer(
@@ -167,7 +231,7 @@ def plot_distribution_map(
     genotype_column: str = "consensus_group",
     latitude_col: str = "latitude",
     longitude_col: str = "longitude",
-    figsize: Tuple[int, int] = (10, 6),
+    figsize: Tuple[int, int] = (14, 12),
     dpi: int = 300,
 ) -> None:
     """
@@ -225,13 +289,14 @@ def plot_distribution_map(
     # Count samples at each location for sizing
     d['_count'] = d.groupby([latitude_col, longitude_col, genotype_column])[genotype_column].transform('count')
     # Scale point sizes: min 20, max 200, proportional to count
-    min_size, max_size = 20, 200
+    min_size, max_size = 50, 500
     if d['_count'].max() > 1:
         d['_size'] = min_size + (d['_count'] - d['_count'].min()) / (d['_count'].max() - d['_count'].min()) * (max_size - min_size)
     else:
         d['_size'] = 50  # default size if all counts are 1
 
-    genos = sorted(d[genotype_column].dropna().unique())
+    # Order genotypes by abundance (descending) for consistent color assignment
+    genos = _get_genotype_order_by_abundance(d, genotype_column)
     colors = get_genotype_colors(len(genos))
     color_map = {g: colors[i] for i, g in enumerate(genos)}
     d["_color"] = d[genotype_column].map(color_map)
@@ -265,7 +330,7 @@ def plot_distribution_map(
             ax.scatter(
                 sub[longitude_col], sub[latitude_col],
                 transform=ccrs.PlateCarree(), s=sub['_size'], alpha=0.8, label=str(g),
-                color=color_map[g], edgecolors="black", linewidths=0.2,
+                color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
             )
     else:
         ax = plt.gca()
@@ -274,13 +339,23 @@ def plot_distribution_map(
             ax.scatter(
                 sub[longitude_col], sub[latitude_col],
                 s=sub['_size'], alpha=0.8, label=str(g),
-                color=color_map[g], edgecolors="black", linewidths=0.2,
+                color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
             )
         ax.set_xlabel("Longitude"); ax.set_ylabel("Latitude")
         ax.set_xlim(-180, 180); ax.set_ylim(-90, 90)
         ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
 
-    ax.legend(title="Genotype", loc="lower left", bbox_to_anchor=(1.02, 0.0), frameon=False)
+    # Place legend below the map to maximize map size
+    # Use multiple columns for better horizontal space usage
+    ncol = min(len(genos), 5)  # Max 5 columns
+    ax.legend(
+        title="Genotype",
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.05),
+        ncol=ncol,
+        frameon=False,
+        fontsize=9
+    )
     plt.tight_layout()
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
@@ -328,6 +403,13 @@ def plot_ocean_basin_abundance(
     d[basin_column] = d[basin_column].fillna("Unknown")
     d[genotype_column] = d[genotype_column].fillna("Unassigned")
 
+    # Filter out samples with Unknown geography
+    d = d[d[basin_column] != "Unknown"].copy()
+
+    if len(d) == 0:
+        logger.warning(f"No samples with defined geography to plot in {output_path}")
+        return
+
     # proportions by basin
     counts = (
         d.groupby([basin_column, genotype_column]).size().rename("n").reset_index()
@@ -336,7 +418,8 @@ def plot_ocean_basin_abundance(
     counts["prop"] = counts["n"] / totals
 
     basins = counts[basin_column].unique().tolist()
-    genos  = counts[genotype_column].unique().tolist()
+    # Order genotypes by abundance (descending) for consistent color assignment
+    genos = _get_genotype_order_by_abundance(d, genotype_column)
     colors = get_genotype_colors(len(genos))
     color_map = {g: colors[i] for i, g in enumerate(genos)}
     label_map = {}
@@ -344,17 +427,26 @@ def plot_ocean_basin_abundance(
         tmp = df[["consensus_group", "consensus_group_sp"]].dropna().drop_duplicates()
         label_map = dict(zip(tmp["consensus_group"], tmp["consensus_group_sp"]))
 
+    # Get standardized basin ordering and labels
+    basin_order, basin_label_map = _format_ocean_basin_labels()
+    # Filter to only basins present in data
+    ordered_basins = [b for b in basin_order if b in counts[basin_column].unique()]
+
     # pivot to stacked proportions
     wide = counts.pivot(index=basin_column, columns=genotype_column, values="prop").fillna(0.0)
-    wide = wide.reindex(index=sorted(wide.index))  # sort basins
+    wide = wide.reindex(index=ordered_basins)  # apply custom basin order
     wide = wide[[g for g in genos if g in wide.columns]]
 
     plt.figure(figsize=figsize)
     ax = plt.gca()
     bottom = None
+    # Replace basin names with formatted labels for display
+    display_labels = [basin_label_map.get(b, b) for b in wide.index]
+    x_positions = range(len(wide.index))
+
     for g in wide.columns:
         vals = wide[g].values
-        ax.bar(wide.index, vals, bottom=bottom, label=str(g), color=color_map[g])
+        ax.bar(x_positions, vals, bottom=bottom, label=str(g), color=color_map[g], edgecolor="black", linewidth=0.5)
         bottom = vals if bottom is None else bottom + vals
 
     ax.set_ylabel("Relative abundance")
@@ -362,7 +454,8 @@ def plot_ocean_basin_abundance(
     ax.set_ylim(0, 1.0)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v*100)}%"))
     ax.legend(title="Genotype", bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False)
-    plt.xticks(rotation=20, ha="right")
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(display_labels)
     plt.tight_layout()
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
@@ -413,13 +506,21 @@ def plot_ocean_basin_abundance_total(
     d[basin_column] = d[basin_column].fillna("Unknown")
     d[genotype_column] = d[genotype_column].fillna("Unassigned")
 
+    # Filter out samples with Unknown geography
+    d = d[d[basin_column] != "Unknown"].copy()
+
+    if len(d) == 0:
+        logger.warning(f"No samples with defined geography to plot in {output_path}")
+        return
+
     # Total counts by basin and genotype (no proportion calculation)
     counts = (
         d.groupby([basin_column, genotype_column]).size().rename("n").reset_index()
     )
 
     basins = counts[basin_column].unique().tolist()
-    genos  = counts[genotype_column].unique().tolist()
+    # Order genotypes by abundance (descending) for consistent color assignment
+    genos = _get_genotype_order_by_abundance(d, genotype_column)
     colors = get_genotype_colors(len(genos))
     color_map = {g: colors[i] for i, g in enumerate(genos)}
     label_map = {}
@@ -427,17 +528,26 @@ def plot_ocean_basin_abundance_total(
         tmp = df[["consensus_group", "consensus_group_sp"]].dropna().drop_duplicates()
         label_map = dict(zip(tmp["consensus_group"], tmp["consensus_group_sp"]))
 
+    # Get standardized basin ordering and labels
+    basin_order, basin_label_map = _format_ocean_basin_labels()
+    # Filter to only basins present in data
+    ordered_basins = [b for b in basin_order if b in counts[basin_column].unique()]
+
     # Pivot to stacked counts (not proportions)
     wide = counts.pivot(index=basin_column, columns=genotype_column, values="n").fillna(0)
-    wide = wide.reindex(index=sorted(wide.index))  # sort basins
+    wide = wide.reindex(index=ordered_basins)  # apply custom basin order
     wide = wide[[g for g in genos if g in wide.columns]]
 
     plt.figure(figsize=figsize)
     ax = plt.gca()
     bottom = None
+    # Replace basin names with formatted labels for display
+    display_labels = [basin_label_map.get(b, b) for b in wide.index]
+    x_positions = range(len(wide.index))
+
     for g in wide.columns:
         vals = wide[g].values
-        ax.bar(wide.index, vals, bottom=bottom, label=str(g), color=color_map[g])
+        ax.bar(x_positions, vals, bottom=bottom, label=str(g), color=color_map[g], edgecolor="black", linewidth=0.5)
         bottom = vals if bottom is None else bottom + vals
 
     ax.set_ylabel("Total sample count")
@@ -445,7 +555,8 @@ def plot_ocean_basin_abundance_total(
     # Don't set ylim to 1.0 - let it auto-scale based on counts
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v)}"))
     ax.legend(title="Genotype", bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False)
-    plt.xticks(rotation=20, ha="right")
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(display_labels)
     plt.tight_layout()
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
@@ -571,7 +682,8 @@ def plot_distribution_map_faceted(
         return
 
     # Get all genotypes and assign consistent colors
-    all_genotypes = sorted(d[genotype_column].unique())
+    # Order by abundance (descending) for consistent color assignment across all plots
+    all_genotypes = _get_genotype_order_by_abundance(d, genotype_column)
     all_colors = get_genotype_colors(len(all_genotypes))
     color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
 
@@ -644,7 +756,7 @@ def plot_distribution_map_faceted(
                         sub[longitude_col], sub[latitude_col],
                         transform=ccrs.PlateCarree(),
                         s=sub['_size'], alpha=0.8,
-                        color=color_map[g], edgecolors="black", linewidths=0.2,
+                        color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
                         label=str(g) if facet_by == "species" else None
                     )
         else:
@@ -655,7 +767,7 @@ def plot_distribution_map_faceted(
                     ax.scatter(
                         sub[longitude_col], sub[latitude_col],
                         s=sub['_size'], alpha=0.8,
-                        color=color_map[g], edgecolors="black", linewidths=0.2,
+                        color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
                         label=str(g) if facet_by == "species" else None
                     )
             ax.set_xlabel("Longitude", fontsize=10)
@@ -796,6 +908,13 @@ def plot_ocean_basin_abundance_faceted(
     d[basin_column] = d[basin_column].fillna("Unknown")
     d[genotype_column] = d[genotype_column].fillna("Unassigned")
 
+    # Filter out samples with Unknown geography
+    d = d[d[basin_column] != "Unknown"].copy()
+
+    if len(d) == 0:
+        logger.warning(f"No samples with defined geography to plot in {output_path}")
+        return
+
     # Filter to valid facet values
     if facet_by == "species":
         d = d.dropna(subset=[species_column])
@@ -818,12 +937,15 @@ def plot_ocean_basin_abundance_faceted(
         return
 
     # Get all genotypes for consistent coloring
-    all_genotypes = sorted(d[genotype_column].unique())
+    # Order by abundance (descending) for consistent color assignment across all plots
+    all_genotypes = _get_genotype_order_by_abundance(d, genotype_column)
     all_colors = get_genotype_colors(len(all_genotypes))
     color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
 
-    # Get ALL ocean basins (so we show all basins even if 0)
-    all_basins = sorted(d[basin_column].unique())
+    # Get standardized basin ordering and labels
+    basin_order, basin_label_map = _format_ocean_basin_labels()
+    # Filter to only basins present in data (maintains specified order)
+    all_basins = [b for b in basin_order if b in d[basin_column].unique()]
 
     # Create figure with facets
     fig_height = height_per_facet * n_facets
@@ -844,15 +966,18 @@ def plot_ocean_basin_abundance_faceted(
 
             # Plot stacked bars for each genotype
             bottom = None
+            x_positions = range(len(all_basins))
             for genotype in sorted(facet_data[genotype_column].unique()):
                 geno_counts = counts[counts[genotype_column] == genotype]
                 count_series = geno_counts.set_index(basin_column)["n"]
                 count_series = count_series.reindex(index=all_basins, fill_value=0)
 
-                ax.bar(count_series.index, count_series.values,
+                ax.bar(x_positions, count_series.values,
                       bottom=bottom,
                       label=label_map.get(genotype, genotype),
-                      color=color_map[genotype])
+                      color=color_map[genotype],
+                      edgecolor="black",
+                      linewidth=0.5)
                 bottom = count_series.values if bottom is None else bottom + count_series.values
 
             # Add legend for genotypes
@@ -864,7 +989,8 @@ def plot_ocean_basin_abundance_faceted(
             count_series = count_series.reindex(index=all_basins, fill_value=0)
 
             # Plot bars with genotype color
-            bars = ax.bar(count_series.index, count_series.values, color=color_map[facet_value])
+            x_positions = range(len(all_basins))
+            bars = ax.bar(x_positions, count_series.values, color=color_map[facet_value], edgecolor="black", linewdith=0.5)
 
         # Skip annotations for facet_by species (too crowded with stacked bars)
         # Only annotate when faceting by genotype
@@ -874,9 +1000,14 @@ def plot_ocean_basin_abundance_faceted(
                     ax.text(i, count, f"n={int(count)}",
                            ha='center', va='bottom', fontsize=9)
 
+        # Apply formatted basin labels
+        display_labels = [basin_label_map.get(b, b) for b in all_basins]
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(display_labels)
         ax.set_ylabel("Sample count")
         ax.set_xlabel("Ocean basin")
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=20, ha="right")
+        # Format y-axis to show only integers
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v)}"))
 
         # Set y-axis to start at 0 and add a bit of padding for annotations
         if facet_by == "species":
@@ -963,8 +1094,9 @@ def plot_phylogenetic_tree(
     # Calculate figure size based on number of tips if not specified
     if figsize is None:
         n_tips = len(list(tree.get_terminals()))
-        # Scale height with number of tips: 0.3 inches per tip, minimum 10, maximum 50
-        height = max(10, min(50, n_tips * 0.3))
+        # Reduce height by half: 0.15 inches per tip instead of 0.3 (reduces vertical spacing)
+        # Minimum 5, maximum 25
+        height = max(5, min(25, n_tips * 0.15))
         # Width scales more slowly: base 8 + extra for large trees
         width = 8 if n_tips <= 30 else min(14, 8 + (n_tips - 30) * 0.1)
         figsize = (width, height)
@@ -984,6 +1116,12 @@ def plot_phylogenetic_tree(
     Phylo.draw(
         tree, do_show=False, axes=ax, label_colors=tip_colors if tip_colors else None
     )
+
+    # Extend x-axis to prevent tip labels from being cut off
+    # Add 15% margin to the right of the maximum branch length
+    xlim = ax.get_xlim()
+    x_range = xlim[1] - xlim[0]
+    ax.set_xlim(xlim[0], xlim[1] + x_range * 0.15)
 
     # Optionally annotate bootstrap values (internal node confidences)
     if show_bootstrap:

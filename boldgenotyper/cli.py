@@ -126,6 +126,21 @@ def run_pipeline(
     # Setup directory structure
     dirs = setup_directories(output_dir)
 
+    # Save pipeline parameters for reference and HTML report
+    import json
+    params = {
+        'clustering_threshold': cfg.dereplication.clustering_threshold,
+        'similarity_threshold': cfg.genotype_assignment.min_identity,
+        'tie_margin': cfg.genotype_assignment.tie_margin,
+        'tie_threshold': cfg.genotype_assignment.tie_threshold,
+        'threads': cfg.n_threads,
+        'build_tree': cfg.phylogenetic.build_tree
+    }
+    params_file = output_dir / f"{organism}_pipeline_parameters.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f, indent=2)
+    logger.info(f"Saved pipeline parameters to {params_file}")
+
     # ========================================================================
     # PHASE 1: Data Loading and Quality Control
     # ========================================================================
@@ -417,7 +432,9 @@ def run_pipeline(
                                 alignment_file=alignment_path,
                                 taxonomy_csv=str(taxonomy_csv_path),
                                 output_tree=relabeled_tree_path,
-                                output_alignment=relabeled_alignment_path
+                                output_alignment=relabeled_alignment_path,
+                                label_column="consensus_group_sp",
+                                id_column="consensus_group",
                             )
                             logger.info(f"  ✓ Created relabeled tree: {relabeled_tree_path}")
                             logger.info(f"  ✓ Created relabeled alignment (intermediate): {relabeled_alignment_path}")
@@ -789,6 +806,12 @@ Examples:
   # Adjust similarity threshold for highly diverse taxa
   boldgenotyper data/Carcharhinus.tsv --similarity-threshold 0.80
 
+  # Use stricter clustering for fine-scale genotyping
+  boldgenotyper data/Population_study.tsv --clustering-threshold 0.005
+
+  # Adjust tie detection parameters for ambiguous assignments
+  boldgenotyper data/Complex_group.tsv --tie-margin 0.005 --tie-threshold 0.97
+
   # Enable phylogenetic tree building
   boldgenotyper data/Euprymna.tsv --build-tree
 
@@ -829,8 +852,37 @@ For more information: https://github.com/your-repo/boldgenotyper
     parser.add_argument(
         '--similarity-threshold',
         type=float,
-        default=0.90,
-        help='Minimum similarity for genotype assignment (default: 0.90)'
+        default=0.5,
+        help='Minimum similarity for genotype assignment (default: 0.5)'
+    )
+
+    parser.add_argument(
+        '--clustering-threshold',
+        type=float,
+        default=0.03,
+        help='Maximum genetic distance for clustering sequences into consensus groups. '
+             'Lower values create more groups with tighter genetic similarity. '
+             'Default: 0.03 (97%% identity)'
+    )
+
+    parser.add_argument(
+        '--tie-margin',
+        type=float,
+        default=0.003,
+        help='Maximum identity difference between top matches to call a tie. '
+             'Samples with ambiguous assignments (identity difference < tie-margin) '
+             'are flagged for manual review. '
+             'Default: 0.003 (0.3%% difference)'
+    )
+
+    parser.add_argument(
+        '--tie-threshold',
+        type=float,
+        default=0.95,
+        help='Minimum identity required to consider tie detection. '
+             'Ties are only called when best match identity >= tie-threshold. '
+             'Prevents flagging low-quality matches as ties. '
+             'Default: 0.95 (95%% identity)'
     )
 
     parser.add_argument(
@@ -889,6 +941,9 @@ For more information: https://github.com/your-repo/boldgenotyper
     cfg = config.get_default_config()
     cfg = cfg.update(
         genotype_assignment__min_identity=args.similarity_threshold,
+        genotype_assignment__tie_margin=args.tie_margin,
+        genotype_assignment__tie_threshold=args.tie_threshold,
+        dereplication__clustering_threshold=args.clustering_threshold,
         n_threads=args.threads,
         output_dir=output_dir,
         log_level=args.log_level,
@@ -903,9 +958,14 @@ For more information: https://github.com/your-repo/boldgenotyper
     print(f"Organism: {organism}")
     print(f"Input: {args.tsv}")
     print(f"Output: {output_dir}")
-    print(f"Similarity threshold: {args.similarity_threshold}")
-    print(f"Threads: {args.threads}")
-    print(f"Build tree: {args.build_tree}")
+    print()
+    print("Parameters:")
+    print(f"  Clustering threshold: {args.clustering_threshold} ({(1-args.clustering_threshold)*100:.1f}% identity)")
+    print(f"  Similarity threshold: {args.similarity_threshold} ({args.similarity_threshold*100:.0f}% identity)")
+    print(f"  Tie margin: {args.tie_margin} ({args.tie_margin*100:.1f}% difference)")
+    print(f"  Tie threshold: {args.tie_threshold} ({args.tie_threshold*100:.0f}% identity)")
+    print(f"  Threads: {args.threads}")
+    print(f"  Build tree: {args.build_tree}")
     print("=" * 80)
     print()
 

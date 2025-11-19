@@ -78,9 +78,9 @@ class DereplicationConfig:
     Attributes
     ----------
     clustering_threshold : float
-        Maximum distance for sequences to cluster together (default: 0.01).
-        This corresponds to 99% sequence identity, which is the standard
-        threshold for COI-based species/genotype delimitation.
+        Maximum distance for sequences to cluster together (default: 0.03).
+        This corresponds to 97% sequence identity threshold for
+        COI-based species/genotype delimitation.
 
     clustering_method : str
         Hierarchical clustering linkage method (default: "average").
@@ -119,16 +119,15 @@ class DereplicationConfig:
 
     Notes
     -----
-    The default clustering threshold of 0.01 (99% identity) is based on:
-    - Hebert et al. (2003) "Biological identifications through DNA barcodes"
-    - Standard practice for COI barcode gap analysis
+    The default clustering threshold of 0.03 (97% identity) allows for
+    greater intraspecific variation while maintaining distinct genotype groups.
 
     Three-stage length filtering prevents fragment-based spurious genotypes:
     1. Pre-alignment: Remove sequences <400bp (configurable)
     2. Post-trimming: Remove sequences <300bp ungapped after trimAl
     3. Post-consensus: Remove consensus sequences <75% of median length
     """
-    clustering_threshold: float = 0.01
+    clustering_threshold: float = 0.03
     clustering_method: str = "average"
     consensus_frequency_cutoff: float = 0.7
     mafft_algorithm: str = "auto"
@@ -175,7 +174,7 @@ class GenotypeAssignmentConfig:
     Attributes
     ----------
     min_identity : float
-        Minimum sequence identity for genotype assignment (default: 0.90).
+        Minimum sequence identity for genotype assignment (default: 0.5).
         Samples below this threshold are flagged as unassigned.
 
     identity_method : str
@@ -197,14 +196,23 @@ class GenotypeAssignmentConfig:
     report_ties : bool
         Report samples with ambiguous assignments (default: True)
 
+    tie_margin : float
+        Maximum identity difference between best and runner-up to call a tie (default: 0.003).
+        Samples with best_identity - runner_up_identity < tie_margin are flagged for review.
+
+    tie_threshold : float
+        Minimum best identity required to consider tie detection (default: 0.95).
+        Prevents flagging low-quality matches as ties.
+
     tie_difference_threshold : float
-        Minimum identity difference to avoid tie (default: 0.01)
+        DEPRECATED: Use tie_margin instead. (default: 0.01)
 
     Notes
     -----
-    The default minimum identity of 0.90 allows for:
-    - Sequencing errors (~1-2%)
-    - Minor intraspecific variation
+    The default minimum identity of 0.5 (50%) provides a permissive threshold
+    for genotype assignment, allowing for:
+    - Greater intraspecific variation
+    - Degraded or low-quality sequences
     - Differences between consensus and raw sequences
 
     Identity Method Selection:
@@ -212,13 +220,21 @@ class GenotypeAssignmentConfig:
       references and samples may have variable quality at 5'/3' ends
     - Use "classic" for backwards compatibility or when sequences are
       expected to have uniform length and quality
+
+    Tie Detection:
+    - tie_margin: Controls sensitivity of tie detection (default 0.003 = 0.3%)
+    - tie_threshold: Minimum quality for considering ties (default 0.95 = 95%)
+    - Ties are only called when: best_identity >= tie_threshold AND
+      (best_identity - runner_up_identity) < tie_margin
     """
-    min_identity: float = 0.90
+    min_identity: float = 0.5
     identity_method: str = "target_based"
     use_edlib: bool = True
     n_threads: int = 1
     report_ties: bool = True
-    tie_difference_threshold: float = 0.01
+    tie_margin: float = 0.003
+    tie_threshold: float = 0.95
+    tie_difference_threshold: float = 0.01  # Deprecated
 
     def __post_init__(self):
         """Validate configuration parameters."""
