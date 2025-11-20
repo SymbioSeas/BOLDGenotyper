@@ -211,3 +211,120 @@
 [2025-11-19 22:06:15] INFO:   ✓ Created 547 FASTA records
 [2025-11-19 22:06:15] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
 [2025-11-19 22:06:15] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/Atlantic Cod.fasta
+[2025-11-19 22:06:25] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_aligned.fasta
+[2025-11-19 22:06:25] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_trimmed.fasta -automated1
+[2025-11-19 22:06:27] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_trimmed.fasta
+[2025-11-19 22:06:27] INFO:   Filtered 1 sequences shorter than 300 bp after trimming
+[2025-11-19 22:06:27] INFO: Calculating pairwise distances for 546 sequences
+[2025-11-19 22:06:53] INFO: Distance calculation complete: 148785 pairwise distances
+[2025-11-19 22:06:53] INFO: Clustering sequences with average linkage, threshold=0.02
+[2025-11-19 22:06:53] INFO: Clustering complete: 4 clusters formed
+[2025-11-19 22:06:54] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_consensus_metadata.csv
+[2025-11-19 22:06:54] INFO:   ✓ Identified 4 unique genotypes
+[2025-11-19 22:06:54] INFO: 
+[2025-11-19 22:06:54] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 22:06:54] INFO: --------------------------------------------------------------------------------
+[2025-11-19 22:06:54] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 22:06:54] INFO: ======================================================================
+[2025-11-19 22:06:54] INFO: Starting genotype assignment workflow
+[2025-11-19 22:06:54] INFO: ======================================================================
+[2025-11-19 22:06:54] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 22:06:54] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/02_filtered_metadata.tsv
+[2025-11-19 22:06:54] INFO: Loaded 560 samples from metadata
+[2025-11-19 22:06:54] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_consensus.fasta
+[2025-11-19 22:06:54] INFO: Read 4 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_consensus.fasta
+[2025-11-19 22:06:54] INFO: Loaded 4 consensus groups
+[2025-11-19 22:06:54] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/Atlantic Cod.fasta
+[2025-11-19 22:06:54] INFO: Read 547 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/Atlantic Cod.fasta
+[2025-11-19 22:06:54] INFO: Extracted 547 unique processids from FASTA
+[2025-11-19 22:06:54] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 22:06:54] INFO: Prepared 560 assignment tasks
+[2025-11-19 22:06:54] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 22:06:54] INFO: Identity calculation method: target_based
+[2025-11-19 22:06:54] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 22:06:58] INFO: Completed genotype assignment for 560 samples
+[2025-11-19 22:06:58] INFO: Step 6/6: Writing outputs
+[2025-11-19 22:06:58] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/genotype_assignments/Atlantic Cod_with_genotypes.tsv
+[2025-11-19 22:06:58] INFO: Renamed 4 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 22:06:58] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/genotype_assignments/Atlantic Cod_with_genotypes.tsv
+[2025-11-19 22:06:58] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/genotype_assignments/Atlantic Cod_diagnostics.csv
+[2025-11-19 22:06:58] INFO: ======================================================================
+[2025-11-19 22:06:58] INFO: Genotype assignment summary:
+[2025-11-19 22:06:58] INFO:   Total samples: 560
+[2025-11-19 22:06:58] INFO:   Successfully assigned: 546 (97.5%)
+[2025-11-19 22:06:58] INFO:   Unassigned: 14 (2.5%)
+[2025-11-19 22:06:58] INFO:     - No sequence in FASTA: 13
+[2025-11-19 22:06:58] INFO:     - Below identity threshold: 1
+[2025-11-19 22:06:58] INFO:   Diagnostic flags:
+[2025-11-19 22:06:58] INFO:     - Ties (ambiguous): 0
+[2025-11-19 22:06:58] INFO:     - Low confidence: 0
+[2025-11-19 22:06:58] INFO: ======================================================================
+[2025-11-19 22:06:58] INFO:   ✓ Assigned 546/560 samples to genotypes
+[2025-11-19 22:06:58] INFO:   ✓ Assignment rate: 97.5%
+[2025-11-19 22:06:58] INFO: 
+[2025-11-19 22:06:58] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 22:06:58] INFO: --------------------------------------------------------------------------------
+[2025-11-19 22:06:58] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 22:06:58] INFO:   ✓ Assigned taxonomy to 4 consensus groups
+[2025-11-19 22:06:58] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/Atlantic Cod_annotated.csv
+[2025-11-19 22:06:58] INFO: 
+[2025-11-19 22:06:58] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 22:06:58] INFO: --------------------------------------------------------------------------------
+[2025-11-19 22:06:58] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 22:06:58] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_consensus.fasta
+[2025-11-19 22:06:59] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/phylogenetic/Atlantic Cod_aligned.fasta
+[2025-11-19 22:06:59] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/phylogenetic/Atlantic Cod_aligned.fasta
+[2025-11-19 22:06:59] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/phylogenetic/Atlantic Cod_tree.nwk
+[2025-11-19 22:06:59] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/phylogenetic/Atlantic Cod_tree.nwk
+[2025-11-19 22:06:59] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 22:06:59] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 22:06:59] INFO: Loaded 4 label mappings from taxonomy CSV
+[2025-11-19 22:06:59] INFO: Created 4 base name mappings
+[2025-11-19 22:06:59] INFO: Relabeled 4 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/phylogenetic/Atlantic Cod_tree_relabeled.nwk
+[2025-11-19 22:06:59] INFO: Relabeled 4 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/phylogenetic/Atlantic Cod_aligned_relabeled.fasta
+[2025-11-19 22:06:59] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/phylogenetic/Atlantic Cod_tree_relabeled.nwk
+[2025-11-19 22:06:59] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/phylogenetic/Atlantic Cod_aligned_relabeled.fasta
+[2025-11-19 22:06:59] INFO: 
+[2025-11-19 22:06:59] INFO: PHASE 6: Visualization
+[2025-11-19 22:06:59] INFO: --------------------------------------------------------------------------------
+[2025-11-19 22:06:59] INFO: 6.1: Generating plots...
+[2025-11-19 22:07:01] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_distribution_bar.png
+[2025-11-19 22:07:01] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_totaldistribution_bar.png
+[2025-11-19 22:07:02] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_identity_distribution.png
+[2025-11-19 22:07:02] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/phylogenetic/Atlantic Cod_tree_relabeled.nwk
+[2025-11-19 22:07:02] INFO: Auto-scaled tree figure size to (8, 5) for 4 tips
+[2025-11-19 22:07:02] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 22:07:04] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_distribution_map_faceted.png
+[2025-11-19 22:07:05] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_distribution_bar_faceted.png
+[2025-11-19 22:07:05] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_distribution_bar.pdf
+[2025-11-19 22:07:05] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_totaldistribution_bar.pdf
+[2025-11-19 22:07:06] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_identity_distribution.pdf
+[2025-11-19 22:07:06] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/phylogenetic/Atlantic Cod_tree_relabeled.nwk
+[2025-11-19 22:07:06] INFO: Auto-scaled tree figure size to (8, 5) for 4 tips
+[2025-11-19 22:07:06] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 22:07:07] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_distribution_map_faceted.pdf
+[2025-11-19 22:07:07] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/visualization/Atlantic Cod_distribution_bar_faceted.pdf
+[2025-11-19 22:07:07] INFO:   ✓ Generated visualization plots
+[2025-11-19 22:07:07] INFO: 
+[2025-11-19 22:07:07] INFO: PHASE 7: Generating Reports
+[2025-11-19 22:07:07] INFO: --------------------------------------------------------------------------------
+[2025-11-19 22:07:07] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/reports/Atlantic Cod_assignment_summary.csv
+[2025-11-19 22:07:07] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/reports/Atlantic Cod_assignment_summary.csv
+[2025-11-19 22:07:07] INFO: 
+[2025-11-19 22:07:07] INFO: Cleaning up empty directories...
+[2025-11-19 22:07:07] INFO:   ✓ Removed empty directories
+[2025-11-19 22:07:07] INFO: 
+[2025-11-19 22:07:07] INFO: Generating HTML summary report...
+[2025-11-19 22:07:07] INFO: Generating HTML summary report for Atlantic Cod...
+[2025-11-19 22:07:07] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/Atlantic Cod_summary_report.html
+[2025-11-19 22:07:07] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/Atlantic Cod_summary_report.html
+[2025-11-19 22:07:07] INFO: 
+[2025-11-19 22:07:07] INFO: ================================================================================
+[2025-11-19 22:07:07] INFO: ✓ Pipeline completed successfully for Atlantic Cod
+[2025-11-19 22:07:07] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results
+[2025-11-19 22:07:07] INFO:   Key files:
+[2025-11-19 22:07:07] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/Atlantic Cod_annotated.csv
+[2025-11-19 22:07:07] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/intermediate/dereplication/Atlantic Cod_consensus.fasta
+[2025-11-19 22:07:07] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/phylogenetic/Atlantic Cod_tree.nwk
+[2025-11-19 22:07:07] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/atlantic_cod_results/Atlantic Cod_summary_report.html
+[2025-11-19 22:07:07] INFO: ================================================================================

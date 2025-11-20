@@ -1,10 +1,11 @@
 {
   "genotypes": [
-    "Gadus morhua c2_n180",
-    "Gadus morhua c1_n304"
+    "Gadus morhua c1_n229",
+    "Gadus morhua c3_n1",
+    "Gadus morhua c2_n304"
   ],
   "locations": {
-    "Gadus morhua c2_n180": {
+    "Gadus morhua c1_n229": {
       "latitudes": [
         42.08,
         54.37,
@@ -25,7 +26,6 @@
         77.48,
         77.48,
         53.23,
-        50.36,
         55.16,
         55.16,
         55.11183,
@@ -128,7 +128,6 @@
         -5.827,
         -5.827,
         -3.37,
-        -2.55,
         -1.15,
         -1.15,
         6.428667,
@@ -231,7 +230,6 @@
         2,
         2,
         1,
-        1,
         2,
         2,
         2,
@@ -334,7 +332,6 @@
         "Arctic Ocean",
         "Arctic Ocean",
         "Unknown",
-        "North Atlantic Ocean",
         "North Atlantic Ocean",
         "North Atlantic Ocean",
         "North Atlantic Ocean",
@@ -418,7 +415,21 @@
         "North Atlantic Ocean"
       ]
     },
-    "Gadus morhua c1_n304": {
+    "Gadus morhua c3_n1": {
+      "latitudes": [
+        50.36
+      ],
+      "longitudes": [
+        -2.55
+      ],
+      "sizes": [
+        1
+      ],
+      "ocean_basins": [
+        "North Atlantic Ocean"
+      ]
+    },
+    "Gadus morhua c2_n304": {
       "latitudes": [
         69.96
       ],
@@ -434,12 +445,14 @@
     }
   },
   "colors": {
-    "Gadus morhua c2_n180": "#8545C1",
-    "Gadus morhua c1_n304": "#10B3A5"
+    "Gadus morhua c1_n229": "#8545C1",
+    "Gadus morhua c3_n1": "#10B3A5",
+    "Gadus morhua c2_n304": "#FFB031"
   },
   "sample_counts": {
-    "Gadus morhua c1_n304": 1,
-    "Gadus morhua c2_n180": 101
+    "Gadus morhua c1_n229": 100,
+    "Gadus morhua c2_n304": 1,
+    "Gadus morhua c3_n1": 1
   },
   "ocean_basins": [
     "Arctic Ocean",
