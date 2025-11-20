@@ -108,6 +108,31 @@ def _get_genotype_order_by_abundance(
     genotype_counts = df[genotype_column].dropna().value_counts()
     return genotype_counts.index.tolist()
 
+def build_genotype_colors_dict(
+    df: pd.DataFrame,
+    genotype_column: str = "consensus_group"
+) -> Dict[str, str]:
+    """
+    Build a globally consistent color dictionary for genotypes.
+
+    Steps:
+        1. Order genotypes by descending abundance
+        2. Generate a colorblind-safe palette of sufficient length
+        3. Map each genotype to its assigned color
+
+    Returns
+    -------
+    Dict[str, str]
+        Mapping: genotype -> hex color
+    """
+    # Get genotypes ordered by abundance
+    genos = _get_genotype_order_by_abundance(df, genotype_column)
+
+    # Use existing palette logic to create ordered colors
+    colors = get_genotype_colors(len(genos))
+
+    # Return mapping
+    return {g: colors[i] for i, g in enumerate(genos)}
 
 def _format_ocean_basin_labels() -> Tuple[List[str], Dict[str, str]]:
     """
@@ -128,8 +153,8 @@ def _format_ocean_basin_labels() -> Tuple[List[str], Dict[str, str]]:
         "South Atlantic Ocean": "South\nAtlantic",
         "Indian Ocean": "Indian\nOcean",
         "South China and Easter Archipelagic Seas": "S. China\nSeas",
-        "North Pacific Ocean": "North\nPacific",
-        "South Pacific Ocean": "South\nPacific"
+        "South Pacific Ocean": "South\nPacific",
+        "North Pacific Ocean": "North\nPacific"
     }
 
     basin_order = [
@@ -137,8 +162,8 @@ def _format_ocean_basin_labels() -> Tuple[List[str], Dict[str, str]]:
         "South Atlantic Ocean",
         "Indian Ocean",
         "South China and Easter Archipelagic Seas",
-        "North Pacific Ocean",
-        "South Pacific Ocean"
+        "South Pacific Ocean",
+        "North Pacific Ocean"
     ]
 
     return basin_order, label_map
@@ -231,7 +256,7 @@ def plot_distribution_map(
     genotype_column: str = "consensus_group",
     latitude_col: str = "latitude",
     longitude_col: str = "longitude",
-    figsize: Tuple[int, int] = (14, 12),
+    figsize: Tuple[int, int] = (6, 10),
     dpi: int = 300,
 ) -> None:
     """
@@ -320,7 +345,7 @@ def plot_distribution_map(
             ax.add_feature(cfeature.OCEAN, zorder=0, facecolor="#d9edf7")
             ax.add_feature(cfeature.COASTLINE, linewidth=0.3)
         # Add gridlines with labels (PlateCarree projection supports proper gridline labels)
-        gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="gray", alpha=0.5, linestyle='--')
+        gl = ax.gridlines(draw_labels=True, linewidth=0, color="gray", alpha=0.5, linestyle='--')
         gl.top_labels = False
         gl.right_labels = False
         gl.xlabel_style = {'size': 10}
@@ -329,8 +354,8 @@ def plot_distribution_map(
             sub = d[d[genotype_column] == g]
             ax.scatter(
                 sub[longitude_col], sub[latitude_col],
-                transform=ccrs.PlateCarree(), s=sub['_size'], alpha=0.8, label=str(g),
-                color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
+                transform=ccrs.PlateCarree(), s=sub['_size'], alpha=0.85, label=str(g),
+                color=color_map[g], edgecolors="black", linewidths=0.5,
             )
     else:
         ax = plt.gca()
@@ -339,11 +364,11 @@ def plot_distribution_map(
             ax.scatter(
                 sub[longitude_col], sub[latitude_col],
                 s=sub['_size'], alpha=0.8, label=str(g),
-                color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
+                color=color_map[g], edgecolors="black", linewidths=0.2,
             )
         ax.set_xlabel("Longitude"); ax.set_ylabel("Latitude")
         ax.set_xlim(-180, 180); ax.set_ylim(-90, 90)
-        ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
+        ax.grid(True, linestyle="--", linewidth=0, alpha=0.5)
 
     # Place legend below the map to maximize map size
     # Use multiple columns for better horizontal space usage
@@ -755,8 +780,8 @@ def plot_distribution_map_faceted(
                     ax.scatter(
                         sub[longitude_col], sub[latitude_col],
                         transform=ccrs.PlateCarree(),
-                        s=sub['_size'], alpha=0.8,
-                        color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
+                        s=sub['_size'], alpha=0.85,
+                        color=color_map[g], edgecolors="black", linewidths=0.5,
                         label=str(g) if facet_by == "species" else None
                     )
         else:
@@ -766,15 +791,15 @@ def plot_distribution_map_faceted(
                 if len(sub) > 0:
                     ax.scatter(
                         sub[longitude_col], sub[latitude_col],
-                        s=sub['_size'], alpha=0.8,
-                        color=color_map[g], edgecolors="black", markeredgecolor="black", linewidths=0.2,
+                        s=sub['_size'], alpha=0.85,
+                        color=color_map[g], edgecolors="black", linewidths=0.5,
                         label=str(g) if facet_by == "species" else None
                     )
             ax.set_xlabel("Longitude", fontsize=10)
             ax.set_ylabel("Latitude", fontsize=10)
             ax.set_xlim(lon_min, lon_max)
             ax.set_ylim(lat_min, lat_max)
-            ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
+            ax.grid(True, linestyle="--", linewidth=0, alpha=0.5)
 
         # Add scale bar if requested
         if show_scale_bar:
@@ -786,20 +811,20 @@ def plot_distribution_map_faceted(
             size_legend_elements = [
                 Line2D([0], [0], marker='o', color='w',
                        markerfacecolor='gray', markersize=np.sqrt(min_size/3.14),
-                       label='n=1', markeredgecolor='black', markeredgewidth=0.2),
+                       label='n=1', markeredgecolor='black', markeredgewidth=0.5),
             ]
             if max_count >= 5:
                 mid_size = (min_size + max_size) / 2
                 size_legend_elements.append(
                     Line2D([0], [0], marker='o', color='w',
                            markerfacecolor='gray', markersize=np.sqrt(mid_size/3.14),
-                           label=f'n≈{int(max_count/2)}', markeredgecolor='black', markeredgewidth=0.2)
+                           label=f'n≈{int(max_count/2)}', markeredgecolor='black', markeredgewidth=0.5)
                 )
             if max_count > 1:
                 size_legend_elements.append(
                     Line2D([0], [0], marker='o', color='w',
                            markerfacecolor='gray', markersize=np.sqrt(max_size/3.14),
-                           label=f'n={int(max_count)}', markeredgecolor='black', markeredgewidth=0.2)
+                           label=f'n={int(max_count)}', markeredgecolor='black', markeredgewidth=0.5)
                 )
 
             ax.legend(handles=size_legend_elements,
@@ -827,7 +852,7 @@ def plot_distribution_map_faceted(
                     verticalalignment='top',
                     horizontalalignment='right',
                     bbox=dict(boxstyle='round', facecolor='white',
-                             alpha=0.8, edgecolor='gray', linewidth=0.5)
+                             alpha=0.85, edgecolor='gray', linewidth=0.5)
                 )
 
         # Add facet title
@@ -851,7 +876,7 @@ def plot_ocean_basin_abundance_faceted(
     genotype_column: str = "consensus_group",
     species_column: str = "assigned_sp",
     basin_column: str = "ocean_basin",
-    width: int = 9,
+    width: int = 10,
     height_per_facet: int = 5,
     dpi: int = 300,
     facet_by: str = "species",
@@ -876,7 +901,7 @@ def plot_ocean_basin_abundance_faceted(
     basin_column : str, optional
         Column containing ocean basin names
     width : int, optional
-        Figure width in inches (default: 9)
+        Figure width in inches (default: 10)
     height_per_facet : int, optional
         Height per facet in inches (default: 5)
     dpi : int, optional
@@ -947,16 +972,18 @@ def plot_ocean_basin_abundance_faceted(
     # Filter to only basins present in data (maintains specified order)
     all_basins = [b for b in basin_order if b in d[basin_column].unique()]
 
-    # Create figure with facets
-    fig_height = height_per_facet * n_facets
-    fig, axes = plt.subplots(n_facets, 1, figsize=(width, fig_height))
+    # Create figure with facets in 2-column layout
+    import math
+    n_cols = 2
+    n_rows = math.ceil(n_facets / n_cols)
+    fig_height = height_per_facet * n_rows
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(width, fig_height), squeeze=False)
 
-    # Handle single facet case
-    if n_facets == 1:
-        axes = [axes]
+    # Flatten axes array for easier iteration
+    axes_flat = axes.flatten()
 
     for idx, facet_value in enumerate(facet_list):
-        ax = axes[idx]
+        ax = axes_flat[idx]
         facet_data = d[d[facet_col] == facet_value]
 
         # If faceting by species, we need to plot stacked bars by genotype
@@ -990,7 +1017,7 @@ def plot_ocean_basin_abundance_faceted(
 
             # Plot bars with genotype color
             x_positions = range(len(all_basins))
-            bars = ax.bar(x_positions, count_series.values, color=color_map[facet_value], edgecolor="black", linewdith=0.5)
+            bars = ax.bar(x_positions, count_series.values, color=color_map[facet_value], edgecolor="black", linewidth=0.5)
 
         # Skip annotations for facet_by species (too crowded with stacked bars)
         # Only annotate when faceting by genotype
@@ -1016,26 +1043,23 @@ def plot_ocean_basin_abundance_faceted(
             max_count = count_series.max()
         ax.set_ylim(0, max_count * 1.15 if max_count > 0 else 1)
 
-    # Adjust margins: more space on left for facet labels
-    plt.subplots_adjust(left=0.15, right=0.95, hspace=0.85)
-
-    # Now add facet labels positioned based on actual axes positions
-    for idx, (facet_value, ax) in enumerate(zip(facet_list, axes)):
-        # Get axes position in figure coordinates
-        pos = ax.get_position()
-        y_center = (pos.y0 + pos.y1) / 2  # center of this axes in figure coords
-
+        # Add facet label as title at top-left
         # Use consensus_group_sp label if available, otherwise use facet value
         if facet_by == "genotype":
             display_label = label_map.get(facet_value, str(facet_value))
         else:
             display_label = str(facet_value)
 
-        # Add genotype label (outside left margin, centered on facet y-axis)
-        # Use italic style for species names (consensus_group_sp format)
-        fig.text(0.02, y_center, display_label,
-                fontsize=12, fontweight='bold', fontstyle='italic',
-                verticalalignment='center', rotation=90, transform=fig.transFigure)
+        # Set title with italic style for species names, positioned at top-left
+        ax.set_title(display_label, fontsize=11, fontweight='bold', fontstyle='italic',
+                    loc='left', pad=10)
+
+    # Hide unused subplots if n_facets is odd
+    for idx in range(n_facets, len(axes_flat)):
+        axes_flat[idx].set_visible(False)
+
+    # Adjust margins with reduced vertical spacing
+    plt.subplots_adjust(left=0.08, right=0.95, hspace=0.4, wspace=0.2)
 
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
@@ -1065,14 +1089,16 @@ def plot_phylogenetic_tree(
     output_path : str
         Path for output figure
     genotype_colors : Dict[str, str], optional
-        Mapping of genotype names to colors
+        Mapping of tip labels to colors. These should match the labels
+        used in the final tree (after applying label_map) so that the
+        circular tip nodes use the same colors as genotype visualizations.
     show_bootstrap : bool, optional
         Display bootstrap values (default: True)
     bootstrap_threshold : int, optional
         Minimum bootstrap value to display (default: 70)
     figsize : Tuple[int, int], optional
         Figure size in inches. If None, automatically scales based on number of tips.
-        Minimum: (8, 10), scales as: height = max(10, n_tips * 0.3)
+        Minimum: (8, 10), scales as: height = max(5, min(25, n_tips * 0.15))
     dpi : int, optional
         Resolution for PNG output
     label_map : Dict[str, str], optional
@@ -1085,15 +1111,42 @@ def plot_phylogenetic_tree(
 
     tree = Phylo.read(str(tree_file), "newick")
 
-    # Apply label_map
+    # Apply label_map (rename tips) if provided
     if label_map:
         for clade in tree.get_terminals():
             if clade.name in label_map:
                 clade.name = label_map[clade.name]
 
+    # --- Compute x (depth) and y positions for each clade so we can place tip nodes ---
+    # x positions: cumulative branch length from root
+    depths = tree.depths()  # dict: clade -> distance from root
+    if not depths:
+        # If branch lengths are missing, fall back to unit spacing
+        depths = tree.depths(unit_branch_lengths=True)
+
+    # y positions: leaves are evenly spaced, internal nodes are midpoints of children
+    terminals = tree.get_terminals()
+    y_pos: Dict[Phylo.BaseTree.Clade, float] = {
+        clade: float(i) for i, clade in enumerate(terminals)
+    }
+
+    def _calc_y(clade):
+        if clade in y_pos:
+            return y_pos[clade]
+        if not clade.clades:
+            # No children and not in y_pos: put at 0 as a fallback
+            y_pos[clade] = 0.0
+            return 0.0
+        child_ys = [_calc_y(child) for child in clade.clades]
+        y_val = (min(child_ys) + max(child_ys)) / 2.0
+        y_pos[clade] = y_val
+        return y_val
+
+    _ = _calc_y(tree.root)
+
     # Calculate figure size based on number of tips if not specified
     if figsize is None:
-        n_tips = len(list(tree.get_terminals()))
+        n_tips = len(terminals)
         # Reduce height by half: 0.15 inches per tip instead of 0.3 (reduces vertical spacing)
         # Minimum 5, maximum 25
         height = max(5, min(25, n_tips * 0.15))
@@ -1102,26 +1155,76 @@ def plot_phylogenetic_tree(
         figsize = (width, height)
         logger.info(f"Auto-scaled tree figure size to {figsize} for {n_tips} tips")
 
-    # Map tip colors
-    tip_colors = {}
+    # Map tip text colors if requested (this colors the labels themselves)
+    tip_label_colors = None
     if genotype_colors:
-        tip_colors = {}
-        for clade in tree.get_terminals():
-            g = clade.name
-            if g in genotype_colors:
-                tip_colors[clade] = genotype_colors[g]
+        tip_label_colors = {}
+        for clade in terminals:
+            label = clade.name
+            if label in genotype_colors:
+                tip_label_colors[clade] = genotype_colors[label]
 
+    # Draw the base tree (branches + text labels)
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1)
     Phylo.draw(
-        tree, do_show=False, axes=ax, label_colors=tip_colors if tip_colors else None
+        tree,
+        do_show=False,
+        axes=ax,
+        label_colors=tip_label_colors if tip_label_colors else None,
     )
 
     # Extend x-axis to prevent tip labels from being cut off
-    # Add 15% margin to the right of the maximum branch length
     xlim = ax.get_xlim()
     x_range = xlim[1] - xlim[0]
     ax.set_xlim(xlim[0], xlim[1] + x_range * 0.15)
+
+    # --- Overlay circular nodes at each tip, colored by genotype_colors with black outlines ---
+    if genotype_colors:
+        xs = []
+        ys = []
+        cs = []
+        matched_labels = []
+        unmatched_labels = []
+
+        for clade in terminals:
+            label = clade.name
+            color = genotype_colors.get(label)
+            if color is None:
+                unmatched_labels.append(label)
+                continue
+            x = depths.get(clade, 0.0)
+            y = y_pos.get(clade, 0.0)
+            xs.append(x)
+            ys.append(y)
+            cs.append(color)
+            matched_labels.append(label)
+
+        # Log matching results for debugging
+        logger.debug(f"Tree tip node coloring: {len(matched_labels)} matched, {len(unmatched_labels)} unmatched")
+        if matched_labels:
+            logger.debug(f"  Matched tips (first 3): {matched_labels[:3]}")
+        if unmatched_labels:
+            logger.debug(f"  Unmatched tips (first 3): {unmatched_labels[:3]}")
+            logger.debug(f"  Available colors (first 3 keys): {list(genotype_colors.keys())[:3]}")
+
+        if xs:
+            ax.scatter(
+                xs,
+                ys,
+                s=80,                    # marker size (points^2) - increased for better visibility
+                c=cs,
+                marker="o",
+                edgecolors="black",
+                linewidths=1.0,          # slightly thicker outline for clarity
+                zorder=3,                # draw on top of branches/labels
+                clip_on=False,
+            )
+            logger.debug(f"Added {len(xs)} colored circular nodes to phylogenetic tree tips")
+        else:
+            logger.warning("No colored nodes added to tree: no matching labels found between tree tips and genotype_colors")
+    else:
+        logger.debug("No genotype_colors provided; skipping colored tip nodes")
 
     # Optionally annotate bootstrap values (internal node confidences)
     if show_bootstrap:
@@ -1129,8 +1232,9 @@ def plot_phylogenetic_tree(
             if clade.confidence is not None:
                 val = float(clade.confidence)
                 if val >= bootstrap_threshold:
-                    x = clade.branch_length if clade.branch_length else 0.0
-                    # Bio.Phylo's draw already places text; skipping extra labels to avoid clutter
+                    # We intentionally skip placing extra text here to avoid clutter;
+                    # Bio.Phylo's draw already places bootstrap labels by default.
+                    continue
 
     plt.tight_layout()
     if out.suffix.lower() == ".png":
@@ -1138,9 +1242,8 @@ def plot_phylogenetic_tree(
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
-
+    
     pass
-
 
 def plot_identity_distribution(
     diagnostics_csv: str,

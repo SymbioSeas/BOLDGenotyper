@@ -1,0 +1,8 @@
+{
+  "clustering_threshold": 0.03,
+  "similarity_threshold": 0.5,
+  "tie_margin": 0.003,
+  "tie_threshold": 0.95,
+  "threads": 4,
+  "build_tree": true
+}
