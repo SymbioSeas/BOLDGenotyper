@@ -79,6 +79,7 @@ def setup_directories(base_output: Path) -> dict:
         'assignments': base_output / 'genotype_assignments',
         'taxonomy': base_output / 'taxonomy',
         'phylogenetic': base_output / 'phylogenetic',
+        'visualization': base_output / 'visualization',
         'reports': base_output / 'reports',
     }
 
@@ -93,11 +94,8 @@ def run_pipeline(
     organism: str,
     output_dir: Path,
     cfg: config.PipelineConfig,
-<<<<<<< HEAD
     no_report: bool = False,
-=======
     skip_geo: bool = False,
->>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -114,6 +112,8 @@ def run_pipeline(
         Pipeline configuration
     no_report : bool, optional
         Skip HTML report generation (default: False)
+    skip_geo : bool, optional
+        Skip geographic analysis (default: False)
 
     Returns
     -------
@@ -488,90 +488,62 @@ def run_pipeline(
 
         # Generate visualizations for each format
         for fmt in cfg.visualization.figure_format:
-<<<<<<< HEAD
-            # Distribution maps
-            if 'lat' in df_final.columns and 'lon' in df_final.columns:
-                try:
-                    map_path, map_data = visualization.plot_distribution_map(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
-                        genotype_column='consensus_group_sp',
-                        latitude_col='lat',
-                        longitude_col='lon'
-                    )
-                    # Save plot data as JSON for interactive plotting in HTML report
-                    if map_data:
-                        json_path = dirs['visualization'] / f"{organism}_distribution_map_data.json"
-                        with open(json_path, 'w') as f:
-                            json.dump(map_data, f, indent=2)
-                        logger.debug(f"Saved plot data to: {json_path}")
-                except Exception as e:
-                    logger.debug(f"Distribution map skipped: {e}")
-
-            # Ocean basin abundance bar plot (relative)
-            if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
-                try:
-                    bar_path, bar_data = visualization.plot_ocean_basin_abundance(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
-                        genotype_column='consensus_group_sp',
-                        basin_column='ocean_basin'
-                    )
-                    # Save plot data as JSON for interactive plotting in HTML report
-                    if bar_data:
-                        json_path = dirs['visualization'] / f"{organism}_distribution_bar_data.json"
-                        with open(json_path, 'w') as f:
-                            json.dump(bar_data, f, indent=2)
-                        logger.debug(f"Saved plot data to: {json_path}")
-                except Exception as e:
-                    logger.debug(f"Ocean basin bar plot skipped: {e}")
-
-            # Ocean basin abundance bar plot (total counts)
-            if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
-                try:
-                    total_bar_path, total_bar_data = visualization.plot_ocean_basin_abundance_total(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_totaldistribution_bar.{fmt}"),
-                        genotype_column='consensus_group_sp',
-                        basin_column='ocean_basin'
-                    )
-                    # Save plot data as JSON for interactive plotting in HTML report
-                    if total_bar_data:
-                        json_path = dirs['visualization'] / f"{organism}_totaldistribution_bar_data.json"
-                        with open(json_path, 'w') as f:
-                            json.dump(total_bar_data, f, indent=2)
-                        logger.debug(f"Saved plot data to: {json_path}")
-                except Exception as e:
-                    logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
-
-            # Identity distribution
-=======
             # Geographic visualizations - only if geographic analysis was performed
             if geo_analysis_performed:
                 # Distribution maps
                 if 'lat' in df_final.columns and 'lon' in df_final.columns:
                     try:
-                        visualization.plot_distribution_map(
+                        map_path, map_data = visualization.plot_distribution_map(
                             df=df_final,
-                            output_path=str(dirs['geographic'] / f"{organism}_distribution_map.{fmt}"),
+                            output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
                             genotype_column='consensus_group_sp',
                             latitude_col='lat',
                             longitude_col='lon'
                         )
+                        # Save plot data as JSON for interactive plotting in HTML report
+                        if map_data:
+                            json_path = dirs['visualization'] / f"{organism}_distribution_map_data.json"
+                            with open(json_path, 'w') as f:
+                                json.dump(map_data, f, indent=2)
+                            logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
                         logger.debug(f"Distribution map skipped: {e}")
 
-                # Ocean basin abundance bar plot
+                # Ocean basin abundance bar plot (relative)
                 if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
                     try:
-                        visualization.plot_ocean_basin_abundance(
+                        bar_path, bar_data = visualization.plot_ocean_basin_abundance(
                             df=df_final,
-                            output_path=str(dirs['geographic'] / f"{organism}_distribution_bar.{fmt}"),
+                            output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
                             genotype_column='consensus_group_sp',
                             basin_column='ocean_basin'
                         )
+                        # Save plot data as JSON for interactive plotting in HTML report
+                        if bar_data:
+                            json_path = dirs['visualization'] / f"{organism}_distribution_bar_data.json"
+                            with open(json_path, 'w') as f:
+                                json.dump(bar_data, f, indent=2)
+                            logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
                         logger.debug(f"Ocean basin bar plot skipped: {e}")
+
+                # Ocean basin abundance bar plot (total counts)
+                if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                    try:
+                        total_bar_path, total_bar_data = visualization.plot_ocean_basin_abundance_total(
+                            df=df_final,
+                            output_path=str(dirs['visualization'] / f"{organism}_totaldistribution_bar.{fmt}"),
+                            genotype_column='consensus_group_sp',
+                            basin_column='ocean_basin'
+                        )
+                        # Save plot data as JSON for interactive plotting in HTML report
+                        if total_bar_data:
+                            json_path = dirs['visualization'] / f"{organism}_totaldistribution_bar_data.json"
+                            with open(json_path, 'w') as f:
+                                json.dump(total_bar_data, f, indent=2)
+                            logger.debug(f"Saved plot data to: {json_path}")
+                    except Exception as e:
+                        logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
 
                 # Faceted distribution map by consensus_group_sp
                 if ('lat' in df_final.columns and 'lon' in df_final.columns and
@@ -579,11 +551,15 @@ def run_pipeline(
                     try:
                         visualization.plot_distribution_map_faceted(
                             df=df_final,
-                            output_path=str(dirs['geographic'] / f"{organism}_distribution_map_faceted.{fmt}"),
+                            output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
                             genotype_column='consensus_group',
                             species_column='consensus_group_sp',
                             latitude_col='lat',
-                            longitude_col='lon'
+                            longitude_col='lon',
+                            facet_by=cfg.visualization.facet_by,
+                            map_buffer_degrees=cfg.visualization.map_buffer_degrees,
+                            show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
+                            show_scale_bar=cfg.visualization.show_scale_bar
                         )
                     except Exception as e:
                         logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
@@ -592,20 +568,26 @@ def run_pipeline(
                 if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
                     'consensus_group' in df_final.columns):
                     try:
-                        visualization.plot_ocean_basin_abundance_faceted(
+                        faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
                             df=df_final,
-                            output_path=str(dirs['geographic'] / f"{organism}_distribution_bar_faceted.{fmt}"),
+                            output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
                             genotype_column='consensus_group',
                             species_column='consensus_group_sp',
-                            basin_column='ocean_basin'
+                            basin_column='ocean_basin',
+                            facet_by=cfg.visualization.facet_by
                         )
+                        # Save plot data as JSON for interactive plotting in HTML report
+                        if faceted_bar_data:
+                            json_path = dirs['visualization'] / f"{organism}_distribution_bar_faceted_data.json"
+                            with open(json_path, 'w') as f:
+                                json.dump(faceted_bar_data, f, indent=2)
+                            logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
                         logger.debug(f"Faceted basin bar plot skipped: {e}")
             else:
                 logger.info("  ⊘ Skipping geographic visualizations (geographic analysis not performed)")
 
             # Identity distribution (always generated if diagnostics exist)
->>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
             if diagnostics_csv.exists():
                 visualization.plot_identity_distribution(
                     diagnostics_csv=str(diagnostics_csv),
@@ -641,49 +623,6 @@ def run_pipeline(
                     dpi=cfg.visualization.figure_dpi
                 )
 
-<<<<<<< HEAD
-            # Faceted distribution map by consensus_group_sp
-            if ('lat' in df_final.columns and 'lon' in df_final.columns and
-                'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
-                try:
-                    visualization.plot_distribution_map_faceted(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
-                        genotype_column='consensus_group',
-                        species_column='consensus_group_sp',
-                        latitude_col='lat',
-                        longitude_col='lon',
-                        facet_by=cfg.visualization.facet_by,
-                        map_buffer_degrees=cfg.visualization.map_buffer_degrees,
-                        show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
-                        show_scale_bar=cfg.visualization.show_scale_bar
-                    )
-                except Exception as e:
-                    logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
-
-            # Faceted ocean basin bar plot by consensus_group_sp
-            if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
-                'consensus_group' in df_final.columns):
-                try:
-                    faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
-                        df=df_final,
-                        output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
-                        genotype_column='consensus_group',
-                        species_column='consensus_group_sp',
-                        basin_column='ocean_basin',
-                        facet_by=cfg.visualization.facet_by
-                    )
-                    # Save plot data as JSON for interactive plotting in HTML report
-                    if faceted_bar_data:
-                        json_path = dirs['visualization'] / f"{organism}_distribution_bar_faceted_data.json"
-                        with open(json_path, 'w') as f:
-                            json.dump(faceted_bar_data, f, indent=2)
-                        logger.debug(f"Saved plot data to: {json_path}")
-                except Exception as e:
-                    logger.debug(f"Faceted basin bar plot skipped: {e}")
-
-=======
->>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
         logger.info(f"  ✓ Generated visualization plots")
 
     except Exception as e:
@@ -1013,16 +952,16 @@ For more information: https://github.com/your-repo/boldgenotyper
     )
 
     parser.add_argument(
-<<<<<<< HEAD
         '--no-report',
         action='store_true',
         help='Skip generating HTML summary report'
-=======
+    )
+
+    parser.add_argument(
         '--no-geo',
         action='store_true',
         help='Skip geographic analysis (ocean basin assignment and related visualizations). '
              'Use this if you only need genotyping and phylogeny without geographic distribution.'
->>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
     )
 
     parser.add_argument(
@@ -1097,11 +1036,8 @@ For more information: https://github.com/your-repo/boldgenotyper
             organism=organism,
             output_dir=output_dir,
             cfg=cfg,
-<<<<<<< HEAD
-            no_report=args.no_report
-=======
+            no_report=args.no_report,
             skip_geo=args.no_geo
->>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
         )
 
         return 0 if success else 1
