@@ -38,6 +38,7 @@ Author: Steph Smith (steph.smith@unc.edu)
 from typing import Dict, Optional, Any
 from pathlib import Path
 import logging
+import json
 import pandas as pd
 
 # Local imports
@@ -551,7 +552,7 @@ def run_pipeline(
                     if 'lat' in df_final.columns and 'lon' in df_final.columns:
                         try:
                             map_path = dirs['geographic'] / f"{organism_name}_distribution_map.{fmt}"
-                            visualization.plot_distribution_map(
+                            plot_path, map_data = visualization.plot_distribution_map(
                                 df=df_final,
                                 output_path=str(map_path),
                                 genotype_column='consensus_group_sp',
@@ -559,6 +560,12 @@ def run_pipeline(
                                 longitude_col='lon'
                             )
                             results['files'][f'distribution_map_{fmt}'] = map_path
+                            # Save plot data as JSON for interactive plotting in HTML report
+                            if map_data:
+                                json_path = dirs['geographic'] / f"{organism_name}_distribution_map_data.json"
+                                with open(json_path, 'w') as f:
+                                    json.dump(map_data, f, indent=2)
+                                logger.debug(f"Saved plot data to: {json_path}")
                         except Exception as e:
                             logger.debug(f"Distribution map skipped: {e}")
 
@@ -566,13 +573,19 @@ def run_pipeline(
                     if 'ocean_basin' in df_final.columns:
                         try:
                             bar_path = dirs['geographic'] / f"{organism_name}_distribution_bar.{fmt}"
-                            visualization.plot_ocean_basin_abundance(
+                            plot_path, bar_data = visualization.plot_ocean_basin_abundance(
                                 df=df_final,
                                 output_path=str(bar_path),
                                 genotype_column='consensus_group_sp',
                                 basin_column='ocean_basin'
                             )
                             results['files'][f'basin_abundance_{fmt}'] = bar_path
+                            # Save plot data as JSON for interactive plotting in HTML report
+                            if bar_data:
+                                json_path = dirs['geographic'] / f"{organism_name}_distribution_bar_data.json"
+                                with open(json_path, 'w') as f:
+                                    json.dump(bar_data, f, indent=2)
+                                logger.debug(f"Saved plot data to: {json_path}")
                         except Exception as e:
                             logger.debug(f"Basin abundance skipped: {e}")
 

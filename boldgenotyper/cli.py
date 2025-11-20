@@ -12,6 +12,7 @@ import argparse
 import sys
 import os
 import logging
+import json
 from pathlib import Path
 from typing import Optional
 import pandas as pd
@@ -466,37 +467,55 @@ def run_pipeline(
             # Distribution maps
             if 'lat' in df_final.columns and 'lon' in df_final.columns:
                 try:
-                    visualization.plot_distribution_map(
+                    map_path, map_data = visualization.plot_distribution_map(
                         df=df_final,
                         output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
                         genotype_column='consensus_group_sp',
                         latitude_col='lat',
                         longitude_col='lon'
                     )
+                    # Save plot data as JSON for interactive plotting in HTML report
+                    if map_data:
+                        json_path = dirs['visualization'] / f"{organism}_distribution_map_data.json"
+                        with open(json_path, 'w') as f:
+                            json.dump(map_data, f, indent=2)
+                        logger.debug(f"Saved plot data to: {json_path}")
                 except Exception as e:
                     logger.debug(f"Distribution map skipped: {e}")
 
             # Ocean basin abundance bar plot (relative)
             if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
                 try:
-                    visualization.plot_ocean_basin_abundance(
+                    bar_path, bar_data = visualization.plot_ocean_basin_abundance(
                         df=df_final,
                         output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
                         genotype_column='consensus_group_sp',
                         basin_column='ocean_basin'
                     )
+                    # Save plot data as JSON for interactive plotting in HTML report
+                    if bar_data:
+                        json_path = dirs['visualization'] / f"{organism}_distribution_bar_data.json"
+                        with open(json_path, 'w') as f:
+                            json.dump(bar_data, f, indent=2)
+                        logger.debug(f"Saved plot data to: {json_path}")
                 except Exception as e:
                     logger.debug(f"Ocean basin bar plot skipped: {e}")
 
             # Ocean basin abundance bar plot (total counts)
             if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
                 try:
-                    visualization.plot_ocean_basin_abundance_total(
+                    total_bar_path, total_bar_data = visualization.plot_ocean_basin_abundance_total(
                         df=df_final,
                         output_path=str(dirs['visualization'] / f"{organism}_totaldistribution_bar.{fmt}"),
                         genotype_column='consensus_group_sp',
                         basin_column='ocean_basin'
                     )
+                    # Save plot data as JSON for interactive plotting in HTML report
+                    if total_bar_data:
+                        json_path = dirs['visualization'] / f"{organism}_totaldistribution_bar_data.json"
+                        with open(json_path, 'w') as f:
+                            json.dump(total_bar_data, f, indent=2)
+                        logger.debug(f"Saved plot data to: {json_path}")
                 except Exception as e:
                     logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
 
@@ -559,7 +578,7 @@ def run_pipeline(
             if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
                 'consensus_group' in df_final.columns):
                 try:
-                    visualization.plot_ocean_basin_abundance_faceted(
+                    faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
                         df=df_final,
                         output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
                         genotype_column='consensus_group',
@@ -567,6 +586,12 @@ def run_pipeline(
                         basin_column='ocean_basin',
                         facet_by=cfg.visualization.facet_by
                     )
+                    # Save plot data as JSON for interactive plotting in HTML report
+                    if faceted_bar_data:
+                        json_path = dirs['visualization'] / f"{organism}_distribution_bar_faceted_data.json"
+                        with open(json_path, 'w') as f:
+                            json.dump(faceted_bar_data, f, indent=2)
+                        logger.debug(f"Saved plot data to: {json_path}")
                 except Exception as e:
                     logger.debug(f"Faceted basin bar plot skipped: {e}")
 
