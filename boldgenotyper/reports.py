@@ -1282,6 +1282,12 @@ HTML_REPORT_TEMPLATE = """
                         <a href="#section-parameters" class="sidebar-nav-link">Parameters</a>
                     </li>
                     <li class="sidebar-nav-item">
+                        <a href="#section-visualizations" class="sidebar-nav-link">Visualizations</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-methods" class="sidebar-nav-link">Methods</a>
+                    </li>
+                    <li class="sidebar-nav-item">
                         <a href="#section-assignment" class="sidebar-nav-link">Assignment</a>
                     </li>
                     <li class="sidebar-nav-item">
@@ -1289,9 +1295,6 @@ HTML_REPORT_TEMPLATE = """
                     </li>
                     <li class="sidebar-nav-item">
                         <a href="#section-geographic" class="sidebar-nav-link">Geography</a>
-                    </li>
-                    <li class="sidebar-nav-item">
-                        <a href="#section-visualizations" class="sidebar-nav-link">Visualizations</a>
                     </li>
                 </ul>
             </nav>
@@ -1327,7 +1330,7 @@ HTML_REPORT_TEMPLATE = """
             <div class="footer">
                 <p>
                     <strong>BOLDGenotyper</strong> - Automated genotyping pipeline for BOLD barcode data<br>
-                    <a href="https://github.com/anthropics/boldgenotyper" target="_blank">GitHub Repository</a>
+                    <a href="https://github.com/SymbioSeas/BOLDGenotyper" target="_blank">GitHub Repository</a> | Created by Steph Smith
                 </p>
                 <p style="margin-top: 15px; font-size: 0.85em;">
                     Report generated on {{ timestamp }}<br>
@@ -2308,6 +2311,7 @@ def _build_assignment_section(
     """Build genotype assignment results section."""
     html = '<div class="section" id="section-assignment">\n'
     html += '<h2>Genotype Assignment Results</h2>\n'
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 Full assignment data available at: <code>reports/{organism}_assignment_summary.csv</code> and <code>genotype_assignments/{organism}_diagnostics.csv</code></p>\n'
 
     if assignment_summary.empty:
         html += '<p class="alert alert-warning">No assignment summary data available</p>\n'
@@ -2370,6 +2374,7 @@ def _build_taxonomy_section(
 
     if consensus_tax_file.exists():
         html += '<h3>Consensus Group Taxonomy</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>taxonomy/{organism}_consensus_taxonomy.csv</code></p>\n'
         try:
             tax_df = pd.read_csv(consensus_tax_file)
             # Select key columns
@@ -2386,6 +2391,7 @@ def _build_taxonomy_section(
 
     if species_by_cons_file.exists():
         html += '<h3>Species Composition by Consensus Group</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>taxonomy/{organism}_species_by_consensus.csv</code></p>\n'
         try:
             species_df = pd.read_csv(species_by_cons_file)
             html += _dataframe_to_html(species_df, max_rows=50)
@@ -2416,6 +2422,7 @@ def _build_parameters_section(output_dir: Path, organism: str) -> str:
             params = json.load(f)
 
         html += '<p>The following parameters were used for this analysis:</p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full parameters available at: <code>{organism}_pipeline_parameters.json</code></p>\n'
         html += '<table class="data-table">\n'
         html += '<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>\n'
         html += '<tbody>\n'
@@ -2495,6 +2502,7 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
     """Build geographic distribution section."""
     html = '<div class="section" id="section-geographic">\n'
     html += '<h2>Geographic Distribution</h2>\n'
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 Full annotated dataset with geographic data available at: <code>{organism}_annotated.csv</code></p>\n'
 
     if 'ocean_basin' not in annotated_df.columns:
         html += '<p class="alert alert-info">No geographic data available</p>\n'
@@ -2632,6 +2640,7 @@ def _build_visualizations_section(
     """
     html = '<div class="section" id="section-visualizations">\n'
     html += '<h2>Visualizations</h2>\n'
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 High-resolution images (PNG/PDF) and data files (JSON/CSV) available at: <code>visualization/</code></p>\n'
 
     viz_dir = output_dir / 'visualization'
 
@@ -2727,6 +2736,10 @@ def _build_visualizations_section(
         html += '<div class="viz-container">\n'
         html += f'<h3>{viz["title"]}</h3>\n'
         html += f'<p class="viz-description">{viz["description"]}</p>\n'
+        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">📁 Files: <code>visualization/{viz["pattern"]}</code>, <code>{viz["pattern"].replace(".png", ".pdf")}</code>'
+        if 'json_pattern' in viz:
+            html += f', <code>{viz["json_pattern"]}</code>'
+        html += '</p>\n'
 
         # Add interactive controls for plots with JSON data (except faceted plots)
         if 'plot_data' in viz and viz['plot_data'].get('plot_type') != 'faceted_abundance':
@@ -2847,6 +2860,561 @@ def _build_visualizations_section(
     return html
 
 
+def _parse_pipeline_log(log_file: Path) -> dict:
+    """
+    Parse pipeline log file to extract timing and metrics information.
+
+    Parameters
+    ----------
+    log_file : Path
+        Path to pipeline log file
+
+    Returns
+    -------
+    dict
+        Dictionary containing extracted metrics and timing information
+    """
+    from datetime import datetime
+    import re
+
+    metrics = {
+        'start_time': None,
+        'end_time': None,
+        'total_runtime_seconds': None,
+        'total_samples_loaded': None,
+        'duplicates_removed': None,
+        'unique_samples': None,
+        'samples_after_coord_filter': None,
+        'centroid_coords_excluded': None,
+        'valid_sequences': None,
+        'invalid_sequences': None,
+        'sequences_too_short': None,
+        'pairwise_comparisons': None,
+        'consensus_genotypes': None,
+        'samples_for_assignment': None,
+        'successfully_assigned': None,
+        'assignment_rate': None,
+        'unassigned_no_sequence': None,
+        'unassigned_below_threshold': None,
+        'ties_flagged': None,
+        'low_confidence_flagged': None,
+        'samples_with_coords': None,
+        'ocean_basin_assigned': None,
+        'outside_basins': None,
+        'unknown_basin': None,
+        'mafft_params': None,
+        'trimal_params': None,
+        'fasttree_params': None,
+        'input_file': None,
+    }
+
+    if not log_file.exists():
+        return metrics
+
+    try:
+        with open(log_file, 'r') as f:
+            lines = f.readlines()
+
+        # Find the last run (in case log has multiple runs)
+        last_start_idx = None
+        for i, line in enumerate(lines):
+            if 'BOLDGenotyper Pipeline -' in line:
+                last_start_idx = i - 2  # Start time is 2 lines before
+
+        if last_start_idx is None:
+            return metrics
+
+        # Parse from last run onwards
+        relevant_lines = lines[last_start_idx:]
+
+        for i, line in enumerate(relevant_lines):
+            # Extract timestamp and content
+            timestamp_match = re.match(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]', line)
+
+            # Start time
+            if timestamp_match and 'Logging to file:' in line:
+                metrics['start_time'] = timestamp_match.group(1)
+
+            # End time
+            if timestamp_match and 'Pipeline completed successfully' in line:
+                metrics['end_time'] = timestamp_match.group(1)
+
+            # Input file
+            if 'Input TSV:' in line:
+                metrics['input_file'] = line.split('Input TSV:')[1].strip()
+
+            # Data loading metrics
+            if 'Read' in line and 'rows and' in line and 'columns' in line:
+                match = re.search(r'Read (\d+) rows', line)
+                if match:
+                    metrics['total_samples_loaded'] = int(match.group(1))
+
+            if 'Found' in line and 'duplicate processids' in line:
+                match = re.search(r'Found (\d+) duplicate', line)
+                if match:
+                    metrics['duplicates_removed'] = int(match.group(1))
+
+            if 'After removing duplicates:' in line and 'rows remaining' in line:
+                match = re.search(r'(\d+) rows remaining', line)
+                if match:
+                    metrics['unique_samples'] = int(match.group(1))
+
+            if 'Retained' in line and 'samples after coordinate filtering' in line:
+                match = re.search(r'Retained (\d+)/(\d+)', line)
+                if match:
+                    metrics['samples_after_coord_filter'] = int(match.group(1))
+
+            if 'Excluded' in line and 'samples with centroid coordinates' in line:
+                match = re.search(r'Excluded (\d+) samples', line)
+                if match:
+                    metrics['centroid_coords_excluded'] = int(match.group(1))
+
+            if 'Created' in line and 'FASTA records' in line:
+                match = re.search(r'Created (\d+) FASTA records', line)
+                if match:
+                    metrics['valid_sequences'] = int(match.group(1))
+
+            if 'Skipped' in line and 'samples with missing or invalid sequences' in line:
+                match = re.search(r'Skipped (\d+) samples', line)
+                if match:
+                    metrics['invalid_sequences'] = int(match.group(1))
+
+            if 'Filtered' in line and 'sequences shorter than' in line and 'after trimming' in line:
+                match = re.search(r'Filtered (\d+) sequences', line)
+                if match:
+                    metrics['sequences_too_short'] = int(match.group(1))
+
+            if 'Distance calculation complete:' in line:
+                match = re.search(r'(\d+) pairwise distances', line)
+                if match:
+                    metrics['pairwise_comparisons'] = int(match.group(1))
+
+            if 'Identified' in line and 'unique genotypes' in line:
+                match = re.search(r'Identified (\d+) unique genotypes', line)
+                if match:
+                    metrics['consensus_genotypes'] = int(match.group(1))
+
+            if 'Total samples:' in line:
+                # Check if this is in the context of genotype assignment
+                context = ' '.join(relevant_lines[max(0, i-10):i+1])
+                if 'Genotype assignment' in context or 'assignment summary' in context.lower():
+                    match = re.search(r'Total samples: (\d+)', line)
+                    if match:
+                        metrics['samples_for_assignment'] = int(match.group(1))
+
+            if 'Successfully assigned:' in line:
+                match = re.search(r'Successfully assigned: (\d+)', line)
+                if match:
+                    metrics['successfully_assigned'] = int(match.group(1))
+                match = re.search(r'\((\d+\.?\d*)%\)', line)
+                if match:
+                    metrics['assignment_rate'] = float(match.group(1))
+
+            if '- No sequence in FASTA:' in line:
+                match = re.search(r'No sequence in FASTA: (\d+)', line)
+                if match:
+                    metrics['unassigned_no_sequence'] = int(match.group(1))
+
+            if '- Below identity threshold:' in line:
+                match = re.search(r'Below identity threshold: (\d+)', line)
+                if match:
+                    metrics['unassigned_below_threshold'] = int(match.group(1))
+
+            if '- Ties (ambiguous):' in line:
+                match = re.search(r'Ties \(ambiguous\): (\d+)', line)
+                if match:
+                    metrics['ties_flagged'] = int(match.group(1))
+
+            if '- Low confidence:' in line:
+                match = re.search(r'Low confidence: (\d+)', line)
+                if match:
+                    metrics['low_confidence_flagged'] = int(match.group(1))
+
+            if 'Creating point geometries for' in line:
+                match = re.search(r'for (\d+)/(\d+) samples with coordinates', line)
+                if match:
+                    metrics['samples_with_coords'] = int(match.group(1))
+
+            if 'Spatial join results:' in line:
+                match = re.search(r'(\d+) assigned to basins, (\d+) outside all basins', line)
+                if match:
+                    metrics['ocean_basin_assigned'] = int(match.group(1))
+                    metrics['outside_basins'] = int(match.group(2))
+
+            if "Assigned" in line and "to 'Unknown' basin" in line:
+                match = re.search(r'Assigned (\d+) samples', line)
+                if match:
+                    metrics['unknown_basin'] = int(match.group(1))
+
+            # Tool parameters
+            if 'Running MAFFT alignment: mafft' in line:
+                match = re.search(r'mafft (.+?)(?:\s+/)', line)
+                if match:
+                    metrics['mafft_params'] = match.group(1).strip()
+
+            if 'Running trimAl: trimal' in line:
+                match = re.search(r'trimal (.+?)(?:\s+-in)', line)
+                if match:
+                    metrics['trimal_params'] = match.group(1).strip()
+
+            if 'Running FastTree: fasttree' in line:
+                match = re.search(r'fasttree (.+?)(?:\s+/)', line)
+                if match:
+                    metrics['fasttree_params'] = match.group(1).strip()
+
+        # Calculate runtime
+        if metrics['start_time'] and metrics['end_time']:
+            try:
+                start = datetime.strptime(metrics['start_time'], '%Y-%m-%d %H:%M:%S')
+                end = datetime.strptime(metrics['end_time'], '%Y-%m-%d %H:%M:%S')
+                metrics['total_runtime_seconds'] = (end - start).total_seconds()
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.warning(f"Could not parse log file: {e}")
+
+    return metrics
+
+
+def _build_methods_section(output_dir: Path, organism: str, version: str) -> str:
+    """
+    Build comprehensive methods section suitable for publication.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Base output directory
+    organism : str
+        Organism name
+    version : str
+        BOLDGenotyper version
+
+    Returns
+    -------
+    str
+        HTML content for methods section
+    """
+    import json
+
+    html = '<div class="section" id="section-methods">\n'
+    html += '<h2>Methods</h2>\n'
+    html += '<p class="section-description">Comprehensive analysis methodology and parameters suitable for reporting in peer-reviewed publications.</p>\n'
+
+    # Create subtabs for different method sections
+    method_tabs = [
+        ('Analysis Overview', 'overview'),
+        ('Sample Processing & QC', 'qc'),
+        ('Sequence Dereplication', 'dereplication'),
+        ('Genotype Assignment', 'assignment'),
+        ('Phylogenetic Analysis', 'phylogenetic'),
+        ('Geographic Analysis', 'geographic'),
+        ('Software & Dependencies', 'software'),
+        ('Methods Statement', 'statement'),
+        ('References', 'references')
+    ]
+
+    # Load parameters
+    params_file = output_dir / f"{organism}_pipeline_parameters.json"
+    params = {}
+    if params_file.exists():
+        try:
+            with open(params_file, 'r') as f:
+                params = json.load(f)
+        except Exception:
+            pass
+
+    # Load log metrics
+    log_file = output_dir / f"{organism}_pipeline.log"
+    metrics = _parse_pipeline_log(log_file)
+
+    # Create subtab buttons
+    html += '<div class="subtabs">\n'
+    for idx, (title, tab_id) in enumerate(method_tabs):
+        active_class = ' active' if idx == 0 else ''
+        html += f'<button class="subtab-button{active_class}" onclick="switchSubtab(\'methods-{tab_id}\')">{title}</button>\n'
+    html += '</div>\n'
+
+    # 1. Analysis Overview
+    active_class = ' active'
+    html += f'<div id="methods-overview" class="subtab-content{active_class}">\n'
+    html += '<h3>1. Analysis Overview</h3>\n'
+    html += '<table class="data-table">\n'
+    html += '<tbody>\n'
+    html += f'<tr><td><strong>Pipeline Version</strong></td><td>BOLDGenotyper v{version}</td></tr>\n'
+
+    if metrics['start_time']:
+        html += f'<tr><td><strong>Analysis Date</strong></td><td>{metrics["start_time"].split()[0]}</td></tr>\n'
+
+    if metrics['total_runtime_seconds']:
+        minutes = int(metrics['total_runtime_seconds'] // 60)
+        seconds = int(metrics['total_runtime_seconds'] % 60)
+        html += f'<tr><td><strong>Total Runtime</strong></td><td>{minutes}m {seconds}s</td></tr>\n'
+
+    if metrics['input_file']:
+        html += f'<tr><td><strong>Input File</strong></td><td><code>{metrics["input_file"]}</code></td></tr>\n'
+
+    html += '</tbody>\n'
+    html += '</table>\n'
+    html += '</div>\n'  # Close overview subtab-content
+
+    # 2. Sample Processing & Quality Control
+    html += '<div id="methods-qc" class="subtab-content">\n'
+    html += '<h3>2. Sample Processing &amp; Quality Control</h3>\n'
+    html += '<table class="data-table">\n'
+    html += '<tbody>\n'
+
+    if metrics['total_samples_loaded']:
+        html += f'<tr><td><strong>Total samples loaded</strong></td><td>{metrics["total_samples_loaded"]:,}</td></tr>\n'
+
+    if metrics['duplicates_removed']:
+        html += f'<tr><td><strong>Duplicate samples removed</strong></td><td>{metrics["duplicates_removed"]:,}</td></tr>\n'
+
+    if metrics['unique_samples']:
+        html += f'<tr><td><strong>Unique samples after deduplication</strong></td><td>{metrics["unique_samples"]:,}</td></tr>\n'
+
+    if metrics['samples_after_coord_filter'] and metrics['unique_samples']:
+        pct = (metrics['samples_after_coord_filter'] / metrics['unique_samples']) * 100
+        html += f'<tr><td><strong>Coordinate quality filtering</strong></td><td>{metrics["samples_after_coord_filter"]:,}/{metrics["unique_samples"]:,} ({pct:.1f}%) retained</td></tr>\n'
+
+    if metrics['centroid_coords_excluded']:
+        html += f'<tr><td><strong>Centroid coordinates excluded</strong></td><td>{metrics["centroid_coords_excluded"]:,}</td></tr>\n'
+
+    if metrics['valid_sequences']:
+        html += f'<tr><td><strong>Valid sequences for analysis</strong></td><td>{metrics["valid_sequences"]:,}</td></tr>\n'
+
+    if metrics['invalid_sequences']:
+        html += f'<tr><td><strong>Missing/invalid sequences excluded</strong></td><td>{metrics["invalid_sequences"]:,}</td></tr>\n'
+
+    if metrics['sequences_too_short']:
+        html += f'<tr><td><strong>Sequences too short after trimming</strong></td><td>{metrics["sequences_too_short"]:,}</td></tr>\n'
+
+    html += '</tbody>\n'
+    html += '</table>\n'
+    html += '</div>\n'  # Close qc subtab-content
+
+    # 3. Sequence Dereplication
+    html += '<div id="methods-dereplication" class="subtab-content">\n'
+    html += '<h3>3. Sequence Dereplication</h3>\n'
+    html += '<table class="data-table">\n'
+    html += '<tbody>\n'
+    html += '<tr><td><strong>Algorithm</strong></td><td>Hierarchical clustering (average linkage)</td></tr>\n'
+
+    if metrics['mafft_params']:
+        html += f'<tr><td><strong>Alignment</strong></td><td>MAFFT <code>{metrics["mafft_params"]}</code></td></tr>\n'
+    else:
+        html += '<tr><td><strong>Alignment</strong></td><td>MAFFT</td></tr>\n'
+
+    if metrics['trimal_params']:
+        html += f'<tr><td><strong>Trimming</strong></td><td>trimAl <code>{metrics["trimal_params"]}</code></td></tr>\n'
+    else:
+        html += '<tr><td><strong>Trimming</strong></td><td>trimAl</td></tr>\n'
+
+    html += '<tr><td><strong>Minimum sequence length</strong></td><td>400 bp</td></tr>\n'
+
+    ct = params.get('clustering_threshold', 'N/A')
+    if isinstance(ct, (int, float)):
+        html += f'<tr><td><strong>Clustering threshold</strong></td><td>{ct} ({(1-ct)*100:.1f}% identity)</td></tr>\n'
+
+    if metrics['pairwise_comparisons']:
+        html += f'<tr><td><strong>Pairwise comparisons</strong></td><td>{metrics["pairwise_comparisons"]:,}</td></tr>\n'
+
+    if metrics['consensus_genotypes']:
+        html += f'<tr><td><strong>Consensus genotypes identified</strong></td><td>{metrics["consensus_genotypes"]:,}</td></tr>\n'
+
+    html += '</tbody>\n'
+    html += '</table>\n'
+    html += '</div>\n'  # Close dereplication subtab-content
+
+    # 4. Genotype Assignment
+    html += '<div id="methods-assignment" class="subtab-content">\n'
+    html += '<h3>4. Genotype Assignment</h3>\n'
+    html += '<table class="data-table">\n'
+    html += '<tbody>\n'
+    html += '<tr><td><strong>Assignment method</strong></td><td>Edit distance (edlib)</td></tr>\n'
+
+    st = params.get('similarity_threshold', 'N/A')
+    if isinstance(st, (int, float)):
+        html += f'<tr><td><strong>Similarity threshold</strong></td><td>{st} ({st*100:.0f}% identity)</td></tr>\n'
+
+    tm = params.get('tie_margin', 'N/A')
+    if isinstance(tm, (int, float)):
+        html += f'<tr><td><strong>Tie detection margin</strong></td><td>{tm} ({tm*100:.1f}%)</td></tr>\n'
+
+    tt = params.get('tie_threshold', 'N/A')
+    if isinstance(tt, (int, float)):
+        html += f'<tr><td><strong>Tie detection threshold</strong></td><td>{tt} ({tt*100:.0f}% identity)</td></tr>\n'
+
+    if metrics['successfully_assigned'] and metrics['samples_for_assignment']:
+        pct = (metrics['successfully_assigned'] / metrics['samples_for_assignment']) * 100
+        html += f'<tr><td><strong>Successfully assigned</strong></td><td>{metrics["successfully_assigned"]:,}/{metrics["samples_for_assignment"]:,} ({pct:.1f}%)</td></tr>\n'
+
+    if metrics['unassigned_no_sequence']:
+        html += f'<tr><td><strong>Unassigned (no sequence)</strong></td><td>{metrics["unassigned_no_sequence"]:,}</td></tr>\n'
+
+    if metrics['unassigned_below_threshold']:
+        html += f'<tr><td><strong>Unassigned (below threshold)</strong></td><td>{metrics["unassigned_below_threshold"]:,}</td></tr>\n'
+
+    if metrics['ties_flagged'] is not None:
+        html += f'<tr><td><strong>Ambiguous assignments (ties)</strong></td><td>{metrics["ties_flagged"]:,}</td></tr>\n'
+
+    if metrics['low_confidence_flagged'] is not None:
+        html += f'<tr><td><strong>Low confidence assignments</strong></td><td>{metrics["low_confidence_flagged"]:,}</td></tr>\n'
+
+    html += '</tbody>\n'
+    html += '</table>\n'
+    html += '</div>\n'  # Close assignment subtab-content
+
+    # 5. Phylogenetic Analysis (if applicable)
+    html += '<div id="methods-phylogenetic" class="subtab-content">\n'
+    if params.get('build_tree', False):
+        html += '<h3>5. Phylogenetic Analysis</h3>\n'
+        html += '<table class="data-table">\n'
+        html += '<tbody>\n'
+
+        if metrics['mafft_params']:
+            html += f'<tr><td><strong>Alignment</strong></td><td>MAFFT <code>{metrics["mafft_params"]}</code></td></tr>\n'
+        else:
+            html += '<tr><td><strong>Alignment</strong></td><td>MAFFT</td></tr>\n'
+
+        html += '<tr><td><strong>Tree inference</strong></td><td>FastTree</td></tr>\n'
+
+        if metrics['fasttree_params']:
+            html += f'<tr><td><strong>FastTree parameters</strong></td><td><code>{metrics["fasttree_params"]}</code></td></tr>\n'
+            if '-gtr' in metrics['fasttree_params'].lower() and '-gamma' in metrics['fasttree_params'].lower():
+                html += '<tr><td><strong>Substitution model</strong></td><td>GTR+Gamma</td></tr>\n'
+
+        if metrics['consensus_genotypes']:
+            html += f'<tr><td><strong>Number of taxa</strong></td><td>{metrics["consensus_genotypes"]:,}</td></tr>\n'
+
+        html += '</tbody>\n'
+        html += '</table>\n'
+    else:
+        html += '<p class="alert alert-info">Phylogenetic tree construction was not enabled for this analysis.</p>\n'
+    html += '</div>\n'  # Close phylogenetic subtab-content
+
+    # 6. Geographic Analysis (if applicable)
+    html += '<div id="methods-geographic" class="subtab-content">\n'
+    if metrics['samples_with_coords'] or metrics['ocean_basin_assigned']:
+        html += '<h3>6. Geographic Analysis</h3>\n'
+        html += '<table class="data-table">\n'
+        html += '<tbody>\n'
+        html += '<tr><td><strong>Reference dataset</strong></td><td>GOaS v1 (Global Oceans and Seas)</td></tr>\n'
+
+        if metrics['samples_with_coords'] and metrics['samples_for_assignment']:
+            pct = (metrics['samples_with_coords'] / metrics['samples_for_assignment']) * 100
+            html += f'<tr><td><strong>Samples with coordinates</strong></td><td>{metrics["samples_with_coords"]:,}/{metrics["samples_for_assignment"]:,} ({pct:.1f}%)</td></tr>\n'
+
+        if metrics['ocean_basin_assigned'] and metrics['samples_with_coords']:
+            pct = (metrics['ocean_basin_assigned'] / metrics['samples_with_coords']) * 100
+            html += f'<tr><td><strong>Ocean basin assignments</strong></td><td>{metrics["ocean_basin_assigned"]:,}/{metrics["samples_with_coords"]:,} ({pct:.1f}%)</td></tr>\n'
+
+        if metrics['outside_basins']:
+            html += f'<tr><td><strong>Outside known basins</strong></td><td>{metrics["outside_basins"]:,}</td></tr>\n'
+
+        if metrics['unknown_basin']:
+            html += f'<tr><td><strong>Unknown location</strong></td><td>{metrics["unknown_basin"]:,} samples</td></tr>\n'
+
+        html += '</tbody>\n'
+        html += '</table>\n'
+    else:
+        html += '<p class="alert alert-info">Geographic analysis was not performed (no coordinate data available).</p>\n'
+    html += '</div>\n'  # Close geographic subtab-content
+
+    # 7. Software & Dependencies
+    html += '<div id="methods-software" class="subtab-content">\n'
+    html += '<h3>7. Software &amp; Dependencies</h3>\n'
+    html += '<table class="data-table">\n'
+    html += '<tbody>\n'
+    html += f'<tr><td><strong>BOLDGenotyper</strong></td><td>v{version}</td></tr>\n'
+    html += '<tr><td><strong>MAFFT</strong></td><td>Multiple sequence alignment (Katoh &amp; Standley, 2013)</td></tr>\n'
+    html += '<tr><td><strong>trimAl</strong></td><td>Alignment trimming (Capella-Gutiérrez et al., 2009)</td></tr>\n'
+
+    if params.get('build_tree', False):
+        html += '<tr><td><strong>FastTree</strong></td><td>Phylogenetic inference (Price et al., 2010)</td></tr>\n'
+
+    html += '<tr><td><strong>edlib</strong></td><td>Edit distance calculation (Šošić &amp; Šikić, 2017)</td></tr>\n'
+
+    if metrics['ocean_basin_assigned'] or metrics['samples_with_coords']:
+        html += '<tr><td><strong>GOaS</strong></td><td>Global Oceans and Seas dataset (Flanders Marine Institute, 2021)</td></tr>\n'
+
+    html += '</tbody>\n'
+    html += '</table>\n'
+    html += '</div>\n'  # Close software subtab-content
+
+    # 8. Templated Methods Paragraph
+    html += '<div id="methods-statement" class="subtab-content">\n'
+    html += '<h3>8. Methods Statement</h3>\n'
+    html += '<div class="code-block" style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 10px 0; font-family: \'Times New Roman\', serif; line-height: 1.6;">\n'
+
+    # Build templated paragraph
+    n_sequences = metrics.get('valid_sequences', '[N]')
+    n_genotypes = metrics.get('consensus_genotypes', '[M]')
+    n_assigned = metrics.get('successfully_assigned', '[X]')
+    n_total = metrics.get('samples_for_assignment', '[Y]')
+    assign_pct = metrics.get('assignment_rate', '[X]')
+
+    ct = params.get('clustering_threshold', '[threshold]')
+    st = params.get('similarity_threshold', '[X]')
+
+    if isinstance(ct, (int, float)):
+        ct_pct = f"{(1-ct)*100:.0f}%"
+    else:
+        ct_pct = "[X]%"
+
+    if isinstance(st, (int, float)):
+        st_pct = f"{st*100:.0f}%"
+    else:
+        st_pct = "[X]%"
+
+    methods_text = f"DNA barcode sequences for {organism} were downloaded from the Barcode of Life Data System (BOLD; Ratnasingham &amp; Hebert, 2007) and processed using BOLDGenotyper v{version}. "
+
+    if isinstance(n_sequences, int):
+        methods_text += f"A total of {n_sequences:,} sequences were analyzed "
+    else:
+        methods_text += "Sequences were analyzed "
+
+    methods_text += "after removing duplicates and filtering for sequence quality (minimum length: 400 bp). "
+    methods_text += "Sequences were aligned using MAFFT (Katoh &amp; Standley, 2013) and trimmed with trimAl (Capella-Gutiérrez et al., 2009). "
+    methods_text += f"Consensus genotypes were identified through hierarchical clustering at {ct_pct} sequence identity using average linkage. "
+    methods_text += f"Individual sequences were assigned to genotypes using edit distance calculations (minimum identity: {st_pct}). "
+
+    if params.get('build_tree', False):
+        methods_text += "A phylogenetic tree was constructed using FastTree (Price et al., 2010) with the GTR+Gamma substitution model. "
+
+    if metrics.get('ocean_basin_assigned') or metrics.get('samples_with_coords'):
+        methods_text += "Geographic distributions were mapped using coordinates provided in BOLD and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). "
+
+    if isinstance(n_assigned, int) and isinstance(n_total, int) and isinstance(n_genotypes, int):
+        methods_text += f"{n_assigned:,} sequences ({assign_pct:.1f}%) were successfully assigned to {n_genotypes} consensus genotypes."
+    else:
+        methods_text += "[N] sequences ([X]%) were successfully assigned to [M] consensus genotypes."
+
+    html += f'<p>{methods_text}</p>\n'
+    html += '</div>\n'
+    html += '<button onclick="navigator.clipboard.writeText(this.previousElementSibling.innerText)" class="btn" style="margin-top: 10px;">Copy to Clipboard</button>\n'
+    html += '</div>\n'  # Close statement subtab-content
+
+    # 9. References
+    html += '<div id="methods-references" class="subtab-content">\n'
+    html += '<h3>9. References</h3>\n'
+    html += '<div style="font-size: 0.9em; line-height: 1.8;">\n'
+    html += '<p>Capella-Gutiérrez, S., Silla-Martínez, J. M., &amp; Gabaldón, T. (2009). trimAl: a tool for automated alignment trimming in large-scale phylogenetic analyses. <em>Bioinformatics</em>, 25(15), 1972-1973.</p>\n'
+    html += '<p>Flanders Marine Institute (2021). Global Oceans and Seas, version 1. Available online at <a href="https://www.marineregions.org/" target="_blank">https://www.marineregions.org/</a></p>\n'
+    html += '<p>Katoh, K., &amp; Standley, D. M. (2013). MAFFT multiple sequence alignment software version 7: improvements in performance and usability. <em>Molecular Biology and Evolution</em>, 30(4), 772-780.</p>\n'
+
+    if params.get('build_tree', False):
+        html += '<p>Price, M. N., Dehal, P. S., &amp; Arkin, A. P. (2010). FastTree 2 – Approximately maximum-likelihood trees for large alignments. <em>PLoS ONE</em>, 5(3), e9490.</p>\n'
+
+    html += '<p>Ratnasingham, S., &amp; Hebert, P. D. (2007). BOLD: The Barcode of Life Data System. <em>Molecular Ecology Notes</em>, 7(3), 355-364.</p>\n'
+    html += '<p>Šošić, M., &amp; Šikić, M. (2017). Edlib: a C/C++ library for fast, exact sequence alignment using edit distance. <em>Bioinformatics</em>, 33(9), 1394-1395.</p>\n'
+    html += '</div>\n'
+    html += '</div>\n'  # Close references subtab-content
+
+    html += '</div>\n'  # Close section
+    return html
+
+
 def generate_html_report(
     organism: str,
     output_dir: Path,
@@ -2930,10 +3498,11 @@ def generate_html_report(
         # Build sections
         builder.add_section(_build_executive_summary_section(assignment_summary, annotated_df))
         builder.add_section(_build_parameters_section(output_dir, organism))
+        builder.add_section(_build_visualizations_section(output_dir, organism))
+        builder.add_section(_build_methods_section(output_dir, organism, version))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
         builder.add_section(_build_geographic_section(annotated_df))
-        builder.add_section(_build_visualizations_section(output_dir, organism))
 
         # Render HTML
         html_content = builder.render()
