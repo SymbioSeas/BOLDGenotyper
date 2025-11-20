@@ -5114,3 +5114,1663 @@ ValueError: At least one value in the dash list must be positive
 [2025-11-19 20:00:24] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
 [2025-11-19 20:00:24] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
 [2025-11-19 20:00:24] INFO: ================================================================================
+[2025-11-19 20:05:56] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 20:05:56] INFO: ================================================================================
+[2025-11-19 20:05:56] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 20:05:56] INFO: ================================================================================
+[2025-11-19 20:05:56] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:05:56] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:05:56] INFO: 
+[2025-11-19 20:05:56] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 20:05:56] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 20:05:56] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:05:56] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 20:05:56] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:05:56] INFO: Read 685 rows and 88 columns
+[2025-11-19 20:05:56] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 20:05:56] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 20:05:56] INFO: Data quality summary:
+[2025-11-19 20:05:56] INFO:   total_rows: 675
+[2025-11-19 20:05:56] INFO:   total_columns: 88
+[2025-11-19 20:05:56] INFO:   unique_processids: 675
+[2025-11-19 20:05:56] INFO:   sequences_present: 674
+[2025-11-19 20:05:56] INFO:   sequences_missing: 1
+[2025-11-19 20:05:56] INFO:   empty_sequences: 0
+[2025-11-19 20:05:56] INFO:   coords_present: 229
+[2025-11-19 20:05:56] INFO:   coords_missing: 446
+[2025-11-19 20:05:56] INFO:   centroid_coords: 58
+[2025-11-19 20:05:56] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 20:05:57] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 20:05:57] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 20:05:57] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 20:05:57] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 20:05:57] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 20:05:57] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 20:06:20] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 20:06:20] INFO: Creating point geometries from coordinates
+[2025-11-19 20:06:20] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 20:06:20] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 20:06:21] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 20:06:21] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 20:06:21] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 20:06:21] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 20:06:21] INFO: 
+[2025-11-19 20:06:21] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 20:06:21] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:06:21] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 20:06:21] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 20:06:21] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 20:06:21] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 20:06:21] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 20:06:21] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:06:26] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:06:26] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 20:06:28] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 20:06:28] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 20:06:28] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 20:06:48] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 20:06:48] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 20:06:48] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 20:06:49] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 20:06:49] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 20:06:49] INFO: 
+[2025-11-19 20:06:49] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 20:06:49] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:06:49] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 20:06:49] INFO: ======================================================================
+[2025-11-19 20:06:49] INFO: Starting genotype assignment workflow
+[2025-11-19 20:06:49] INFO: ======================================================================
+[2025-11-19 20:06:49] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 20:06:49] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 20:06:49] INFO: Loaded 617 samples from metadata
+[2025-11-19 20:06:49] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:06:49] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:06:49] INFO: Loaded 6 consensus groups
+[2025-11-19 20:06:49] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:06:49] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:06:49] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 20:06:49] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 20:06:49] INFO: Prepared 617 assignment tasks
+[2025-11-19 20:06:49] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 20:06:49] INFO: Identity calculation method: target_based
+[2025-11-19 20:06:49] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 20:06:53] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 20:06:53] INFO: Step 6/6: Writing outputs
+[2025-11-19 20:06:53] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:06:53] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 20:06:53] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:06:53] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 20:06:53] INFO: ======================================================================
+[2025-11-19 20:06:53] INFO: Genotype assignment summary:
+[2025-11-19 20:06:53] INFO:   Total samples: 617
+[2025-11-19 20:06:53] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 20:06:53] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 20:06:53] INFO:     - No sequence in FASTA: 19
+[2025-11-19 20:06:53] INFO:     - Below identity threshold: 3
+[2025-11-19 20:06:53] INFO:   Diagnostic flags:
+[2025-11-19 20:06:53] INFO:     - Ties (ambiguous): 2
+[2025-11-19 20:06:53] INFO:     - Low confidence: 0
+[2025-11-19 20:06:53] INFO: ======================================================================
+[2025-11-19 20:06:53] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 20:06:53] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 20:06:53] INFO: 
+[2025-11-19 20:06:53] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 20:06:53] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:06:53] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 20:06:53] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 20:06:53] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:06:53] INFO: 
+[2025-11-19 20:06:53] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 20:06:53] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:06:53] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 20:06:53] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:06:54] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:06:54] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:06:54] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:06:54] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:06:54] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 20:06:54] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 20:06:54] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 20:06:54] INFO: Created 6 base name mappings
+[2025-11-19 20:06:54] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:06:54] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:06:54] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:06:54] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:06:54] INFO: 
+[2025-11-19 20:06:54] INFO: PHASE 6: Visualization
+[2025-11-19 20:06:54] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:06:54] INFO: 6.1: Generating plots...
+[2025-11-19 20:06:56] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 20:06:56] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 20:06:57] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 20:06:57] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:06:57] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:06:57] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:07:02] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 20:07:03] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 20:07:03] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 20:07:04] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 20:07:04] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 20:07:04] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:07:04] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:07:04] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:07:05] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 20:07:06] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 20:07:06] INFO:   ✓ Generated visualization plots
+[2025-11-19 20:07:06] INFO: 
+[2025-11-19 20:07:06] INFO: PHASE 7: Generating Reports
+[2025-11-19 20:07:06] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:07:06] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:07:06] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:07:06] INFO: 
+[2025-11-19 20:07:06] INFO: Cleaning up empty directories...
+[2025-11-19 20:07:06] INFO:   ✓ Removed empty directories
+[2025-11-19 20:07:06] INFO: 
+[2025-11-19 20:07:06] INFO: Generating HTML summary report...
+[2025-11-19 20:07:06] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 20:07:06] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:07:06] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:07:06] INFO: 
+[2025-11-19 20:07:06] INFO: ================================================================================
+[2025-11-19 20:07:06] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 20:07:06] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:07:06] INFO:   Key files:
+[2025-11-19 20:07:06] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:07:06] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:07:06] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:07:06] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:07:06] INFO: ================================================================================
+[2025-11-19 20:08:17] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 20:08:17] INFO: ================================================================================
+[2025-11-19 20:08:17] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 20:08:17] INFO: ================================================================================
+[2025-11-19 20:08:17] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:08:17] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:08:17] INFO: 
+[2025-11-19 20:08:17] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 20:08:17] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 20:08:17] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:08:17] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 20:08:17] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:08:17] INFO: Read 685 rows and 88 columns
+[2025-11-19 20:08:17] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 20:08:17] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 20:08:17] INFO: Data quality summary:
+[2025-11-19 20:08:17] INFO:   total_rows: 675
+[2025-11-19 20:08:17] INFO:   total_columns: 88
+[2025-11-19 20:08:17] INFO:   unique_processids: 675
+[2025-11-19 20:08:17] INFO:   sequences_present: 674
+[2025-11-19 20:08:17] INFO:   sequences_missing: 1
+[2025-11-19 20:08:17] INFO:   empty_sequences: 0
+[2025-11-19 20:08:17] INFO:   coords_present: 229
+[2025-11-19 20:08:17] INFO:   coords_missing: 446
+[2025-11-19 20:08:17] INFO:   centroid_coords: 58
+[2025-11-19 20:08:17] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 20:08:17] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 20:08:17] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 20:08:17] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 20:08:17] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 20:08:17] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 20:08:17] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 20:08:42] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 20:08:42] INFO: Creating point geometries from coordinates
+[2025-11-19 20:08:42] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 20:08:42] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 20:08:43] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 20:08:43] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 20:08:43] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 20:08:43] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 20:08:43] INFO: 
+[2025-11-19 20:08:43] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 20:08:43] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:08:43] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 20:08:43] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 20:08:43] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 20:08:43] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 20:08:43] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 20:08:43] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:08:49] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:08:49] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 20:08:50] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 20:08:50] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 20:08:50] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 20:09:09] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 20:09:09] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 20:09:09] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 20:09:09] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 20:09:09] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 20:09:09] INFO: 
+[2025-11-19 20:09:09] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 20:09:09] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:09:09] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 20:09:09] INFO: ======================================================================
+[2025-11-19 20:09:09] INFO: Starting genotype assignment workflow
+[2025-11-19 20:09:09] INFO: ======================================================================
+[2025-11-19 20:09:09] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 20:09:09] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 20:09:09] INFO: Loaded 617 samples from metadata
+[2025-11-19 20:09:09] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:09:09] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:09:09] INFO: Loaded 6 consensus groups
+[2025-11-19 20:09:09] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:09:09] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:09:09] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 20:09:09] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 20:09:09] INFO: Prepared 617 assignment tasks
+[2025-11-19 20:09:09] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 20:09:09] INFO: Identity calculation method: target_based
+[2025-11-19 20:09:09] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 20:09:13] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 20:09:13] INFO: Step 6/6: Writing outputs
+[2025-11-19 20:09:13] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:09:13] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 20:09:13] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:09:13] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 20:09:13] INFO: ======================================================================
+[2025-11-19 20:09:13] INFO: Genotype assignment summary:
+[2025-11-19 20:09:13] INFO:   Total samples: 617
+[2025-11-19 20:09:13] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 20:09:13] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 20:09:13] INFO:     - No sequence in FASTA: 19
+[2025-11-19 20:09:13] INFO:     - Below identity threshold: 3
+[2025-11-19 20:09:13] INFO:   Diagnostic flags:
+[2025-11-19 20:09:13] INFO:     - Ties (ambiguous): 2
+[2025-11-19 20:09:13] INFO:     - Low confidence: 0
+[2025-11-19 20:09:13] INFO: ======================================================================
+[2025-11-19 20:09:13] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 20:09:13] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 20:09:13] INFO: 
+[2025-11-19 20:09:13] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 20:09:13] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:09:13] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 20:09:13] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 20:09:13] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:09:13] INFO: 
+[2025-11-19 20:09:13] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 20:09:13] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:09:13] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 20:09:13] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:09:14] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:09:14] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:09:14] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:09:14] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:09:14] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 20:09:14] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 20:09:14] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 20:09:14] INFO: Created 6 base name mappings
+[2025-11-19 20:09:14] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:09:14] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:09:14] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:09:14] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:09:14] INFO: 
+[2025-11-19 20:09:14] INFO: PHASE 6: Visualization
+[2025-11-19 20:09:14] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:09:14] INFO: 6.1: Generating plots...
+[2025-11-19 20:09:16] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 20:09:17] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 20:09:17] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 20:09:17] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:09:17] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:09:18] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:09:23] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 20:09:24] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 20:09:25] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 20:09:25] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 20:09:25] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 20:09:25] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:09:25] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:09:25] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:09:27] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 20:09:27] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 20:09:27] INFO:   ✓ Generated visualization plots
+[2025-11-19 20:09:27] INFO: 
+[2025-11-19 20:09:27] INFO: PHASE 7: Generating Reports
+[2025-11-19 20:09:27] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:09:27] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:09:27] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:09:27] INFO: 
+[2025-11-19 20:09:27] INFO: Cleaning up empty directories...
+[2025-11-19 20:09:27] INFO:   ✓ Removed empty directories
+[2025-11-19 20:09:27] INFO: 
+[2025-11-19 20:09:27] INFO: Generating HTML summary report...
+[2025-11-19 20:09:27] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 20:09:27] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:09:27] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:09:27] INFO: 
+[2025-11-19 20:09:27] INFO: ================================================================================
+[2025-11-19 20:09:27] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 20:09:27] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:09:27] INFO:   Key files:
+[2025-11-19 20:09:27] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:09:27] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:09:27] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:09:27] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:09:27] INFO: ================================================================================
+[2025-11-19 20:10:37] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 20:10:37] INFO: ================================================================================
+[2025-11-19 20:10:37] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 20:10:37] INFO: ================================================================================
+[2025-11-19 20:10:37] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:10:37] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:10:37] INFO: 
+[2025-11-19 20:10:37] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 20:10:37] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 20:10:37] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:10:37] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 20:10:37] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:10:37] INFO: Read 685 rows and 88 columns
+[2025-11-19 20:10:37] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 20:10:37] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 20:10:37] INFO: Data quality summary:
+[2025-11-19 20:10:37] INFO:   total_rows: 675
+[2025-11-19 20:10:37] INFO:   total_columns: 88
+[2025-11-19 20:10:37] INFO:   unique_processids: 675
+[2025-11-19 20:10:37] INFO:   sequences_present: 674
+[2025-11-19 20:10:37] INFO:   sequences_missing: 1
+[2025-11-19 20:10:37] INFO:   empty_sequences: 0
+[2025-11-19 20:10:37] INFO:   coords_present: 229
+[2025-11-19 20:10:37] INFO:   coords_missing: 446
+[2025-11-19 20:10:37] INFO:   centroid_coords: 58
+[2025-11-19 20:10:37] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 20:10:37] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 20:10:37] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 20:10:37] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 20:10:37] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 20:10:37] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 20:10:37] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 20:11:00] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 20:11:00] INFO: Creating point geometries from coordinates
+[2025-11-19 20:11:00] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 20:11:00] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 20:11:01] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 20:11:01] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 20:11:01] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 20:11:01] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 20:11:01] INFO: 
+[2025-11-19 20:11:01] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 20:11:01] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:11:01] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 20:11:01] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 20:11:01] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 20:11:01] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 20:11:01] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 20:11:01] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:11:06] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:11:06] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 20:11:08] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 20:11:08] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 20:11:08] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 20:11:31] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 20:11:31] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 20:11:31] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 20:11:31] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 20:11:31] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 20:11:31] INFO: 
+[2025-11-19 20:11:31] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 20:11:31] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:11:31] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 20:11:31] INFO: ======================================================================
+[2025-11-19 20:11:31] INFO: Starting genotype assignment workflow
+[2025-11-19 20:11:31] INFO: ======================================================================
+[2025-11-19 20:11:31] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 20:11:31] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 20:11:31] INFO: Loaded 617 samples from metadata
+[2025-11-19 20:11:31] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:11:31] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:11:31] INFO: Loaded 6 consensus groups
+[2025-11-19 20:11:31] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:11:31] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:11:31] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 20:11:31] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 20:11:31] INFO: Prepared 617 assignment tasks
+[2025-11-19 20:11:31] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 20:11:31] INFO: Identity calculation method: target_based
+[2025-11-19 20:11:31] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 20:11:36] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 20:11:36] INFO: Step 6/6: Writing outputs
+[2025-11-19 20:11:36] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:11:36] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 20:11:36] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:11:36] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 20:11:36] INFO: ======================================================================
+[2025-11-19 20:11:36] INFO: Genotype assignment summary:
+[2025-11-19 20:11:36] INFO:   Total samples: 617
+[2025-11-19 20:11:36] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 20:11:36] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 20:11:36] INFO:     - No sequence in FASTA: 19
+[2025-11-19 20:11:36] INFO:     - Below identity threshold: 3
+[2025-11-19 20:11:36] INFO:   Diagnostic flags:
+[2025-11-19 20:11:36] INFO:     - Ties (ambiguous): 2
+[2025-11-19 20:11:36] INFO:     - Low confidence: 0
+[2025-11-19 20:11:36] INFO: ======================================================================
+[2025-11-19 20:11:36] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 20:11:36] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 20:11:36] INFO: 
+[2025-11-19 20:11:36] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 20:11:36] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:11:36] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 20:11:36] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 20:11:36] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:11:36] INFO: 
+[2025-11-19 20:11:36] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 20:11:36] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:11:36] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 20:11:36] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:11:37] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:11:37] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:11:37] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:11:37] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:11:37] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 20:11:37] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 20:11:37] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 20:11:37] INFO: Created 6 base name mappings
+[2025-11-19 20:11:37] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:11:37] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:11:37] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:11:37] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:11:37] INFO: 
+[2025-11-19 20:11:37] INFO: PHASE 6: Visualization
+[2025-11-19 20:11:37] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:11:37] INFO: 6.1: Generating plots...
+[2025-11-19 20:11:41] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 20:11:41] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 20:11:42] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 20:11:42] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:11:42] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:11:42] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:11:48] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 20:11:49] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 20:11:49] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 20:11:49] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 20:11:50] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 20:11:50] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:11:50] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:11:50] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:11:51] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 20:11:52] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 20:11:52] INFO:   ✓ Generated visualization plots
+[2025-11-19 20:11:52] INFO: 
+[2025-11-19 20:11:52] INFO: PHASE 7: Generating Reports
+[2025-11-19 20:11:52] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:11:52] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:11:52] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:11:52] INFO: 
+[2025-11-19 20:11:52] INFO: Cleaning up empty directories...
+[2025-11-19 20:11:52] INFO:   ✓ Removed empty directories
+[2025-11-19 20:11:52] INFO: 
+[2025-11-19 20:11:52] INFO: Generating HTML summary report...
+[2025-11-19 20:11:52] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 20:11:52] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:11:52] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:11:52] INFO: 
+[2025-11-19 20:11:52] INFO: ================================================================================
+[2025-11-19 20:11:52] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 20:11:52] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:11:52] INFO:   Key files:
+[2025-11-19 20:11:52] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:11:52] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:11:52] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:11:52] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:11:52] INFO: ================================================================================
+[2025-11-19 20:44:24] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 20:44:24] INFO: ================================================================================
+[2025-11-19 20:44:24] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 20:44:24] INFO: ================================================================================
+[2025-11-19 20:44:24] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:44:24] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:44:24] INFO: 
+[2025-11-19 20:44:24] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 20:44:24] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 20:44:24] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:44:24] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 20:44:24] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:44:24] INFO: Read 685 rows and 88 columns
+[2025-11-19 20:44:24] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 20:44:24] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 20:44:24] INFO: Data quality summary:
+[2025-11-19 20:44:24] INFO:   total_rows: 675
+[2025-11-19 20:44:24] INFO:   total_columns: 88
+[2025-11-19 20:44:24] INFO:   unique_processids: 675
+[2025-11-19 20:44:24] INFO:   sequences_present: 674
+[2025-11-19 20:44:24] INFO:   sequences_missing: 1
+[2025-11-19 20:44:24] INFO:   empty_sequences: 0
+[2025-11-19 20:44:24] INFO:   coords_present: 229
+[2025-11-19 20:44:24] INFO:   coords_missing: 446
+[2025-11-19 20:44:24] INFO:   centroid_coords: 58
+[2025-11-19 20:44:24] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 20:44:24] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 20:44:24] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 20:44:24] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 20:44:24] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 20:44:24] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 20:44:24] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 20:44:48] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 20:44:48] INFO: Creating point geometries from coordinates
+[2025-11-19 20:44:48] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 20:44:48] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 20:44:49] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 20:44:49] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 20:44:49] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 20:44:49] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 20:44:49] INFO: 
+[2025-11-19 20:44:49] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 20:44:49] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:44:49] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 20:44:49] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 20:44:49] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 20:44:49] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 20:44:49] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 20:44:49] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:44:55] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:44:55] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 20:44:56] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 20:44:56] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 20:44:56] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 20:45:13] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 20:45:13] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 20:45:13] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 20:45:14] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 20:45:14] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 20:45:14] INFO: 
+[2025-11-19 20:45:14] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 20:45:14] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:45:14] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 20:45:14] INFO: ======================================================================
+[2025-11-19 20:45:14] INFO: Starting genotype assignment workflow
+[2025-11-19 20:45:14] INFO: ======================================================================
+[2025-11-19 20:45:14] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 20:45:14] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 20:45:14] INFO: Loaded 617 samples from metadata
+[2025-11-19 20:45:14] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:45:14] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:45:14] INFO: Loaded 6 consensus groups
+[2025-11-19 20:45:14] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:45:14] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:45:14] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 20:45:14] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 20:45:14] INFO: Prepared 617 assignment tasks
+[2025-11-19 20:45:14] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 20:45:14] INFO: Identity calculation method: target_based
+[2025-11-19 20:45:14] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 20:45:17] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 20:45:17] INFO: Step 6/6: Writing outputs
+[2025-11-19 20:45:17] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:45:17] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 20:45:17] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:45:17] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 20:45:17] INFO: ======================================================================
+[2025-11-19 20:45:17] INFO: Genotype assignment summary:
+[2025-11-19 20:45:17] INFO:   Total samples: 617
+[2025-11-19 20:45:17] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 20:45:17] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 20:45:17] INFO:     - No sequence in FASTA: 19
+[2025-11-19 20:45:17] INFO:     - Below identity threshold: 3
+[2025-11-19 20:45:17] INFO:   Diagnostic flags:
+[2025-11-19 20:45:17] INFO:     - Ties (ambiguous): 2
+[2025-11-19 20:45:17] INFO:     - Low confidence: 0
+[2025-11-19 20:45:17] INFO: ======================================================================
+[2025-11-19 20:45:17] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 20:45:17] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 20:45:17] INFO: 
+[2025-11-19 20:45:17] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 20:45:17] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:45:17] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 20:45:17] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 20:45:17] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:45:17] INFO: 
+[2025-11-19 20:45:17] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 20:45:17] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:45:17] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 20:45:17] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:45:18] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:45:18] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:45:18] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:45:18] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:45:18] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 20:45:18] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 20:45:18] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 20:45:18] INFO: Created 6 base name mappings
+[2025-11-19 20:45:18] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:45:18] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:45:18] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:45:18] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:45:18] INFO: 
+[2025-11-19 20:45:18] INFO: PHASE 6: Visualization
+[2025-11-19 20:45:18] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:45:18] INFO: 6.1: Generating plots...
+[2025-11-19 20:45:20] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 20:45:20] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 20:45:21] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 20:45:21] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:45:21] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:45:21] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:45:26] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 20:45:27] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 20:45:28] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 20:45:28] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 20:45:28] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 20:45:28] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:45:28] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:45:28] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:45:30] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 20:45:30] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 20:45:30] INFO:   ✓ Generated visualization plots
+[2025-11-19 20:45:30] INFO: 
+[2025-11-19 20:45:30] INFO: PHASE 7: Generating Reports
+[2025-11-19 20:45:30] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:45:30] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:45:30] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:45:30] INFO: 
+[2025-11-19 20:45:30] INFO: Cleaning up empty directories...
+[2025-11-19 20:45:30] INFO:   ✓ Removed empty directories
+[2025-11-19 20:45:30] INFO: 
+[2025-11-19 20:45:30] INFO: Generating HTML summary report...
+[2025-11-19 20:45:30] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 20:45:30] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:45:30] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:45:30] INFO: 
+[2025-11-19 20:45:30] INFO: ================================================================================
+[2025-11-19 20:45:30] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 20:45:30] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:45:30] INFO:   Key files:
+[2025-11-19 20:45:30] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:45:30] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:45:30] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:45:30] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:45:30] INFO: ================================================================================
+[2025-11-19 20:50:18] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 20:50:18] INFO: ================================================================================
+[2025-11-19 20:50:18] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 20:50:18] INFO: ================================================================================
+[2025-11-19 20:50:18] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:50:18] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:50:18] INFO: 
+[2025-11-19 20:50:18] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 20:50:18] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 20:50:18] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:50:18] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 20:50:18] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:50:18] INFO: Read 685 rows and 88 columns
+[2025-11-19 20:50:19] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 20:50:19] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 20:50:19] INFO: Data quality summary:
+[2025-11-19 20:50:19] INFO:   total_rows: 675
+[2025-11-19 20:50:19] INFO:   total_columns: 88
+[2025-11-19 20:50:19] INFO:   unique_processids: 675
+[2025-11-19 20:50:19] INFO:   sequences_present: 674
+[2025-11-19 20:50:19] INFO:   sequences_missing: 1
+[2025-11-19 20:50:19] INFO:   empty_sequences: 0
+[2025-11-19 20:50:19] INFO:   coords_present: 229
+[2025-11-19 20:50:19] INFO:   coords_missing: 446
+[2025-11-19 20:50:19] INFO:   centroid_coords: 58
+[2025-11-19 20:50:19] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 20:50:19] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 20:50:19] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 20:50:19] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 20:50:19] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 20:50:19] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 20:50:19] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 20:50:43] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 20:50:43] INFO: Creating point geometries from coordinates
+[2025-11-19 20:50:43] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 20:50:43] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 20:50:43] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 20:50:43] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 20:50:43] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 20:50:43] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 20:50:43] INFO: 
+[2025-11-19 20:50:43] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 20:50:43] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:50:43] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 20:50:43] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 20:50:43] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 20:50:43] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 20:50:43] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 20:50:43] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:50:48] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:50:48] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 20:50:50] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 20:50:50] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 20:50:50] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 20:51:08] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 20:51:08] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 20:51:08] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 20:51:08] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 20:51:08] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 20:51:08] INFO: 
+[2025-11-19 20:51:08] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 20:51:08] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:51:08] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 20:51:08] INFO: ======================================================================
+[2025-11-19 20:51:08] INFO: Starting genotype assignment workflow
+[2025-11-19 20:51:08] INFO: ======================================================================
+[2025-11-19 20:51:08] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 20:51:08] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 20:51:08] INFO: Loaded 617 samples from metadata
+[2025-11-19 20:51:08] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:51:08] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:51:08] INFO: Loaded 6 consensus groups
+[2025-11-19 20:51:08] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:51:08] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:51:08] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 20:51:08] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 20:51:08] INFO: Prepared 617 assignment tasks
+[2025-11-19 20:51:08] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 20:51:08] INFO: Identity calculation method: target_based
+[2025-11-19 20:51:08] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 20:51:12] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 20:51:12] INFO: Step 6/6: Writing outputs
+[2025-11-19 20:51:12] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:51:12] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 20:51:12] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:51:12] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 20:51:12] INFO: ======================================================================
+[2025-11-19 20:51:12] INFO: Genotype assignment summary:
+[2025-11-19 20:51:12] INFO:   Total samples: 617
+[2025-11-19 20:51:12] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 20:51:12] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 20:51:12] INFO:     - No sequence in FASTA: 19
+[2025-11-19 20:51:12] INFO:     - Below identity threshold: 3
+[2025-11-19 20:51:12] INFO:   Diagnostic flags:
+[2025-11-19 20:51:12] INFO:     - Ties (ambiguous): 2
+[2025-11-19 20:51:12] INFO:     - Low confidence: 0
+[2025-11-19 20:51:12] INFO: ======================================================================
+[2025-11-19 20:51:12] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 20:51:12] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 20:51:12] INFO: 
+[2025-11-19 20:51:12] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 20:51:12] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:51:12] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 20:51:12] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 20:51:12] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:51:12] INFO: 
+[2025-11-19 20:51:12] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 20:51:12] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:51:12] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 20:51:12] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:51:13] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:51:13] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:51:13] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:51:13] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:51:13] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 20:51:13] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 20:51:13] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 20:51:13] INFO: Created 6 base name mappings
+[2025-11-19 20:51:13] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:51:13] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:51:13] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:51:13] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:51:13] INFO: 
+[2025-11-19 20:51:13] INFO: PHASE 6: Visualization
+[2025-11-19 20:51:13] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:51:13] INFO: 6.1: Generating plots...
+[2025-11-19 20:51:14] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 20:51:15] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 20:51:15] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 20:51:15] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:51:15] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:51:15] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:51:20] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 20:51:21] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 20:51:22] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 20:51:22] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 20:51:22] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 20:51:22] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:51:22] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:51:22] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:51:24] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 20:51:24] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 20:51:24] INFO:   ✓ Generated visualization plots
+[2025-11-19 20:51:24] INFO: 
+[2025-11-19 20:51:24] INFO: PHASE 7: Generating Reports
+[2025-11-19 20:51:24] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:51:24] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:51:24] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:51:24] INFO: 
+[2025-11-19 20:51:24] INFO: Cleaning up empty directories...
+[2025-11-19 20:51:24] INFO:   ✓ Removed empty directories
+[2025-11-19 20:51:24] INFO: 
+[2025-11-19 20:51:24] INFO: Generating HTML summary report...
+[2025-11-19 20:51:24] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 20:51:24] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:51:24] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:51:24] INFO: 
+[2025-11-19 20:51:24] INFO: ================================================================================
+[2025-11-19 20:51:24] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 20:51:24] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:51:24] INFO:   Key files:
+[2025-11-19 20:51:24] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:51:24] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:51:24] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:51:24] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:51:24] INFO: ================================================================================
+[2025-11-19 20:58:07] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 20:58:07] INFO: ================================================================================
+[2025-11-19 20:58:07] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 20:58:07] INFO: ================================================================================
+[2025-11-19 20:58:07] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:58:07] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:58:07] INFO: 
+[2025-11-19 20:58:07] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 20:58:07] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 20:58:07] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:58:07] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 20:58:07] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 20:58:07] INFO: Read 685 rows and 88 columns
+[2025-11-19 20:58:07] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 20:58:07] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 20:58:07] INFO: Data quality summary:
+[2025-11-19 20:58:07] INFO:   total_rows: 675
+[2025-11-19 20:58:07] INFO:   total_columns: 88
+[2025-11-19 20:58:07] INFO:   unique_processids: 675
+[2025-11-19 20:58:07] INFO:   sequences_present: 674
+[2025-11-19 20:58:07] INFO:   sequences_missing: 1
+[2025-11-19 20:58:07] INFO:   empty_sequences: 0
+[2025-11-19 20:58:07] INFO:   coords_present: 229
+[2025-11-19 20:58:07] INFO:   coords_missing: 446
+[2025-11-19 20:58:07] INFO:   centroid_coords: 58
+[2025-11-19 20:58:07] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 20:58:07] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 20:58:07] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 20:58:07] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 20:58:07] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 20:58:07] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 20:58:07] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 20:58:31] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 20:58:31] INFO: Creating point geometries from coordinates
+[2025-11-19 20:58:31] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 20:58:31] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 20:58:32] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 20:58:32] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 20:58:32] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 20:58:32] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 20:58:32] INFO: 
+[2025-11-19 20:58:32] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 20:58:32] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:58:32] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 20:58:32] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 20:58:32] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 20:58:32] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 20:58:32] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 20:58:32] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:58:37] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:58:37] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 20:58:38] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 20:58:38] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 20:58:38] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 20:58:56] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 20:58:56] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 20:58:56] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 20:58:57] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 20:58:57] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 20:58:57] INFO: 
+[2025-11-19 20:58:57] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 20:58:57] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:58:57] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 20:58:57] INFO: ======================================================================
+[2025-11-19 20:58:57] INFO: Starting genotype assignment workflow
+[2025-11-19 20:58:57] INFO: ======================================================================
+[2025-11-19 20:58:57] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 20:58:57] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 20:58:57] INFO: Loaded 617 samples from metadata
+[2025-11-19 20:58:57] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:58:57] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:58:57] INFO: Loaded 6 consensus groups
+[2025-11-19 20:58:57] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:58:57] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 20:58:57] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 20:58:57] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 20:58:57] INFO: Prepared 617 assignment tasks
+[2025-11-19 20:58:57] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 20:58:57] INFO: Identity calculation method: target_based
+[2025-11-19 20:58:57] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 20:59:00] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 20:59:00] INFO: Step 6/6: Writing outputs
+[2025-11-19 20:59:00] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:59:00] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 20:59:00] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 20:59:00] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 20:59:00] INFO: ======================================================================
+[2025-11-19 20:59:00] INFO: Genotype assignment summary:
+[2025-11-19 20:59:00] INFO:   Total samples: 617
+[2025-11-19 20:59:00] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 20:59:00] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 20:59:00] INFO:     - No sequence in FASTA: 19
+[2025-11-19 20:59:00] INFO:     - Below identity threshold: 3
+[2025-11-19 20:59:00] INFO:   Diagnostic flags:
+[2025-11-19 20:59:00] INFO:     - Ties (ambiguous): 2
+[2025-11-19 20:59:00] INFO:     - Low confidence: 0
+[2025-11-19 20:59:00] INFO: ======================================================================
+[2025-11-19 20:59:00] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 20:59:00] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 20:59:00] INFO: 
+[2025-11-19 20:59:00] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 20:59:00] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:59:00] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 20:59:00] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 20:59:00] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:59:00] INFO: 
+[2025-11-19 20:59:00] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 20:59:00] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:59:00] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 20:59:00] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:59:01] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:59:01] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 20:59:01] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:59:01] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:59:01] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 20:59:01] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 20:59:01] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 20:59:01] INFO: Created 6 base name mappings
+[2025-11-19 20:59:01] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:59:01] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:59:01] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:59:01] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 20:59:01] INFO: 
+[2025-11-19 20:59:01] INFO: PHASE 6: Visualization
+[2025-11-19 20:59:01] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:59:01] INFO: 6.1: Generating plots...
+[2025-11-19 20:59:02] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 20:59:03] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 20:59:03] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 20:59:03] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:59:03] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:59:04] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:59:09] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 20:59:10] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 20:59:10] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 20:59:10] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 20:59:11] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 20:59:11] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 20:59:11] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 20:59:11] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 20:59:12] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 20:59:12] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 20:59:12] INFO:   ✓ Generated visualization plots
+[2025-11-19 20:59:12] INFO: 
+[2025-11-19 20:59:12] INFO: PHASE 7: Generating Reports
+[2025-11-19 20:59:12] INFO: --------------------------------------------------------------------------------
+[2025-11-19 20:59:12] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:59:12] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 20:59:12] INFO: 
+[2025-11-19 20:59:12] INFO: Cleaning up empty directories...
+[2025-11-19 20:59:12] INFO:   ✓ Removed empty directories
+[2025-11-19 20:59:12] INFO: 
+[2025-11-19 20:59:12] INFO: Generating HTML summary report...
+[2025-11-19 20:59:12] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 20:59:13] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:59:13] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:59:13] INFO: 
+[2025-11-19 20:59:13] INFO: ================================================================================
+[2025-11-19 20:59:13] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 20:59:13] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 20:59:13] INFO:   Key files:
+[2025-11-19 20:59:13] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 20:59:13] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 20:59:13] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 20:59:13] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 20:59:13] INFO: ================================================================================
+[2025-11-19 21:03:17] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 21:03:17] INFO: ================================================================================
+[2025-11-19 21:03:17] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 21:03:17] INFO: ================================================================================
+[2025-11-19 21:03:17] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:03:17] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:03:17] INFO: 
+[2025-11-19 21:03:17] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 21:03:17] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 21:03:17] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:03:17] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 21:03:17] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:03:17] INFO: Read 685 rows and 88 columns
+[2025-11-19 21:03:17] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 21:03:17] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 21:03:17] INFO: Data quality summary:
+[2025-11-19 21:03:17] INFO:   total_rows: 675
+[2025-11-19 21:03:17] INFO:   total_columns: 88
+[2025-11-19 21:03:17] INFO:   unique_processids: 675
+[2025-11-19 21:03:17] INFO:   sequences_present: 674
+[2025-11-19 21:03:17] INFO:   sequences_missing: 1
+[2025-11-19 21:03:17] INFO:   empty_sequences: 0
+[2025-11-19 21:03:17] INFO:   coords_present: 229
+[2025-11-19 21:03:17] INFO:   coords_missing: 446
+[2025-11-19 21:03:17] INFO:   centroid_coords: 58
+[2025-11-19 21:03:17] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 21:03:17] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 21:03:17] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 21:03:17] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 21:03:17] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 21:03:17] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 21:03:17] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 21:03:42] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 21:03:42] INFO: Creating point geometries from coordinates
+[2025-11-19 21:03:42] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 21:03:42] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 21:03:42] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 21:03:42] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 21:03:42] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 21:03:42] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 21:03:42] INFO: 
+[2025-11-19 21:03:42] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 21:03:42] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:03:42] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 21:03:42] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 21:03:42] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 21:03:42] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 21:03:42] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 21:03:42] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:03:48] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:03:48] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 21:03:49] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 21:03:49] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 21:03:49] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 21:04:06] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 21:04:06] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 21:04:06] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 21:04:07] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 21:04:07] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 21:04:07] INFO: 
+[2025-11-19 21:04:07] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 21:04:07] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:04:07] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 21:04:07] INFO: ======================================================================
+[2025-11-19 21:04:07] INFO: Starting genotype assignment workflow
+[2025-11-19 21:04:07] INFO: ======================================================================
+[2025-11-19 21:04:07] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 21:04:07] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 21:04:07] INFO: Loaded 617 samples from metadata
+[2025-11-19 21:04:07] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:04:07] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:04:07] INFO: Loaded 6 consensus groups
+[2025-11-19 21:04:07] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:04:07] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:04:07] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 21:04:07] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 21:04:07] INFO: Prepared 617 assignment tasks
+[2025-11-19 21:04:07] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 21:04:07] INFO: Identity calculation method: target_based
+[2025-11-19 21:04:07] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 21:04:10] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 21:04:10] INFO: Step 6/6: Writing outputs
+[2025-11-19 21:04:10] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:04:10] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 21:04:10] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:04:10] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 21:04:10] INFO: ======================================================================
+[2025-11-19 21:04:10] INFO: Genotype assignment summary:
+[2025-11-19 21:04:10] INFO:   Total samples: 617
+[2025-11-19 21:04:10] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 21:04:10] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 21:04:10] INFO:     - No sequence in FASTA: 19
+[2025-11-19 21:04:10] INFO:     - Below identity threshold: 3
+[2025-11-19 21:04:10] INFO:   Diagnostic flags:
+[2025-11-19 21:04:10] INFO:     - Ties (ambiguous): 2
+[2025-11-19 21:04:10] INFO:     - Low confidence: 0
+[2025-11-19 21:04:10] INFO: ======================================================================
+[2025-11-19 21:04:10] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 21:04:10] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 21:04:10] INFO: 
+[2025-11-19 21:04:10] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 21:04:10] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:04:10] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 21:04:10] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 21:04:10] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:04:10] INFO: 
+[2025-11-19 21:04:10] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 21:04:10] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:04:10] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 21:04:10] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:04:11] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:04:11] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:04:11] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:04:11] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:04:11] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 21:04:11] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 21:04:11] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 21:04:11] INFO: Created 6 base name mappings
+[2025-11-19 21:04:11] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:04:11] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:04:11] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:04:11] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:04:11] INFO: 
+[2025-11-19 21:04:11] INFO: PHASE 6: Visualization
+[2025-11-19 21:04:11] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:04:11] INFO: 6.1: Generating plots...
+[2025-11-19 21:04:13] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 21:04:13] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 21:04:14] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 21:04:14] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:04:14] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:04:14] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:04:19] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 21:04:20] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 21:04:20] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 21:04:21] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 21:04:21] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 21:04:21] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:04:21] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:04:21] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:04:22] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 21:04:23] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 21:04:23] INFO:   ✓ Generated visualization plots
+[2025-11-19 21:04:23] INFO: 
+[2025-11-19 21:04:23] INFO: PHASE 7: Generating Reports
+[2025-11-19 21:04:23] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:04:23] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:04:23] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:04:23] INFO: 
+[2025-11-19 21:04:23] INFO: Cleaning up empty directories...
+[2025-11-19 21:04:23] INFO:   ✓ Removed empty directories
+[2025-11-19 21:04:23] INFO: 
+[2025-11-19 21:04:23] INFO: Generating HTML summary report...
+[2025-11-19 21:04:23] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 21:04:23] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:04:23] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:04:23] INFO: 
+[2025-11-19 21:04:23] INFO: ================================================================================
+[2025-11-19 21:04:23] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 21:04:23] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:04:23] INFO:   Key files:
+[2025-11-19 21:04:23] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:04:23] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:04:23] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:04:23] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:04:23] INFO: ================================================================================
+[2025-11-19 21:12:58] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 21:12:58] INFO: ================================================================================
+[2025-11-19 21:12:58] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 21:12:58] INFO: ================================================================================
+[2025-11-19 21:12:58] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:12:58] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:12:58] INFO: 
+[2025-11-19 21:12:58] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 21:12:58] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 21:12:58] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:12:58] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 21:12:58] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:12:58] INFO: Read 685 rows and 88 columns
+[2025-11-19 21:12:58] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 21:12:58] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 21:12:58] INFO: Data quality summary:
+[2025-11-19 21:12:58] INFO:   total_rows: 675
+[2025-11-19 21:12:58] INFO:   total_columns: 88
+[2025-11-19 21:12:58] INFO:   unique_processids: 675
+[2025-11-19 21:12:58] INFO:   sequences_present: 674
+[2025-11-19 21:12:58] INFO:   sequences_missing: 1
+[2025-11-19 21:12:58] INFO:   empty_sequences: 0
+[2025-11-19 21:12:58] INFO:   coords_present: 229
+[2025-11-19 21:12:58] INFO:   coords_missing: 446
+[2025-11-19 21:12:58] INFO:   centroid_coords: 58
+[2025-11-19 21:12:58] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 21:12:58] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 21:12:58] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 21:12:58] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 21:12:58] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 21:12:58] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 21:12:58] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 21:13:23] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 21:13:23] INFO: Creating point geometries from coordinates
+[2025-11-19 21:13:23] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 21:13:23] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 21:13:23] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 21:13:23] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 21:13:23] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 21:13:23] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 21:13:23] INFO: 
+[2025-11-19 21:13:23] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 21:13:23] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:13:23] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 21:13:23] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 21:13:23] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 21:13:23] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 21:13:23] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 21:13:23] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:13:29] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:13:29] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 21:13:30] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 21:13:30] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 21:13:30] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 21:13:48] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 21:13:48] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 21:13:48] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 21:13:49] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 21:13:49] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 21:13:49] INFO: 
+[2025-11-19 21:13:49] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 21:13:49] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:13:49] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 21:13:49] INFO: ======================================================================
+[2025-11-19 21:13:49] INFO: Starting genotype assignment workflow
+[2025-11-19 21:13:49] INFO: ======================================================================
+[2025-11-19 21:13:49] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 21:13:49] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 21:13:49] INFO: Loaded 617 samples from metadata
+[2025-11-19 21:13:49] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:13:49] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:13:49] INFO: Loaded 6 consensus groups
+[2025-11-19 21:13:49] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:13:49] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:13:49] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 21:13:49] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 21:13:49] INFO: Prepared 617 assignment tasks
+[2025-11-19 21:13:49] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 21:13:49] INFO: Identity calculation method: target_based
+[2025-11-19 21:13:49] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 21:13:52] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 21:13:52] INFO: Step 6/6: Writing outputs
+[2025-11-19 21:13:52] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:13:52] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 21:13:52] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:13:52] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 21:13:52] INFO: ======================================================================
+[2025-11-19 21:13:52] INFO: Genotype assignment summary:
+[2025-11-19 21:13:52] INFO:   Total samples: 617
+[2025-11-19 21:13:52] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 21:13:52] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 21:13:52] INFO:     - No sequence in FASTA: 19
+[2025-11-19 21:13:52] INFO:     - Below identity threshold: 3
+[2025-11-19 21:13:52] INFO:   Diagnostic flags:
+[2025-11-19 21:13:52] INFO:     - Ties (ambiguous): 2
+[2025-11-19 21:13:52] INFO:     - Low confidence: 0
+[2025-11-19 21:13:52] INFO: ======================================================================
+[2025-11-19 21:13:52] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 21:13:52] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 21:13:52] INFO: 
+[2025-11-19 21:13:52] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 21:13:52] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:13:52] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 21:13:52] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 21:13:53] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:13:53] INFO: 
+[2025-11-19 21:13:53] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 21:13:53] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:13:53] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 21:13:53] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:13:54] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:13:54] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:13:54] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:13:54] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:13:54] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 21:13:54] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 21:13:54] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 21:13:54] INFO: Created 6 base name mappings
+[2025-11-19 21:13:54] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:13:54] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:13:54] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:13:54] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:13:54] INFO: 
+[2025-11-19 21:13:54] INFO: PHASE 6: Visualization
+[2025-11-19 21:13:54] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:13:54] INFO: 6.1: Generating plots...
+[2025-11-19 21:13:55] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 21:13:56] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 21:13:56] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 21:13:56] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:13:56] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:13:57] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:14:02] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 21:14:03] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 21:14:03] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 21:14:03] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 21:14:03] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 21:14:03] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:14:03] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:14:04] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:14:05] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 21:14:05] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 21:14:05] INFO:   ✓ Generated visualization plots
+[2025-11-19 21:14:05] INFO: 
+[2025-11-19 21:14:05] INFO: PHASE 7: Generating Reports
+[2025-11-19 21:14:05] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:14:05] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:14:05] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:14:05] INFO: 
+[2025-11-19 21:14:05] INFO: Cleaning up empty directories...
+[2025-11-19 21:14:05] INFO:   ✓ Removed empty directories
+[2025-11-19 21:14:05] INFO: 
+[2025-11-19 21:14:05] INFO: Generating HTML summary report...
+[2025-11-19 21:14:05] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 21:14:05] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:14:05] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:14:05] INFO: 
+[2025-11-19 21:14:05] INFO: ================================================================================
+[2025-11-19 21:14:05] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 21:14:05] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:14:05] INFO:   Key files:
+[2025-11-19 21:14:05] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:14:05] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:14:05] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:14:05] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:14:05] INFO: ================================================================================
+[2025-11-19 21:27:58] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 21:27:58] INFO: ================================================================================
+[2025-11-19 21:27:58] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 21:27:58] INFO: ================================================================================
+[2025-11-19 21:27:58] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:27:58] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:27:58] INFO: 
+[2025-11-19 21:27:58] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 21:27:58] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 21:27:58] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:27:58] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 21:27:58] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:27:58] INFO: Read 685 rows and 88 columns
+[2025-11-19 21:27:58] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 21:27:58] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 21:27:58] INFO: Data quality summary:
+[2025-11-19 21:27:58] INFO:   total_rows: 675
+[2025-11-19 21:27:58] INFO:   total_columns: 88
+[2025-11-19 21:27:58] INFO:   unique_processids: 675
+[2025-11-19 21:27:58] INFO:   sequences_present: 674
+[2025-11-19 21:27:58] INFO:   sequences_missing: 1
+[2025-11-19 21:27:58] INFO:   empty_sequences: 0
+[2025-11-19 21:27:58] INFO:   coords_present: 229
+[2025-11-19 21:27:58] INFO:   coords_missing: 446
+[2025-11-19 21:27:58] INFO:   centroid_coords: 58
+[2025-11-19 21:27:58] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 21:27:58] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 21:27:58] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 21:27:58] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 21:27:58] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 21:27:58] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 21:27:58] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 21:28:21] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 21:28:21] INFO: Creating point geometries from coordinates
+[2025-11-19 21:28:21] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 21:28:21] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 21:28:22] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 21:28:22] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 21:28:22] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 21:28:22] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 21:28:22] INFO: 
+[2025-11-19 21:28:22] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 21:28:22] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:28:22] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 21:28:22] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 21:28:22] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 21:28:22] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 21:28:22] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 21:28:22] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:28:27] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:28:27] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 21:28:28] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 21:28:28] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 21:28:28] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 21:28:46] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 21:28:46] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 21:28:46] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 21:28:47] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 21:28:47] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 21:28:47] INFO: 
+[2025-11-19 21:28:47] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 21:28:47] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:28:47] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 21:28:47] INFO: ======================================================================
+[2025-11-19 21:28:47] INFO: Starting genotype assignment workflow
+[2025-11-19 21:28:47] INFO: ======================================================================
+[2025-11-19 21:28:47] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 21:28:47] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 21:28:47] INFO: Loaded 617 samples from metadata
+[2025-11-19 21:28:47] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:28:47] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:28:47] INFO: Loaded 6 consensus groups
+[2025-11-19 21:28:47] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:28:47] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:28:47] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 21:28:47] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 21:28:47] INFO: Prepared 617 assignment tasks
+[2025-11-19 21:28:47] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 21:28:47] INFO: Identity calculation method: target_based
+[2025-11-19 21:28:47] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 21:28:50] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 21:28:50] INFO: Step 6/6: Writing outputs
+[2025-11-19 21:28:50] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:28:50] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 21:28:50] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:28:50] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 21:28:50] INFO: ======================================================================
+[2025-11-19 21:28:50] INFO: Genotype assignment summary:
+[2025-11-19 21:28:50] INFO:   Total samples: 617
+[2025-11-19 21:28:50] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 21:28:50] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 21:28:50] INFO:     - No sequence in FASTA: 19
+[2025-11-19 21:28:50] INFO:     - Below identity threshold: 3
+[2025-11-19 21:28:50] INFO:   Diagnostic flags:
+[2025-11-19 21:28:50] INFO:     - Ties (ambiguous): 2
+[2025-11-19 21:28:50] INFO:     - Low confidence: 0
+[2025-11-19 21:28:50] INFO: ======================================================================
+[2025-11-19 21:28:50] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 21:28:50] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 21:28:50] INFO: 
+[2025-11-19 21:28:50] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 21:28:50] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:28:50] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 21:28:50] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 21:28:50] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:28:50] INFO: 
+[2025-11-19 21:28:50] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 21:28:50] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:28:50] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 21:28:50] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:28:51] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:28:51] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:28:51] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:28:51] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:28:51] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 21:28:51] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 21:28:51] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 21:28:51] INFO: Created 6 base name mappings
+[2025-11-19 21:28:51] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:28:51] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:28:51] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:28:51] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:28:51] INFO: 
+[2025-11-19 21:28:51] INFO: PHASE 6: Visualization
+[2025-11-19 21:28:51] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:28:51] INFO: 6.1: Generating plots...
+[2025-11-19 21:28:53] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 21:28:54] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 21:28:54] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 21:28:54] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:28:54] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:28:54] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:29:00] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 21:29:00] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 21:29:01] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 21:29:01] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 21:29:01] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 21:29:01] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:29:01] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:29:01] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:29:03] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 21:29:03] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 21:29:03] INFO:   ✓ Generated visualization plots
+[2025-11-19 21:29:03] INFO: 
+[2025-11-19 21:29:03] INFO: PHASE 7: Generating Reports
+[2025-11-19 21:29:03] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:29:03] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:29:03] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:29:03] INFO: 
+[2025-11-19 21:29:03] INFO: Cleaning up empty directories...
+[2025-11-19 21:29:03] INFO:   ✓ Removed empty directories
+[2025-11-19 21:29:03] INFO: 
+[2025-11-19 21:29:03] INFO: Generating HTML summary report...
+[2025-11-19 21:29:03] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 21:29:03] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:29:03] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:29:03] INFO: 
+[2025-11-19 21:29:03] INFO: ================================================================================
+[2025-11-19 21:29:03] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 21:29:03] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:29:03] INFO:   Key files:
+[2025-11-19 21:29:03] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:29:03] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:29:03] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:29:03] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:29:03] INFO: ================================================================================
+[2025-11-19 21:50:40] INFO: Logging to file: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline.log
+[2025-11-19 21:50:40] INFO: ================================================================================
+[2025-11-19 21:50:40] INFO: BOLDGenotyper Pipeline - Sphyrna_lewini
+[2025-11-19 21:50:40] INFO: ================================================================================
+[2025-11-19 21:50:40] INFO: Input TSV: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:50:40] INFO: Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:50:40] INFO: 
+[2025-11-19 21:50:40] INFO: Saved pipeline parameters to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_pipeline_parameters.json
+[2025-11-19 21:50:40] INFO: PHASE 1: Data Loading and Quality Control
+[2025-11-19 21:50:40] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:50:40] INFO: 1.1: Parsing BOLD TSV metadata...
+[2025-11-19 21:50:40] INFO: Reading BOLD TSV file: data/Sphyrna_lewini_scallopedhammerhead.tsv
+[2025-11-19 21:50:40] INFO: Read 685 rows and 88 columns
+[2025-11-19 21:50:40] WARNING: Found 10 duplicate processids. Examples: ['GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16', 'GBMTG5082-16']. Keeping only first occurrence of each duplicate.
+[2025-11-19 21:50:40] INFO: After removing duplicates: 675 rows remaining
+[2025-11-19 21:50:40] INFO: Data quality summary:
+[2025-11-19 21:50:40] INFO:   total_rows: 675
+[2025-11-19 21:50:40] INFO:   total_columns: 88
+[2025-11-19 21:50:40] INFO:   unique_processids: 675
+[2025-11-19 21:50:40] INFO:   sequences_present: 674
+[2025-11-19 21:50:40] INFO:   sequences_missing: 1
+[2025-11-19 21:50:40] INFO:   empty_sequences: 0
+[2025-11-19 21:50:40] INFO:   coords_present: 229
+[2025-11-19 21:50:40] INFO:   coords_missing: 446
+[2025-11-19 21:50:40] INFO:   centroid_coords: 58
+[2025-11-19 21:50:40] INFO:   ✓ Loaded 675 samples with 88 columns
+[2025-11-19 21:50:40] INFO: 1.2: Filtering coordinate quality...
+[2025-11-19 21:50:40] INFO: Excluded 58 samples with centroid coordinates
+[2025-11-19 21:50:40] INFO: Coordinate filtering: 617/675 samples retained (91.4%), 58 excluded
+[2025-11-19 21:50:40] INFO:   ✓ Retained 617/675 samples after coordinate filtering
+[2025-11-19 21:50:40] INFO: 1.3: Assigning ocean basins...
+[2025-11-19 21:50:40] INFO: Loading GOaS shapefile from: /Users/stesmith/Documents/depredation/boldgenotyper/GOaS_v1_20211214/goas_v01.shp
+[2025-11-19 21:51:05] INFO: Loaded 10 ocean basins from GOaS shapefile
+[2025-11-19 21:51:05] INFO: Creating point geometries from coordinates
+[2025-11-19 21:51:05] INFO: Creating point geometries for 171/617 samples with coordinates
+[2025-11-19 21:51:05] INFO: Performing spatial join for 171/617 samples with valid coordinates
+[2025-11-19 21:51:05] INFO: Spatial join results: 71 assigned to basins, 100 outside all basins
+[2025-11-19 21:51:05] WARNING: 58.5% of coordinates fall outside GOaS basins. This may indicate terrestrial coordinates or incomplete basin coverage.
+[2025-11-19 21:51:05] INFO: Assigned 546 samples to 'Unknown' basin (no coordinates or outside all basins)
+[2025-11-19 21:51:05] INFO:   ✓ Assigned ocean basins to samples
+[2025-11-19 21:51:05] INFO: 
+[2025-11-19 21:51:05] INFO: PHASE 2: Sequence Dereplication and Consensus Generation
+[2025-11-19 21:51:05] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:51:05] INFO: 2.1: Generating FASTA from sequences...
+[2025-11-19 21:51:05] INFO:   Minimum sequence length: 400 bp
+[2025-11-19 21:51:05] WARNING:   ⚠ Skipped 19 samples with missing or invalid sequences
+[2025-11-19 21:51:05] INFO:   ✓ Created 598 FASTA records
+[2025-11-19 21:51:05] INFO: 2.2: Dereplicating sequences (clustering at 99% identity)...
+[2025-11-19 21:51:05] INFO: Running MAFFT alignment: mafft --auto /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:51:11] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:51:11] INFO: Running trimAl: trimal -in /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_aligned.fasta -out /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta -automated1
+[2025-11-19 21:51:12] INFO: trimAl completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_trimmed.fasta
+[2025-11-19 21:51:12] INFO:   Filtered 3 sequences shorter than 300 bp after trimming
+[2025-11-19 21:51:12] INFO: Calculating pairwise distances for 595 sequences
+[2025-11-19 21:51:29] INFO: Distance calculation complete: 176715 pairwise distances
+[2025-11-19 21:51:29] INFO: Clustering sequences with average linkage, threshold=0.03
+[2025-11-19 21:51:29] INFO: Clustering complete: 6 clusters formed
+[2025-11-19 21:51:30] INFO: Wrote consensus metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus_metadata.csv
+[2025-11-19 21:51:30] INFO:   ✓ Identified 6 unique genotypes
+[2025-11-19 21:51:30] INFO: 
+[2025-11-19 21:51:30] INFO: PHASE 3: Genotype Assignment
+[2025-11-19 21:51:30] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:51:30] INFO: 3.1: Assigning samples to genotypes...
+[2025-11-19 21:51:30] INFO: ======================================================================
+[2025-11-19 21:51:30] INFO: Starting genotype assignment workflow
+[2025-11-19 21:51:30] INFO: ======================================================================
+[2025-11-19 21:51:30] INFO: Using edlib for fast edit distance calculation
+[2025-11-19 21:51:30] INFO: Step 1/6: Loading metadata from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/02_filtered_metadata.tsv
+[2025-11-19 21:51:30] INFO: Loaded 617 samples from metadata
+[2025-11-19 21:51:30] INFO: Step 2/6: Loading consensus sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:51:30] INFO: Read 6 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:51:30] INFO: Loaded 6 consensus groups
+[2025-11-19 21:51:30] INFO: Step 3/6: Loading raw sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:51:30] INFO: Read 598 sequences from /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/Sphyrna_lewini.fasta
+[2025-11-19 21:51:30] INFO: Extracted 598 unique processids from FASTA
+[2025-11-19 21:51:30] INFO: Step 4/6: Preparing assignment tasks
+[2025-11-19 21:51:30] INFO: Prepared 617 assignment tasks
+[2025-11-19 21:51:30] INFO: Step 5/6: Assigning genotypes (using 4 processes)
+[2025-11-19 21:51:30] INFO: Identity calculation method: target_based
+[2025-11-19 21:51:30] INFO: Tie margin: 0.003, tie_min_identity: 0.95
+[2025-11-19 21:51:33] INFO: Completed genotype assignment for 617 samples
+[2025-11-19 21:51:33] INFO: Step 6/6: Writing outputs
+[2025-11-19 21:51:33] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:51:33] INFO: Renamed 6 consensus groups with sample counts (_nZ suffix)
+[2025-11-19 21:51:33] INFO: Wrote updated metadata to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/genotype_assignments/Sphyrna_lewini_with_genotypes.tsv
+[2025-11-19 21:51:33] INFO: Wrote diagnostics to /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/genotype_assignments/Sphyrna_lewini_diagnostics.csv
+[2025-11-19 21:51:33] INFO: ======================================================================
+[2025-11-19 21:51:33] INFO: Genotype assignment summary:
+[2025-11-19 21:51:33] INFO:   Total samples: 617
+[2025-11-19 21:51:33] INFO:   Successfully assigned: 595 (96.4%)
+[2025-11-19 21:51:33] INFO:   Unassigned: 22 (3.6%)
+[2025-11-19 21:51:33] INFO:     - No sequence in FASTA: 19
+[2025-11-19 21:51:33] INFO:     - Below identity threshold: 3
+[2025-11-19 21:51:33] INFO:   Diagnostic flags:
+[2025-11-19 21:51:33] INFO:     - Ties (ambiguous): 2
+[2025-11-19 21:51:33] INFO:     - Low confidence: 0
+[2025-11-19 21:51:33] INFO: ======================================================================
+[2025-11-19 21:51:33] INFO:   ✓ Assigned 595/617 samples to genotypes
+[2025-11-19 21:51:33] INFO:   ✓ Assignment rate: 96.4%
+[2025-11-19 21:51:33] INFO: 
+[2025-11-19 21:51:33] INFO: PHASE 4: Taxonomy Assignment to Consensus Groups
+[2025-11-19 21:51:33] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:51:33] INFO: 4.1: Assigning taxonomy to consensus groups...
+[2025-11-19 21:51:33] INFO:   ✓ Assigned taxonomy to 6 consensus groups
+[2025-11-19 21:51:33] INFO:   ✓ Saved annotated dataset: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:51:33] INFO: 
+[2025-11-19 21:51:33] INFO: PHASE 5: Phylogenetic Analysis
+[2025-11-19 21:51:33] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:51:33] INFO: 5.1: Building phylogenetic tree...
+[2025-11-19 21:51:33] INFO: Running MAFFT alignment: mafft --auto --thread 4 /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:51:34] INFO: MAFFT alignment completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:51:34] INFO: Running FastTree: fasttree -nt -gtr -gamma /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned.fasta
+[2025-11-19 21:51:34] INFO: FastTree completed: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:51:34] INFO:   ✓ Built phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:51:34] INFO: 5.2: Creating relabeled tree and alignment files...
+[2025-11-19 21:51:34] INFO: Relabeling tree and alignment with consensus_group_sp labels
+[2025-11-19 21:51:34] INFO: Loaded 6 label mappings from taxonomy CSV
+[2025-11-19 21:51:34] INFO: Created 6 base name mappings
+[2025-11-19 21:51:34] INFO: Relabeled 6 tree tips, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:51:34] INFO: Relabeled 6 sequences, wrote to: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:51:34] INFO:   ✓ Created relabeled tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:51:34] INFO:   ✓ Created relabeled alignment (intermediate): /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/phylogenetic/Sphyrna_lewini_aligned_relabeled.fasta
+[2025-11-19 21:51:34] INFO: 
+[2025-11-19 21:51:34] INFO: PHASE 6: Visualization
+[2025-11-19 21:51:34] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:51:34] INFO: 6.1: Generating plots...
+[2025-11-19 21:51:36] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.png
+[2025-11-19 21:51:36] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.png
+[2025-11-19 21:51:37] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.png
+[2025-11-19 21:51:37] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:51:37] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:51:37] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:51:42] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.png
+[2025-11-19 21:51:43] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.png
+[2025-11-19 21:51:44] INFO: Saved ocean basin abundance (relative) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar.pdf
+[2025-11-19 21:51:44] INFO: Saved ocean basin abundance (total counts) plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_totaldistribution_bar.pdf
+[2025-11-19 21:51:44] INFO: Saved identity distribution plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_identity_distribution.pdf
+[2025-11-19 21:51:44] INFO: Using relabeled tree for visualization: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree_relabeled.nwk
+[2025-11-19 21:51:44] INFO: Auto-scaled tree figure size to (8, 5) for 6 tips
+[2025-11-19 21:51:44] INFO: Creating faceted distribution map with cartopy backgrounds, faceting by species
+[2025-11-19 21:51:46] INFO: Saved faceted distribution map: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_map_faceted.pdf
+[2025-11-19 21:51:46] INFO: Saved faceted basin abundance plot: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/visualization/Sphyrna_lewini_distribution_bar_faceted.pdf
+[2025-11-19 21:51:46] INFO:   ✓ Generated visualization plots
+[2025-11-19 21:51:46] INFO: 
+[2025-11-19 21:51:46] INFO: PHASE 7: Generating Reports
+[2025-11-19 21:51:46] INFO: --------------------------------------------------------------------------------
+[2025-11-19 21:51:46] INFO: Assignment summary saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:51:46] INFO:   ✓ Generated assignment summary: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/reports/Sphyrna_lewini_assignment_summary.csv
+[2025-11-19 21:51:46] INFO: 
+[2025-11-19 21:51:46] INFO: Cleaning up empty directories...
+[2025-11-19 21:51:46] INFO:   ✓ Removed empty directories
+[2025-11-19 21:51:46] INFO: 
+[2025-11-19 21:51:46] INFO: Generating HTML summary report...
+[2025-11-19 21:51:46] INFO: Generating HTML summary report for Sphyrna_lewini...
+[2025-11-19 21:51:46] INFO: HTML report saved: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:51:46] INFO:   ✓ Generated HTML report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:51:46] INFO: 
+[2025-11-19 21:51:46] INFO: ================================================================================
+[2025-11-19 21:51:46] INFO: ✓ Pipeline completed successfully for Sphyrna_lewini
+[2025-11-19 21:51:46] INFO:   Output directory: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini
+[2025-11-19 21:51:46] INFO:   Key files:
+[2025-11-19 21:51:46] INFO:     - Annotated data: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_annotated.csv
+[2025-11-19 21:51:46] INFO:     - Consensus sequences: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/intermediate/dereplication/Sphyrna_lewini_consensus.fasta
+[2025-11-19 21:51:46] INFO:     - Phylogenetic tree: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/phylogenetic/Sphyrna_lewini_tree.nwk
+[2025-11-19 21:51:46] INFO:     - HTML summary report: /Users/stesmith/Documents/depredation/boldgenotyper/data/Sphyrna_lewini/Sphyrna_lewini_summary_report.html
+[2025-11-19 21:51:46] INFO: ================================================================================

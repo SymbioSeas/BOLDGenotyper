@@ -1,0 +1,42 @@
+{
+  "genotypes": [
+    "Gadus morhua c2_n180",
+    "Unassigned",
+    "Gadus morhua c1_n304"
+  ],
+  "basins": [
+    "North Atlantic Ocean"
+  ],
+  "basin_labels": {
+    "North Atlantic Ocean": "North\nAtlantic"
+  },
+  "counts": {
+    "Gadus morhua c2_n180": {
+      "Arctic Ocean": 11,
+      "North Atlantic Ocean": 80
+    },
+    "Unassigned": {
+      "Arctic Ocean": 3,
+      "North Atlantic Ocean": 1
+    },
+    "Gadus morhua c1_n304": {
+      "Arctic Ocean": 1
+    }
+  },
+  "colors": {
+    "Gadus morhua c2_n180": "#8545C1",
+    "Unassigned": "#10B3A5",
+    "Gadus morhua c1_n304": "#FFB031"
+  },
+  "sample_counts": {
+    "Gadus morhua c1_n304": 1,
+    "Gadus morhua c2_n180": 91,
+    "Unassigned": 4
+  },
+  "labels": {
+    "consensus_c3_n62": "Gadus morhua c3_n62",
+    "consensus_c1_n304": "Gadus morhua c1_n304",
+    "consensus_c2_n180": "Gadus morhua c2_n180"
+  },
+  "plot_type": "relative_abundance"
+}

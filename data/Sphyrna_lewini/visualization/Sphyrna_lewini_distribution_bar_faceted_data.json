@@ -1,0 +1,113 @@
+{
+  "facet_by": "species",
+  "facets": {
+    "Sphyrna lewini c1_n217": {
+      "genotypes": [
+        "consensus_c1_n217"
+      ],
+      "counts": {
+        "consensus_c1_n217": {
+          "Indian Ocean": 18,
+          "South Atlantic Ocean": 3,
+          "South China and Easter Archipelagic Seas": 2
+        }
+      },
+      "sample_count": 23
+    },
+    "Sphyrna lewini c2_n249": {
+      "genotypes": [
+        "consensus_c2_n249"
+      ],
+      "counts": {
+        "consensus_c2_n249": {
+          "Indian Ocean": 2,
+          "South Atlantic Ocean": 1,
+          "South China and Easter Archipelagic Seas": 29,
+          "South Pacific Ocean": 1
+        }
+      },
+      "sample_count": 33
+    },
+    "Sphyrna lewini c3_n5": {
+      "genotypes": [
+        "consensus_c3_n5"
+      ],
+      "counts": {
+        "consensus_c3_n5": {
+          "North Atlantic Ocean": 2
+        }
+      },
+      "sample_count": 2
+    },
+    "Sphyrna lewini c4_n122": {
+      "genotypes": [
+        "consensus_c4_n122"
+      ],
+      "counts": {
+        "consensus_c4_n122": {
+          "Indian Ocean": 1,
+          "North Pacific Ocean": 1,
+          "South China and Easter Archipelagic Seas": 8,
+          "South Pacific Ocean": 2
+        }
+      },
+      "sample_count": 12
+    },
+    "Sphyrna lewini c6_n1": {
+      "genotypes": [
+        "consensus_c6_n1"
+      ],
+      "counts": {
+        "consensus_c6_n1": {
+          "North Atlantic Ocean": 1
+        }
+      },
+      "sample_count": 1
+    }
+  },
+  "all_genotypes": [
+    "consensus_c2_n249",
+    "consensus_c1_n217",
+    "consensus_c4_n122",
+    "consensus_c3_n5",
+    "consensus_c6_n1"
+  ],
+  "basins": [
+    "North Atlantic Ocean",
+    "South Atlantic Ocean",
+    "Indian Ocean",
+    "South China and Easter Archipelagic Seas",
+    "South Pacific Ocean",
+    "North Pacific Ocean"
+  ],
+  "basin_labels": {
+    "North Atlantic Ocean": "North\nAtlantic",
+    "South Atlantic Ocean": "South\nAtlantic",
+    "Indian Ocean": "Indian\nOcean",
+    "South China and Easter Archipelagic Seas": "S. China\nSeas",
+    "South Pacific Ocean": "South\nPacific",
+    "North Pacific Ocean": "North\nPacific"
+  },
+  "colors": {
+    "consensus_c2_n249": "#8545C1",
+    "consensus_c1_n217": "#10B3A5",
+    "consensus_c4_n122": "#FFB031",
+    "consensus_c3_n5": "#3874F4",
+    "consensus_c6_n1": "#D975C7"
+  },
+  "sample_counts": {
+    "consensus_c1_n217": 23,
+    "consensus_c2_n249": 33,
+    "consensus_c3_n5": 2,
+    "consensus_c4_n122": 12,
+    "consensus_c6_n1": 1
+  },
+  "labels": {
+    "consensus_c2_n249": "Sphyrna lewini c2_n249",
+    "consensus_c1_n217": "Sphyrna lewini c1_n217",
+    "consensus_c4_n122": "Sphyrna lewini c4_n122",
+    "consensus_c3_n5": "Sphyrna lewini c3_n5",
+    "consensus_c6_n1": "Sphyrna lewini c6_n1"
+  },
+  "plot_type": "faceted_abundance"
+}

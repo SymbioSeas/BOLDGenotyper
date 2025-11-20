@@ -1,0 +1,51 @@
+{
+  "facet_by": "species",
+  "facets": {
+    "Gadus morhua c1_n304": {
+      "genotypes": [
+        "consensus_c1_n304"
+      ],
+      "counts": {
+        "consensus_c1_n304": {
+          "Arctic Ocean": 1
+        }
+      },
+      "sample_count": 1
+    },
+    "Gadus morhua c2_n180": {
+      "genotypes": [
+        "consensus_c2_n180"
+      ],
+      "counts": {
+        "consensus_c2_n180": {
+          "Arctic Ocean": 11,
+          "North Atlantic Ocean": 80
+        }
+      },
+      "sample_count": 91
+    }
+  },
+  "all_genotypes": [
+    "consensus_c2_n180",
+    "consensus_c1_n304"
+  ],
+  "basins": [
+    "North Atlantic Ocean"
+  ],
+  "basin_labels": {
+    "North Atlantic Ocean": "North\nAtlantic"
+  },
+  "colors": {
+    "consensus_c2_n180": "#8545C1",
+    "consensus_c1_n304": "#10B3A5"
+  },
+  "sample_counts": {
+    "consensus_c1_n304": 1,
+    "consensus_c2_n180": 91
+  },
+  "labels": {
+    "consensus_c2_n180": "Gadus morhua c2_n180",
+    "consensus_c1_n304": "Gadus morhua c1_n304"
+  },
+  "plot_type": "faceted_abundance"
+}

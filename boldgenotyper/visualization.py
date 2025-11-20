@@ -256,9 +256,9 @@ def plot_distribution_map(
     genotype_column: str = "consensus_group",
     latitude_col: str = "latitude",
     longitude_col: str = "longitude",
-    figsize: Tuple[int, int] = (6, 10),
+    figsize: Tuple[int, int] = (15, 20),
     dpi: int = 300,
-) -> None:
+) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create global distribution map with points colored by genotype.
 
@@ -309,7 +309,7 @@ def plot_distribution_map(
         )
         logger.warning(msg)
         print(f"⚠ WARNING: {msg}")
-        return
+        return None, None
 
     # Count samples at each location for sizing
     d['_count'] = d.groupby([latitude_col, longitude_col, genotype_column])[genotype_column].transform('count')
@@ -388,7 +388,40 @@ def plot_distribution_map(
         plt.savefig(out, bbox_inches="tight")
     plt.close()
 
-    pass
+    # Prepare data for interactive plotting
+    sample_counts = d.groupby(genotype_column).size().to_dict()
+
+    # Prepare location data for each genotype
+    location_data = {}
+    has_ocean_basin = 'ocean_basin' in d.columns
+
+    for geno in genos:
+        geno_data = d[d[genotype_column] == geno]
+        location_entry = {
+            'latitudes': geno_data[latitude_col].tolist(),
+            'longitudes': geno_data[longitude_col].tolist(),
+            'sizes': geno_data['_count'].tolist()
+        }
+        # Include ocean basin data if available
+        if has_ocean_basin:
+            location_entry['ocean_basins'] = geno_data['ocean_basin'].fillna('Unknown').tolist()
+        location_data[geno] = location_entry
+
+    # Get unique ocean basins if available
+    ocean_basins = []
+    if has_ocean_basin:
+        ocean_basins = sorted([b for b in d['ocean_basin'].dropna().unique() if b != 'Unknown'])
+
+    plot_data = {
+        'genotypes': genos,
+        'locations': location_data,
+        'colors': color_map,
+        'sample_counts': sample_counts,
+        'ocean_basins': ocean_basins,
+        'plot_type': 'distribution_map'
+    }
+
+    return out, plot_data
 
 
 def plot_ocean_basin_abundance(
@@ -398,7 +431,7 @@ def plot_ocean_basin_abundance(
     basin_column: str = "ocean_basin",
     figsize: Tuple[int, int] = (10, 6),
     dpi: int = 300,
-) -> None:
+) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create stacked bar chart showing genotype proportions by ocean basin.
 
@@ -416,6 +449,11 @@ def plot_ocean_basin_abundance(
         Figure size in inches (default: 10x6)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+
+    Returns
+    -------
+    Tuple[Optional[Path], Optional[dict]]
+        (plot_path, plot_data) where plot_data contains the raw data for interactive plotting
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -433,7 +471,7 @@ def plot_ocean_basin_abundance(
 
     if len(d) == 0:
         logger.warning(f"No samples with defined geography to plot in {output_path}")
-        return
+        return None, None
 
     # proportions by basin
     counts = (
@@ -490,6 +528,31 @@ def plot_ocean_basin_abundance(
 
     logger.info(f"Saved ocean basin abundance (relative) plot: {out}")
 
+    # Prepare data for interactive plotting
+    # Calculate total sample counts per genotype
+    sample_counts = d.groupby(genotype_column).size().to_dict()
+
+    # Prepare counts dictionary: {genotype: {basin: count}}
+    counts_dict = {}
+    for geno in genos:
+        counts_dict[geno] = {}
+        geno_counts = counts[counts[genotype_column] == geno]
+        for _, row in geno_counts.iterrows():
+            counts_dict[geno][row[basin_column]] = int(row["n"])
+
+    plot_data = {
+        'genotypes': genos,
+        'basins': ordered_basins,
+        'basin_labels': {b: basin_label_map.get(b, b) for b in ordered_basins},
+        'counts': counts_dict,
+        'colors': color_map,
+        'sample_counts': sample_counts,
+        'labels': label_map,
+        'plot_type': 'relative_abundance'
+    }
+
+    return out, plot_data
+
 
 def plot_ocean_basin_abundance_total(
     df: pd.DataFrame,
@@ -498,7 +561,7 @@ def plot_ocean_basin_abundance_total(
     basin_column: str = "ocean_basin",
     figsize: Tuple[int, int] = (10, 6),
     dpi: int = 300,
-) -> None:
+) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create stacked bar chart showing total genotype counts by ocean basin.
 
@@ -519,6 +582,11 @@ def plot_ocean_basin_abundance_total(
         Figure size in inches (default: 10x6)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+
+    Returns
+    -------
+    Tuple[Optional[Path], Optional[dict]]
+        (plot_path, plot_data) where plot_data contains the raw data for interactive plotting
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -536,7 +604,7 @@ def plot_ocean_basin_abundance_total(
 
     if len(d) == 0:
         logger.warning(f"No samples with defined geography to plot in {output_path}")
-        return
+        return None, None
 
     # Total counts by basin and genotype (no proportion calculation)
     counts = (
@@ -590,6 +658,31 @@ def plot_ocean_basin_abundance_total(
     plt.close()
 
     logger.info(f"Saved ocean basin abundance (total counts) plot: {out}")
+
+    # Prepare data for interactive plotting
+    # Calculate total sample counts per genotype
+    sample_counts = d.groupby(genotype_column).size().to_dict()
+
+    # Prepare counts dictionary: {genotype: {basin: count}}
+    counts_dict = {}
+    for geno in genos:
+        counts_dict[geno] = {}
+        geno_counts = counts[counts[genotype_column] == geno]
+        for _, row in geno_counts.iterrows():
+            counts_dict[geno][row[basin_column]] = int(row["n"])
+
+    plot_data = {
+        'genotypes': genos,
+        'basins': ordered_basins,
+        'basin_labels': {b: basin_label_map.get(b, b) for b in ordered_basins},
+        'counts': counts_dict,
+        'colors': color_map,
+        'sample_counts': sample_counts,
+        'labels': label_map,
+        'plot_type': 'total_abundance'
+    }
+
+    return out, plot_data
 
 
 def plot_distribution_map_faceted(
@@ -880,13 +973,18 @@ def plot_ocean_basin_abundance_faceted(
     height_per_facet: int = 5,
     dpi: int = 300,
     facet_by: str = "species",
-) -> None:
+) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create bar chart with separate facets.
 
     Facets can be by species (fewer facets, multiple genotypes per facet)
     or by genotype (more facets). Each facet shows sample counts by ocean basin
     with n-values annotated above each bar.
+
+    Returns
+    -------
+    Tuple[Optional[Path], Optional[dict]]
+        (plot_path, plot_data) where plot_data contains the raw data for interactive plotting
 
     Parameters
     ----------
@@ -938,14 +1036,14 @@ def plot_ocean_basin_abundance_faceted(
 
     if len(d) == 0:
         logger.warning(f"No samples with defined geography to plot in {output_path}")
-        return
+        return None, None
 
     # Filter to valid facet values
     if facet_by == "species":
         d = d.dropna(subset=[species_column])
         if d.empty:
             logger.warning("No rows with valid species; skipping faceted basin plot.")
-            return
+            return None, None
 
     # Create label map for genotypes (consensus_group -> consensus_group_sp)
     label_map = {}
@@ -959,7 +1057,7 @@ def plot_ocean_basin_abundance_faceted(
 
     if n_facets == 0:
         logger.warning(f"No {facet_by} found; skipping faceted basin plot.")
-        return
+        return None, None
 
     # Get all genotypes for consistent coloring
     # Order by abundance (descending) for consistent color assignment across all plots
@@ -1067,6 +1165,54 @@ def plot_ocean_basin_abundance_faceted(
         plt.savefig(out, bbox_inches="tight")
     plt.close()
     logger.info(f"Saved faceted basin abundance plot: {out}")
+
+    # Prepare data for interactive plotting
+    # Calculate total sample counts per genotype
+    sample_counts = d.groupby(genotype_column).size().to_dict()
+
+    # Prepare facet data structure
+    facet_data = {}
+    for facet_value in facet_list:
+        facet_subset = d[d[facet_col] == facet_value]
+
+        # Get counts for this facet
+        counts = facet_subset.groupby([basin_column, genotype_column]).size().reset_index(name="n")
+
+        # Get genotypes for this facet
+        if facet_by == "species":
+            # Stacked bars - multiple genotypes
+            facet_genotypes = sorted(facet_subset[genotype_column].unique())
+        else:
+            # Single genotype per facet
+            facet_genotypes = [facet_value]
+
+        # Prepare counts dictionary for this facet
+        counts_dict = {}
+        for geno in facet_genotypes:
+            counts_dict[geno] = {}
+            geno_counts = counts[counts[genotype_column] == geno]
+            for _, row in geno_counts.iterrows():
+                counts_dict[geno][row[basin_column]] = int(row["n"])
+
+        facet_data[str(facet_value)] = {
+            'genotypes': facet_genotypes,
+            'counts': counts_dict,
+            'sample_count': len(facet_subset)
+        }
+
+    plot_data = {
+        'facet_by': facet_by,
+        'facets': facet_data,
+        'all_genotypes': all_genotypes,
+        'basins': all_basins,
+        'basin_labels': {b: basin_label_map.get(b, b) for b in all_basins},
+        'colors': color_map,
+        'sample_counts': sample_counts,
+        'labels': label_map,
+        'plot_type': 'faceted_abundance'
+    }
+
+    return out, plot_data
 
 
 def plot_phylogenetic_tree(

@@ -7,6 +7,7 @@ characterizations.
 """
 
 import logging
+import json
 from pathlib import Path
 from typing import Optional
 import pandas as pd
@@ -932,6 +933,301 @@ HTML_REPORT_CSS = """
         box-shadow: 0 4px 8px rgba(0,0,0,0.15);
     }
 
+    /* Interactive Plot Controls */
+    .plot-mode-toggle {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        justify-content: center;
+    }
+
+    .toggle-btn {
+        padding: 10px 24px;
+        border: 2px solid var(--primary-color);
+        background: white;
+        color: var(--primary-color);
+        font-weight: 600;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+    }
+
+    .toggle-btn:hover {
+        background: #f0f8ff;
+    }
+
+    .toggle-btn.active {
+        background: var(--primary-color);
+        color: white;
+    }
+
+    .plot-view {
+        display: none;
+    }
+
+    .plot-view.active {
+        display: block;
+    }
+
+    .plot-controls {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .controls-section h4 {
+        margin-top: 0;
+        margin-bottom: 16px;
+        color: var(--text-color);
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .control-group {
+        margin-bottom: 20px;
+    }
+
+    .control-group label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--text-color);
+    }
+
+    .threshold-slider {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #ddd;
+        outline: none;
+        -webkit-appearance: none;
+    }
+
+    .threshold-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .threshold-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+        background: #0056b3;
+    }
+
+    .threshold-slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        cursor: pointer;
+        border: none;
+    }
+
+    .checkbox-controls {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .genotype-checkboxes {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 12px;
+        background: white;
+    }
+
+    .genotype-checkbox-item {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .genotype-checkbox-item:last-child {
+        border-bottom: none;
+    }
+
+    .genotype-checkbox-item input[type="checkbox"] {
+        margin-right: 10px;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .genotype-checkbox-item label {
+        margin: 0;
+        font-weight: normal;
+        cursor: pointer;
+        flex: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .genotype-sample-count {
+        color: #666;
+        font-size: 0.9em;
+        margin-left: 8px;
+    }
+
+    .btn-small {
+        padding: 6px 12px;
+        font-size: 13px;
+        border: 1px solid #dee2e6;
+        background: white;
+        color: var(--text-color);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-small:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+    }
+
+    .btn-primary {
+        padding: 10px 20px;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 14px;
+        width: 100%;
+    }
+
+    .btn-primary:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .plotly-chart {
+        min-height: 500px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+    }
+
+    /* Summary Statistics Panel */
+    .stats-panel {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+
+    .stat-item {
+        text-align: center;
+        background: rgba(255, 255, 255, 0.15);
+        padding: 15px;
+        border-radius: 6px;
+        backdrop-filter: blur(10px);
+    }
+
+    .stat-label {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: rgba(255, 255, 255, 0.9);
+        margin-bottom: 8px;
+    }
+
+    .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: white;
+        line-height: 1;
+    }
+
+    @media (max-width: 768px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+    }
+
+    /* Download Options */
+    .download-options {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn-download {
+        flex: 1;
+        min-width: 100px;
+        padding: 10px 16px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 13px;
+    }
+
+    .btn-download:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .resolution-control {
+        margin-top: 8px;
+    }
+
+    .small-label {
+        font-size: 13px;
+        font-weight: 600;
+        display: block;
+        margin-bottom: 6px;
+        color: var(--text-color);
+    }
+
+    .resolution-select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+        font-size: 13px;
+        cursor: pointer;
+        transition: border-color 0.2s ease;
+    }
+
+    .resolution-select:hover {
+        border-color: var(--primary-color);
+    }
+
+    .resolution-select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    }
+
     @media print {
         .viz-container {
             page-break-inside: avoid;
@@ -940,6 +1236,16 @@ HTML_REPORT_CSS = """
             display: none;
         }
         .subtab-content {
+            display: block !important;
+        }
+        .plot-mode-toggle,
+        .plot-controls {
+            display: none !important;
+        }
+        .plot-view {
+            display: none !important;
+        }
+        .plot-view.active {
             display: block !important;
         }
     }
@@ -956,6 +1262,8 @@ HTML_REPORT_TEMPLATE = """
     <meta name="generator" content="BOLDGenotyper">
     <title>{{ organism }} - BOLDGenotyper Report</title>
     {{ css | safe }}
+    <!-- Plotly.js for interactive charts -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
 </head>
 <body>
     <div class="container">
@@ -1100,7 +1408,696 @@ HTML_REPORT_TEMPLATE = """
                     }
                 });
             });
+
+            // Initialize interactive plots when DOM is loaded
+            initializeInteractivePlots();
         });
+
+        // Global state for interactive plots
+        const plotState = {};
+
+        // Initialize all interactive plots
+        function initializeInteractivePlots() {
+            // Find all embedded plot data
+            const plotDataElements = document.querySelectorAll('script[type="application/json"][id^="plot-data-"]');
+
+            plotDataElements.forEach(dataElement => {
+                const idx = parseInt(dataElement.id.replace('plot-data-', ''));
+                const plotData = JSON.parse(dataElement.textContent);
+
+                // Initialize plot state
+                plotState[idx] = {
+                    data: plotData,
+                    threshold: 0,
+                    selectedGenotypes: new Set(plotData.genotypes || []),
+                    selectedBasins: new Set(plotData.ocean_basins || [])
+                };
+
+                // Populate genotype checkboxes
+                populateGenotypeCheckboxes(idx);
+
+                // Populate ocean basin checkboxes if available
+                if (plotData.ocean_basins && plotData.ocean_basins.length > 0) {
+                    populateBasinCheckboxes(idx);
+                }
+            });
+        }
+
+        // Toggle between static and interactive plot views
+        function showStaticPlot(plotId, idx) {
+            // Update button states
+            const buttons = document.querySelectorAll(`button[onclick*="'${plotId}'"]`);
+            buttons.forEach(btn => {
+                if (btn.textContent.includes('Static')) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Show static, hide interactive
+            document.getElementById(`${plotId}-static`).style.display = 'block';
+            document.getElementById(`${plotId}-interactive`).style.display = 'none';
+        }
+
+        function showInteractivePlot(plotId, idx) {
+            // Update button states
+            const buttons = document.querySelectorAll(`button[onclick*="'${plotId}'"]`);
+            buttons.forEach(btn => {
+                if (btn.textContent.includes('Interactive')) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Show interactive, hide static
+            document.getElementById(`${plotId}-static`).style.display = 'none';
+            document.getElementById(`${plotId}-interactive`).style.display = 'block';
+
+            // Render the plot if not already rendered
+            if (!plotState[idx].rendered) {
+                updatePlot(idx);
+                plotState[idx].rendered = true;
+            }
+        }
+
+        // Populate genotype checkboxes
+        function populateGenotypeCheckboxes(idx) {
+            const container = document.getElementById(`genotype-checkboxes-${idx}`);
+            if (!container) return;
+
+            const state = plotState[idx];
+            const plotData = state.data;
+
+            container.innerHTML = '';
+
+            const genotypes = plotData.genotypes || [];
+            const sampleCounts = plotData.sample_counts || {};
+
+            genotypes.forEach(genotype => {
+                const div = document.createElement('div');
+                div.className = 'genotype-checkbox-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `genotype-${idx}-${genotype}`;
+                checkbox.value = genotype;
+                checkbox.checked = state.selectedGenotypes.has(genotype);
+                checkbox.onchange = () => {
+                    toggleGenotype(idx, genotype);
+                    updatePlot(idx);
+                };
+
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.innerHTML = `
+                    <span>${genotype}</span>
+                    <span class="genotype-sample-count">n=${sampleCounts[genotype] || 0}</span>
+                `;
+
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                container.appendChild(div);
+            });
+        }
+
+        // Toggle genotype selection
+        function toggleGenotype(idx, genotype) {
+            const state = plotState[idx];
+            if (state.selectedGenotypes.has(genotype)) {
+                state.selectedGenotypes.delete(genotype);
+            } else {
+                state.selectedGenotypes.add(genotype);
+            }
+        }
+
+        // Select all genotypes
+        function selectAllGenotypes(idx) {
+            const state = plotState[idx];
+            const genotypes = state.data.genotypes || [];
+
+            genotypes.forEach(g => state.selectedGenotypes.add(g));
+
+            // Update checkbox states
+            genotypes.forEach(g => {
+                const checkbox = document.getElementById(`genotype-${idx}-${g}`);
+                if (checkbox) checkbox.checked = true;
+            });
+
+            updatePlot(idx);
+        }
+
+        // Deselect all genotypes
+        function deselectAllGenotypes(idx) {
+            const state = plotState[idx];
+
+            state.selectedGenotypes.clear();
+
+            // Update checkbox states
+            const checkboxes = document.querySelectorAll(`input[id^="genotype-${idx}-"]`);
+            checkboxes.forEach(cb => cb.checked = false);
+
+            updatePlot(idx);
+        }
+
+        // Populate ocean basin checkboxes
+        function populateBasinCheckboxes(idx) {
+            const container = document.getElementById(`basin-checkboxes-${idx}`);
+            if (!container) return;
+
+            const state = plotState[idx];
+            const plotData = state.data;
+            const basins = plotData.ocean_basins || [];
+
+            container.innerHTML = '';
+
+            basins.forEach(basin => {
+                const div = document.createElement('div');
+                div.className = 'genotype-checkbox-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `basin-${idx}-${basin}`;
+                checkbox.value = basin;
+                checkbox.checked = state.selectedBasins.has(basin);
+                checkbox.onchange = () => {
+                    toggleBasin(idx, basin);
+                    updatePlot(idx);
+                };
+
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.textContent = basin;
+
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                container.appendChild(div);
+            });
+        }
+
+        // Toggle ocean basin selection
+        function toggleBasin(idx, basin) {
+            const state = plotState[idx];
+            if (state.selectedBasins.has(basin)) {
+                state.selectedBasins.delete(basin);
+            } else {
+                state.selectedBasins.add(basin);
+            }
+        }
+
+        // Select all ocean basins
+        function selectAllBasins(idx) {
+            const state = plotState[idx];
+            const basins = state.data.ocean_basins || [];
+
+            basins.forEach(b => state.selectedBasins.add(b));
+
+            // Update checkbox states
+            basins.forEach(b => {
+                const checkbox = document.getElementById(`basin-${idx}-${b}`);
+                if (checkbox) checkbox.checked = true;
+            });
+
+            updatePlot(idx);
+        }
+
+        // Deselect all ocean basins
+        function deselectAllBasins(idx) {
+            const state = plotState[idx];
+
+            state.selectedBasins.clear();
+
+            // Update checkbox states
+            const checkboxes = document.querySelectorAll(`input[id^="basin-${idx}-"]`);
+            checkboxes.forEach(cb => cb.checked = false);
+
+            updatePlot(idx);
+        }
+
+        // Update threshold value
+        function updateThreshold(idx) {
+            const slider = document.getElementById(`threshold-${idx}`);
+            const valueDisplay = document.getElementById(`threshold-value-${idx}`);
+
+            if (slider && valueDisplay) {
+                plotState[idx].threshold = parseInt(slider.value);
+                valueDisplay.textContent = slider.value;
+            }
+        }
+
+        // Update summary statistics
+        function updateStatistics(idx) {
+            const state = plotState[idx];
+            const plotData = state.data;
+
+            // Calculate filtered genotypes
+            const filteredGenotypes = (plotData.genotypes || []).filter(g => {
+                if (!state.selectedGenotypes.has(g)) return false;
+                const sampleCount = plotData.sample_counts[g] || 0;
+                return sampleCount >= state.threshold;
+            });
+
+            // Calculate total samples in filtered data
+            let totalSamples = 0;
+            filteredGenotypes.forEach(g => {
+                totalSamples += plotData.sample_counts[g] || 0;
+            });
+
+            // Calculate percentage of total data
+            let allSamples = 0;
+            (plotData.genotypes || []).forEach(g => {
+                allSamples += plotData.sample_counts[g] || 0;
+            });
+            const percentage = allSamples > 0 ? (totalSamples / allSamples * 100).toFixed(1) : 0;
+
+            // Update DOM elements
+            const genotypesStat = document.getElementById(`stat-genotypes-${idx}`);
+            const samplesStat = document.getElementById(`stat-samples-${idx}`);
+            const percentageStat = document.getElementById(`stat-percentage-${idx}`);
+
+            if (genotypesStat) {
+                genotypesStat.textContent = `${filteredGenotypes.length} / ${plotData.genotypes.length}`;
+            }
+            if (samplesStat) {
+                samplesStat.textContent = totalSamples.toLocaleString();
+            }
+            if (percentageStat) {
+                percentageStat.textContent = `${percentage}%`;
+            }
+        }
+
+        // Update/render the Plotly chart
+        function updatePlot(idx) {
+            const state = plotState[idx];
+            const plotData = state.data;
+            const plotType = plotData.plot_type;
+
+            // Update statistics
+            updateStatistics(idx);
+
+            if (plotType === 'faceted_abundance') {
+                renderFacetedPlot(idx);
+            } else if (plotType === 'distribution_map') {
+                renderDistributionMap(idx);
+            } else {
+                renderStackedBarPlot(idx);
+            }
+        }
+
+        // Render stacked bar plot (for relative and total abundance)
+        function renderStackedBarPlot(idx) {
+            const state = plotState[idx];
+            const plotData = state.data;
+
+            // Filter genotypes based on selection and threshold
+            const filteredGenotypes = (plotData.genotypes || []).filter(g => {
+                if (!state.selectedGenotypes.has(g)) return false;
+                const sampleCount = plotData.sample_counts[g] || 0;
+                return sampleCount >= state.threshold;
+            });
+
+            if (filteredGenotypes.length === 0) {
+                // Show message if no genotypes selected
+                const plotDiv = document.getElementById(`plot-${idx}`);
+                if (plotDiv) {
+                    plotDiv.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;">No genotypes selected or meet the minimum sample threshold.</div>';
+                }
+                return;
+            }
+
+            // Prepare Plotly traces (one per genotype)
+            const traces = [];
+            const basins = plotData.basins || [];
+            const basinLabels = plotData.basin_labels || {};
+            const colors = plotData.colors || [];
+            const counts = plotData.counts || {};
+
+            filteredGenotypes.forEach((genotype, i) => {
+                const genotypeCounts = counts[genotype] || {};
+                const y = basins.map(basin => genotypeCounts[basin] || 0);
+
+                traces.push({
+                    name: genotype,
+                    x: basins.map(b => basinLabels[b] || b),
+                    y: y,
+                    type: 'bar',
+                    marker: {
+                        color: colors[genotype] || '#888'
+                    }
+                });
+            });
+
+            // Layout configuration
+            const isRelative = plotData.plot_type === 'relative_abundance';
+            const layout = {
+                barmode: 'stack',
+                title: '',
+                xaxis: {
+                    title: 'Ocean Basin',
+                    tickangle: 0
+                },
+                yaxis: {
+                    title: isRelative ? 'Relative Abundance' : 'Total Sample Count',
+                    rangemode: 'tozero'
+                },
+                legend: {
+                    orientation: 'v',
+                    x: 1.02,
+                    y: 1,
+                    xanchor: 'left'
+                },
+                margin: {
+                    l: 60,
+                    r: 200,
+                    t: 40,
+                    b: 80
+                },
+                height: 500,
+                hovermode: 'closest'
+            };
+
+            if (isRelative) {
+                layout.barnorm = 'fraction';
+                layout.yaxis.tickformat = '.0%';
+            }
+
+            // Render plot
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            };
+
+            Plotly.newPlot(`plot-${idx}`, traces, layout, config);
+        }
+
+        // Render faceted plot
+        function renderFacetedPlot(idx) {
+            const state = plotState[idx];
+            const plotData = state.data;
+
+            // For faceted plots, we show all facets but filter genotypes
+            const facets = plotData.facets || {};
+            const facetNames = Object.keys(facets);
+
+            if (facetNames.length === 0) {
+                const plotDiv = document.getElementById(`plot-${idx}`);
+                if (plotDiv) {
+                    plotDiv.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;">No facets available.</div>';
+                }
+                return;
+            }
+
+            // Create traces for all facets
+            const traces = [];
+            const basins = plotData.basins || [];
+            const basinLabels = plotData.basin_labels || {};
+            const colors = plotData.colors || [];
+
+            facetNames.forEach(facetName => {
+                const facet = facets[facetName];
+                const genotypes = facet.genotypes || [];
+
+                genotypes.forEach(genotype => {
+                    // Check if this genotype is selected
+                    if (!state.selectedGenotypes.has(facetName)) return;
+
+                    const genotypeCounts = facet.counts[genotype] || {};
+                    const y = basins.map(basin => genotypeCounts[basin] || 0);
+
+                    traces.push({
+                        name: facetName,
+                        x: basins.map(b => basinLabels[b] || b),
+                        y: y,
+                        type: 'bar',
+                        marker: {
+                            color: colors[genotype] || '#888'
+                        }
+                    });
+                });
+            });
+
+            if (traces.length === 0) {
+                const plotDiv = document.getElementById(`plot-${idx}`);
+                if (plotDiv) {
+                    plotDiv.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;">No genotypes selected.</div>';
+                }
+                return;
+            }
+
+            // Layout configuration
+            const layout = {
+                barmode: 'stack',
+                title: '',
+                xaxis: {
+                    title: 'Ocean Basin',
+                    tickangle: 0
+                },
+                yaxis: {
+                    title: 'Sample Count',
+                    rangemode: 'tozero'
+                },
+                legend: {
+                    orientation: 'v',
+                    x: 1.02,
+                    y: 1,
+                    xanchor: 'left'
+                },
+                margin: {
+                    l: 60,
+                    r: 200,
+                    t: 40,
+                    b: 80
+                },
+                height: 600,
+                hovermode: 'closest'
+            };
+
+            // Render plot
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            };
+
+            Plotly.newPlot(`plot-${idx}`, traces, layout, config);
+        }
+
+        // Render distribution map
+        function renderDistributionMap(idx) {
+            const state = plotState[idx];
+            const plotData = state.data;
+
+            // Filter genotypes based on selection and threshold
+            const filteredGenotypes = (plotData.genotypes || []).filter(g => {
+                if (!state.selectedGenotypes.has(g)) return false;
+                const sampleCount = plotData.sample_counts[g] || 0;
+                return sampleCount >= state.threshold;
+            });
+
+            if (filteredGenotypes.length === 0) {
+                const plotDiv = document.getElementById(`plot-${idx}`);
+                if (plotDiv) {
+                    plotDiv.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;">No genotypes selected or meet the minimum sample threshold.</div>';
+                }
+                return;
+            }
+
+            // Prepare Plotly traces (one per genotype)
+            const traces = [];
+            const locations = plotData.locations || {};
+            const colors = plotData.colors || {};
+
+            filteredGenotypes.forEach(genotype => {
+                const genoLocations = locations[genotype];
+                if (!genoLocations) return;
+
+                let lats = genoLocations.latitudes || [];
+                let lons = genoLocations.longitudes || [];
+                let sizes = genoLocations.sizes || [];
+                const oceanBasins = genoLocations.ocean_basins || [];
+
+                // Filter by ocean basin if basin data is available and basins are selected
+                if (oceanBasins.length > 0 && state.selectedBasins.size > 0) {
+                    const filteredIndices = [];
+                    oceanBasins.forEach((basin, i) => {
+                        if (state.selectedBasins.has(basin)) {
+                            filteredIndices.push(i);
+                        }
+                    });
+
+                    // Filter all arrays by selected basins
+                    lats = filteredIndices.map(i => lats[i]);
+                    lons = filteredIndices.map(i => lons[i]);
+                    sizes = filteredIndices.map(i => sizes[i]);
+                }
+
+                // Skip if no points remaining after filtering
+                if (lats.length === 0) return;
+
+                // Scale marker sizes for better visibility
+                const scaledSizes = sizes.map(s => Math.max(5, Math.min(20, s * 3)));
+
+                traces.push({
+                    type: 'scattergeo',
+                    mode: 'markers',
+                    name: genotype,
+                    lat: lats,
+                    lon: lons,
+                    marker: {
+                        size: scaledSizes,
+                        color: colors[genotype] || '#888',
+                        line: {
+                            color: 'black',
+                            width: 0.5
+                        },
+                        opacity: 0.85
+                    },
+                    hovertemplate: '<b>%{text}</b><br>Lat: %{lat:.2f}<br>Lon: %{lon:.2f}<extra></extra>',
+                    text: lats.map(() => genotype)
+                });
+            });
+
+            // Layout configuration
+            const layout = {
+                title: '',
+                geo: {
+                    projection: {
+                        type: 'natural earth'
+                    },
+                    showland: true,
+                    landcolor: 'rgb(243, 243, 243)',
+                    coastlinecolor: 'rgb(204, 204, 204)',
+                    showocean: true,
+                    oceancolor: 'rgb(230, 245, 255)',
+                    showcountries: true,
+                    countrycolor: 'rgb(204, 204, 204)',
+                    showlakes: true,
+                    lakecolor: 'rgb(230, 245, 255)',
+                    resolution: 50
+                },
+                legend: {
+                    orientation: 'v',
+                    x: 1.02,
+                    y: 1,
+                    xanchor: 'left'
+                },
+                margin: {
+                    l: 0,
+                    r: 200,
+                    t: 40,
+                    b: 0
+                },
+                height: 600,
+                hovermode: 'closest'
+            };
+
+            // Render plot
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            };
+
+            Plotly.newPlot(`plot-${idx}`, traces, layout, config);
+        }
+
+        // Download plot as image (PNG or SVG)
+        function downloadPlot(idx, format) {
+            const plotDiv = document.getElementById(`plot-${idx}`);
+            if (!plotDiv) return;
+
+            // Get selected resolution
+            const resolutionSelect = document.getElementById(`resolution-${idx}`);
+            const resolution = resolutionSelect ? resolutionSelect.value : '1200x900';
+            const [width, height] = resolution.split('x').map(Number);
+
+            // Determine filename based on plot type
+            const state = plotState[idx];
+            const plotType = state.data.plot_type || 'plot';
+            const filename = `${plotType}_filtered_${idx}`;
+
+            // Use Plotly's built-in download functionality
+            Plotly.downloadImage(plotDiv, {
+                format: format,
+                width: width,
+                height: height,
+                filename: filename
+            });
+        }
+
+        // Download filtered data as CSV
+        function downloadCSV(idx) {
+            const state = plotState[idx];
+            const plotData = state.data;
+            const plotType = plotData.plot_type;
+
+            // Filter genotypes based on current selection and threshold
+            const filteredGenotypes = (plotData.genotypes || []).filter(g => {
+                if (!state.selectedGenotypes.has(g)) return false;
+                const sampleCount = plotData.sample_counts[g] || 0;
+                return sampleCount >= state.threshold;
+            });
+
+            if (filteredGenotypes.length === 0) {
+                alert('No data to export with current filters');
+                return;
+            }
+
+            let csvContent = '';
+
+            if (plotType === 'distribution_map') {
+                // CSV for distribution map: genotype, latitude, longitude, sample_count
+                csvContent = 'Genotype,Latitude,Longitude,Sample_Count\\n';
+
+                filteredGenotypes.forEach(genotype => {
+                    const locations = plotData.locations[genotype];
+                    if (!locations) return;
+
+                    const lats = locations.latitudes || [];
+                    const lons = locations.longitudes || [];
+                    const sizes = locations.sizes || [];
+
+                    for (let i = 0; i < lats.length; i++) {
+                        csvContent += `"${genotype}",${lats[i]},${lons[i]},${sizes[i]}\n`;
+                    }
+                });
+            } else {
+                // CSV for bar plots: genotype, basin, count, sample_total
+                csvContent = 'Genotype,Ocean_Basin,Count,Total_Samples\\n';
+
+                const basins = plotData.basins || [];
+                const counts = plotData.counts || {};
+
+                filteredGenotypes.forEach(genotype => {
+                    const genotypeCounts = counts[genotype] || {};
+                    const totalSamples = plotData.sample_counts[genotype] || 0;
+
+                    basins.forEach(basin => {
+                        const count = genotypeCounts[basin] || 0;
+                        if (count > 0) {
+                            csvContent += `"${genotype}","${basin}",${count},${totalSamples}\n`;
+                        }
+                    });
+                });
+            }
+
+            // Create and download CSV file
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${plotType}_filtered_data_${idx}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     </script>
 </body>
 </html>
@@ -1658,21 +2655,25 @@ def _build_visualizations_section(
         {
             'title': 'Relative Abundance by Ocean Basin',
             'pattern': f'{organism}_distribution_bar.png',
+            'json_pattern': f'{organism}_distribution_bar_data.json',
             'description': 'Relative abundance of genotypes across ocean basins'
         },
         {
             'title': 'Total Abundance by Ocean Basin',
             'pattern': f'{organism}_totaldistribution_bar.png',
+            'json_pattern': f'{organism}_totaldistribution_bar_data.json',
             'description': 'Total sample counts of genotypes across ocean basins'
         },
         {
             'title': 'Total Abundance by Ocean Basin (Faceted)',
             'pattern': f'{organism}_distribution_bar_faceted.png',
+            'json_pattern': f'{organism}_distribution_bar_faceted_data.json',
             'description': 'Total sample counts faceted by species or genotype'
         },
         {
             'title': 'Distribution Map',
             'pattern': f'{organism}_distribution_map.png',
+            'json_pattern': f'{organism}_distribution_map_data.json',
             'description': 'Geographic distribution of samples'
         },
         {
@@ -1689,7 +2690,21 @@ def _build_visualizations_section(
         if image_path.exists():
             encoded_image = _encode_image_to_base64(image_path)
             if encoded_image:
-                available_viz.append({**viz, 'encoded_image': encoded_image})
+                viz_data = {**viz, 'encoded_image': encoded_image}
+
+                # Load JSON data if available (for interactive plots)
+                if 'json_pattern' in viz:
+                    json_path = viz_dir / viz['json_pattern']
+                    if json_path.exists():
+                        try:
+                            with open(json_path, 'r') as f:
+                                plot_data = json.load(f)
+                            viz_data['plot_data'] = plot_data
+                            logger.debug(f"Loaded plot data for {viz['title']}: {json_path}")
+                        except Exception as e:
+                            logger.warning(f"Failed to load plot data from {json_path}: {e}")
+
+                available_viz.append(viz_data)
 
     if not available_viz:
         html += '<p class="alert alert-info">No visualization images found</p>\n'
@@ -1712,9 +2727,121 @@ def _build_visualizations_section(
         html += '<div class="viz-container">\n'
         html += f'<h3>{viz["title"]}</h3>\n'
         html += f'<p class="viz-description">{viz["description"]}</p>\n'
-        html += f'<img src="{viz["encoded_image"]}" alt="{viz["title"]}" class="viz-image">\n'
-        html += '</div>\n'
-        html += '</div>\n'
+
+        # Add interactive controls for plots with JSON data (except faceted plots)
+        if 'plot_data' in viz and viz['plot_data'].get('plot_type') != 'faceted_abundance':
+            data_id = f"plot-data-{idx}"
+            plot_id = f"plot-{idx}"
+            controls_id = f"controls-{idx}"
+
+            # Toggle button between static and interactive
+            html += '<div class="plot-mode-toggle">\n'
+            html += f'<button class="toggle-btn active" onclick="showStaticPlot(\'{plot_id}\', {idx})">Static Image</button>\n'
+            html += f'<button class="toggle-btn" onclick="showInteractivePlot(\'{plot_id}\', {idx})">Interactive Plot</button>\n'
+            html += '</div>\n'
+
+            # Static plot (shown by default)
+            html += f'<div id="{plot_id}-static" class="plot-view active">\n'
+            html += f'<img src="{viz["encoded_image"]}" alt="{viz["title"]}" class="viz-image">\n'
+            html += '</div>\n'
+
+            # Interactive plot container (hidden by default)
+            html += f'<div id="{plot_id}-interactive" class="plot-view" style="display: none;">\n'
+
+            # Filter controls
+            html += f'<div id="{controls_id}" class="plot-controls">\n'
+
+            # Summary Statistics Panel
+            html += f'<div id="stats-panel-{idx}" class="stats-panel">\n'
+            html += '<div class="stats-grid">\n'
+            html += '<div class="stat-item">\n'
+            html += '<div class="stat-label">Genotypes Shown</div>\n'
+            html += f'<div class="stat-value" id="stat-genotypes-{idx}">--</div>\n'
+            html += '</div>\n'
+            html += '<div class="stat-item">\n'
+            html += '<div class="stat-label">Total Samples</div>\n'
+            html += f'<div class="stat-value" id="stat-samples-{idx}">--</div>\n'
+            html += '</div>\n'
+            html += '<div class="stat-item">\n'
+            html += '<div class="stat-label">% of Total Data</div>\n'
+            html += f'<div class="stat-value" id="stat-percentage-{idx}">--</div>\n'
+            html += '</div>\n'
+            html += '</div>\n'
+            html += '</div>\n'
+
+            html += '<div class="controls-section">\n'
+            html += '<h4>Filter Options</h4>\n'
+
+            # Threshold slider
+            html += '<div class="control-group">\n'
+            html += '<label for="threshold-{0}">Minimum Sample Count: <span id="threshold-value-{0}">0</span></label>\n'.format(idx)
+            html += '<input type="range" id="threshold-{0}" class="threshold-slider" min="0" max="50" value="0" \n'.format(idx)
+            html += f'oninput="updateThreshold({idx}); updatePlot({idx})">\n'
+            html += '</div>\n'
+
+            # Ocean basin filter (only for distribution maps with ocean basin data)
+            if viz['plot_data'].get('plot_type') == 'distribution_map' and viz['plot_data'].get('ocean_basins'):
+                html += '<div class="control-group">\n'
+                html += '<label>Filter by Ocean Basin:</label>\n'
+                html += f'<div class="checkbox-controls">\n'
+                html += f'<button class="btn-small" onclick="selectAllBasins({idx})">Select All</button>\n'
+                html += f'<button class="btn-small" onclick="deselectAllBasins({idx})">Deselect All</button>\n'
+                html += '</div>\n'
+                html += f'<div id="basin-checkboxes-{idx}" class="genotype-checkboxes">\n'
+                html += '<!-- Basin checkboxes will be populated by JavaScript -->\n'
+                html += '</div>\n'
+                html += '</div>\n'
+
+            # Genotype checkboxes
+            html += '<div class="control-group">\n'
+            html += '<label>Select Genotypes:</label>\n'
+            html += f'<div class="checkbox-controls">\n'
+            html += f'<button class="btn-small" onclick="selectAllGenotypes({idx})">Select All</button>\n'
+            html += f'<button class="btn-small" onclick="deselectAllGenotypes({idx})">Deselect All</button>\n'
+            html += '</div>\n'
+            html += f'<div id="genotype-checkboxes-{idx}" class="genotype-checkboxes">\n'
+            html += '<!-- Checkboxes will be populated by JavaScript -->\n'
+            html += '</div>\n'
+            html += '</div>\n'
+
+            # Download options
+            html += '<div class="control-group">\n'
+            html += '<label>Export Options:</label>\n'
+            html += '<div class="download-options">\n'
+            html += f'<button class="btn-download" onclick="downloadPlot({idx}, \'png\')">📥 PNG</button>\n'
+            html += f'<button class="btn-download" onclick="downloadPlot({idx}, \'svg\')">📥 SVG</button>\n'
+            html += f'<button class="btn-download" onclick="downloadCSV({idx})">📥 CSV Data</button>\n'
+            html += '</div>\n'
+            html += '<div class="resolution-control">\n'
+            html += '<label for="resolution-{0}" class="small-label">Image Resolution:</label>\n'.format(idx)
+            html += '<select id="resolution-{0}" class="resolution-select">\n'.format(idx)
+            html += '<option value="800x600">Standard (800×600)</option>\n'
+            html += '<option value="1200x900" selected>High (1200×900)</option>\n'
+            html += '<option value="1600x1200">Print (1600×1200)</option>\n'
+            html += '<option value="2400x1800">Publication (2400×1800)</option>\n'
+            html += '</select>\n'
+            html += '</div>\n'
+            html += '</div>\n'
+
+            html += '</div>\n'  # controls-section
+            html += '</div>\n'  # plot-controls
+
+            # Plotly chart container
+            html += f'<div id="{plot_id}" class="plotly-chart"></div>\n'
+
+            html += '</div>\n'  # plot-view interactive
+
+            # Embed plot data as JSON
+            json_str = json.dumps(viz['plot_data'])
+            html += f'<script type="application/json" id="{data_id}">\n'
+            html += json_str
+            html += '\n</script>\n'
+        else:
+            # No interactive data or faceted plot - just show static image
+            html += f'<img src="{viz["encoded_image"]}" alt="{viz["title"]}" class="viz-image">\n'
+
+        html += '</div>\n'  # viz-container
+        html += '</div>\n'  # subtab-content
 
     html += '</div>\n'
     return html
