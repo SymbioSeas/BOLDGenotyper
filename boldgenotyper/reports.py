@@ -442,16 +442,14 @@ HTML_REPORT_CSS = """
         line-height: 1.6;
         color: #333;
         background-color: #f5f5f5;
-        padding: 20px;
+        margin: 0;
+        padding: 0;
     }
 
     .container {
-        max-width: 1200px;
-        margin: 0 auto;
+        display: flex;
+        min-height: 100vh;
         background-color: white;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        border-radius: 8px;
-        overflow: hidden;
     }
     
     .geo-map {
@@ -500,24 +498,24 @@ HTML_REPORT_CSS = """
     .header {
         background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
         color: white;
-        padding: 40px;
+        padding: 30px 40px;
         text-align: center;
     }
 
     .header h1 {
-        font-size: 2.5em;
-        margin-bottom: 10px;
+        font-size: 2em;
+        margin-bottom: 8px;
         font-style: italic;
     }
 
     .header .subtitle {
-        font-size: 1.1em;
+        font-size: 1em;
         opacity: 0.9;
         margin-bottom: 5px;
     }
 
     .header .timestamp {
-        font-size: 0.9em;
+        font-size: 0.85em;
         opacity: 0.8;
     }
 
@@ -549,6 +547,7 @@ HTML_REPORT_CSS = """
 
     .content {
         padding: 40px;
+        flex: 1;
     }
 
     .section {
@@ -569,28 +568,77 @@ HTML_REPORT_CSS = """
         margin-bottom: 15px;
         font-size: 1.3em;
     }
-    
-    .section-tabs {
-        margin: 20px 0 10px 0;
-        display: flex;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--border-color);
-        gap: 8px;
+
+    /* Left Sidebar Navigation */
+    .sidebar {
+        width: 240px;
+        background: linear-gradient(180deg, var(--primary-color), #1a252f);
+        color: white;
+        position: fixed;
+        height: 100vh;
+        overflow-y: auto;
+        padding: 20px 0;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        z-index: 1000;
     }
 
-    .section-tab {
-        padding: 8px 16px;
+    .sidebar-header {
+        padding: 0 20px 20px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.2);
+        margin-bottom: 20px;
+    }
+
+    .sidebar-title {
+        font-size: 1.1em;
+        font-weight: 600;
+        margin-bottom: 5px;
+        font-style: italic;
+    }
+
+    .sidebar-version {
+        font-size: 0.75em;
+        opacity: 0.7;
+    }
+
+    .sidebar-nav {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .sidebar-nav-item {
+        margin: 0;
+    }
+
+    .sidebar-nav-link {
+        display: block;
+        padding: 12px 20px;
         text-decoration: none;
-        color: var(--primary-color);
-        border: 1px solid var(--border-color);
-        border-bottom: none;
-        border-radius: 6px 6px 0 0;
-        background-color: var(--light-bg);
+        color: rgba(255,255,255,0.9);
+        border-left: 3px solid transparent;
+        transition: all 0.2s ease;
         font-size: 0.95em;
     }
 
-    .section-tab:hover {
-        background-color: white;
+    .sidebar-nav-link:hover {
+        background-color: rgba(255,255,255,0.1);
+        border-left-color: var(--secondary-color);
+        color: white;
+    }
+
+    .sidebar-nav-link.active {
+        background-color: rgba(255,255,255,0.15);
+        border-left-color: var(--secondary-color);
+        color: white;
+        font-weight: 600;
+    }
+
+    /* Main Content Area */
+    .main-wrapper {
+        flex: 1;
+        margin-left: 240px;
+        display: flex;
+        flex-direction: column;
     }
     
     .metric-grid {
@@ -748,15 +796,102 @@ HTML_REPORT_CSS = """
     }
 
     @media (max-width: 768px) {
+        .sidebar {
+            width: 200px;
+        }
+        .main-wrapper {
+            margin-left: 200px;
+        }
         .header h1 {
-            font-size: 1.8em;
+            font-size: 1.5em;
         }
         .quick-stats {
             flex-direction: column;
+            padding: 15px 20px;
         }
         .metric-grid {
             grid-template-columns: 1fr;
         }
+        .content {
+            padding: 20px;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .sidebar {
+            width: 60px;
+            padding: 10px 0;
+        }
+        .sidebar-header {
+            padding: 10px;
+        }
+        .sidebar-title,
+        .sidebar-version {
+            display: none;
+        }
+        .sidebar-nav-link {
+            padding: 12px 10px;
+            font-size: 0.8em;
+            text-align: center;
+        }
+        .main-wrapper {
+            margin-left: 60px;
+        }
+        .header {
+            padding: 20px;
+        }
+        .content {
+            padding: 15px;
+        }
+    }
+
+    /* Subtab Navigation */
+    .subtabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 0;
+    }
+
+    .subtab-button {
+        padding: 10px 16px;
+        background-color: #f5f5f5;
+        border: 1px solid var(--border-color);
+        border-bottom: none;
+        border-radius: 6px 6px 0 0;
+        cursor: pointer;
+        font-size: 0.9em;
+        color: #666;
+        transition: all 0.2s ease;
+    }
+
+    .subtab-button:hover {
+        background-color: #e8e8e8;
+        color: var(--primary-color);
+    }
+
+    .subtab-button.active {
+        background-color: white;
+        color: var(--primary-color);
+        font-weight: 600;
+        border-bottom: 2px solid white;
+        margin-bottom: -2px;
+    }
+
+    .subtab-content {
+        display: none;
+        animation: fadeIn 0.3s ease-in;
+    }
+
+    .subtab-content.active {
+        display: block;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
     }
 
     /* Visualization Styles */
@@ -801,6 +936,12 @@ HTML_REPORT_CSS = """
         .viz-container {
             page-break-inside: avoid;
         }
+        .subtab-button:not(.active) {
+            display: none;
+        }
+        .subtab-content {
+            display: block !important;
+        }
     }
 </style>
 """
@@ -818,52 +959,149 @@ HTML_REPORT_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>{{ organism }}</h1>
-            <div class="subtitle">BOLDGenotyper Analysis Report</div>
-            <div class="timestamp">Generated: {{ timestamp }}</div>
-            <div class="timestamp">BOLDGenotyper v{{ version }}</div>
-        </div>
-
-        <!-- Quick Stats -->
-        {% if quick_stats %}
-        <div class="quick-stats">
-            {% for stat in quick_stats %}
-            <div class="quick-stat">
-                <div class="number">{{ stat.value }}</div>
-                <div class="label">{{ stat.label }}</div>
+        <!-- Left Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">{{ organism }}</div>
+                <div class="sidebar-version">BOLDGenotyper v{{ version }}</div>
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+            <nav>
+                <ul class="sidebar-nav">
+                    <li class="sidebar-nav-item">
+                        <a href="#section-executive-summary" class="sidebar-nav-link">Summary</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-parameters" class="sidebar-nav-link">Parameters</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-assignment" class="sidebar-nav-link">Assignment</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-taxonomy" class="sidebar-nav-link">Taxonomy</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-geographic" class="sidebar-nav-link">Geography</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-visualizations" class="sidebar-nav-link">Visualizations</a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
 
-        <!-- Section Navigation -->
-        <div class="section-tabs">
-            <a href="#section-executive-summary" class="section-tab">Executive Summary</a>
-            <a href="#section-assignment" class="section-tab">Genotype Assignment</a>
-            <a href="#section-taxonomy" class="section-tab">Taxonomy</a>
-            <a href="#section-geographic" class="section-tab">Geographic Distribution</a>
-            <a href="#section-visualizations" class="section-tab">Visualizations</a>
-        </div>
+        <!-- Main Content Area -->
+        <div class="main-wrapper">
+            <!-- Header -->
+            <div class="header">
+                <h1>{{ organism }}</h1>
+                <div class="subtitle">BOLDGenotyper Analysis Report</div>
+                <div class="timestamp">Generated: {{ timestamp }}</div>
+            </div>
 
-        <!-- Main Content -->
-        <div class="content">
-            {{ content | safe }}
-        </div>
-        
-        <!-- Footer -->
-        <div class="footer">
-            <p>
-                <strong>BOLDGenotyper</strong> - Automated genotyping pipeline for BOLD barcode data<br>
-                <a href="https://github.com/anthropics/boldgenotyper" target="_blank">GitHub Repository</a>
-            </p>
-            <p style="margin-top: 15px; font-size: 0.85em;">
-                Report generated on {{ timestamp }}<br>
-                For questions or issues, please visit the GitHub repository.
-            </p>
+            <!-- Quick Stats -->
+            {% if quick_stats %}
+            <div class="quick-stats">
+                {% for stat in quick_stats %}
+                <div class="quick-stat">
+                    <div class="number">{{ stat.value }}</div>
+                    <div class="label">{{ stat.label }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Main Content -->
+            <div class="content">
+                {{ content | safe }}
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>
+                    <strong>BOLDGenotyper</strong> - Automated genotyping pipeline for BOLD barcode data<br>
+                    <a href="https://github.com/anthropics/boldgenotyper" target="_blank">GitHub Repository</a>
+                </p>
+                <p style="margin-top: 15px; font-size: 0.85em;">
+                    Report generated on {{ timestamp }}<br>
+                    For questions or issues, please visit the GitHub repository.
+                </p>
+            </div>
         </div>
     </div>
+
+    <script>
+        // Switch between subtabs
+        function switchSubtab(tabId) {
+            // Find the parent section to scope the tab switching
+            const tabElement = document.getElementById(tabId);
+            if (!tabElement) return;
+
+            const parentSection = tabElement.closest('.section');
+            if (!parentSection) return;
+
+            // Hide all subtab contents in this section
+            const allContents = parentSection.querySelectorAll('.subtab-content');
+            allContents.forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Deactivate all subtab buttons in this section
+            const allButtons = parentSection.querySelectorAll('.subtab-button');
+            allButtons.forEach(button => {
+                button.classList.remove('active');
+            });
+
+            // Show selected tab content
+            tabElement.classList.add('active');
+
+            // Activate corresponding button
+            const buttonIndex = Array.from(allContents).indexOf(tabElement);
+            if (buttonIndex >= 0 && allButtons[buttonIndex]) {
+                allButtons[buttonIndex].classList.add('active');
+            }
+        }
+
+        // Highlight active section in sidebar based on scroll position
+        document.addEventListener('DOMContentLoaded', function() {
+            const sections = document.querySelectorAll('.section[id^="section-"]');
+            const navLinks = document.querySelectorAll('.sidebar-nav-link');
+
+            function updateActiveLink() {
+                let currentSection = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop - 100;
+                    if (window.pageYOffset >= sectionTop) {
+                        currentSection = section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href') === '#' + currentSection) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+
+            window.addEventListener('scroll', updateActiveLink);
+            updateActiveLink(); // Initial call
+
+            // Smooth scrolling for anchor links
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetElement = document.getElementById(targetId);
+                    if (targetElement) {
+                        window.scrollTo({
+                            top: targetElement.offsetTop - 20,
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
 """
@@ -1405,17 +1643,32 @@ def _build_visualizations_section(
         html += '</div>\n'
         return html
 
-    # Define visualization categories and their display names
+    # Define visualization categories and their display names (in display order)
     viz_categories = [
+        {
+            'title': 'Identity Distribution',
+            'pattern': f'{organism}_identity_distribution.png',
+            'description': 'Distribution of sequence identity scores for assigned samples'
+        },
         {
             'title': 'Phylogenetic Tree',
             'pattern': f'{organism}_tree.png',
             'description': 'Phylogenetic tree showing relationships between consensus groups'
         },
         {
-            'title': 'Identity Distribution',
-            'pattern': f'{organism}_identity_distribution.png',
-            'description': 'Distribution of sequence identity scores for assigned samples'
+            'title': 'Relative Abundance by Ocean Basin',
+            'pattern': f'{organism}_distribution_bar.png',
+            'description': 'Relative abundance of genotypes across ocean basins'
+        },
+        {
+            'title': 'Total Abundance by Ocean Basin',
+            'pattern': f'{organism}_totaldistribution_bar.png',
+            'description': 'Total sample counts of genotypes across ocean basins'
+        },
+        {
+            'title': 'Total Abundance by Ocean Basin (Faceted)',
+            'pattern': f'{organism}_distribution_bar_faceted.png',
+            'description': 'Total sample counts faceted by species or genotype'
         },
         {
             'title': 'Distribution Map',
@@ -1426,51 +1679,42 @@ def _build_visualizations_section(
             'title': 'Distribution Map (Faceted)',
             'pattern': f'{organism}_distribution_map_faceted.png',
             'description': 'Geographic distribution faceted by species or genotype'
-        },
-        {
-            'title': 'Relative Abundance by Ocean Basin',
-            'pattern': f'{organism}_distribution_bar.png',
-            'description': 'Relative abundance of genotypes across ocean basins'
-        },
-        {
-            'title': 'Relative Abundance by Ocean Basin (Faceted)',
-            'pattern': f'{organism}_distribution_bar_faceted.png',
-            'description': 'Relative abundance faceted by species or genotype'
-        },
-        {
-            'title': 'Total Abundance by Ocean Basin',
-            'pattern': f'{organism}_totaldistribution_bar.png',
-            'description': 'Total sample counts of genotypes across ocean basins'
         }
     ]
 
-    # Track whether we found any visualizations
-    found_any = False
-
+    # Filter to available visualizations
+    available_viz = []
     for viz in viz_categories:
         image_path = viz_dir / viz['pattern']
+        if image_path.exists():
+            encoded_image = _encode_image_to_base64(image_path)
+            if encoded_image:
+                available_viz.append({**viz, 'encoded_image': encoded_image})
 
-        if not image_path.exists():
-            continue
-
-        found_any = True
-
-        # Encode image
-        encoded_image = _encode_image_to_base64(image_path)
-
-        if encoded_image:
-            html += '<div class="viz-container">\n'
-            html += f'<h3>{viz["title"]}</h3>\n'
-            html += f'<p class="viz-description">{viz["description"]}</p>\n'
-            html += f'<img src="{encoded_image}" alt="{viz["title"]}" class="viz-image">\n'
-            html += '</div>\n'
-        else:
-            html += '<div class="alert alert-warning">\n'
-            html += f'<strong>{viz["title"]}:</strong> Image file found but could not be loaded\n'
-            html += '</div>\n'
-
-    if not found_any:
+    if not available_viz:
         html += '<p class="alert alert-info">No visualization images found</p>\n'
+        html += '</div>\n'
+        return html
+
+    # Create subtabs for visualizations
+    html += '<div class="subtabs">\n'
+    for idx, viz in enumerate(available_viz):
+        active_class = ' active' if idx == 0 else ''
+        tab_id = f"viz-tab-{idx}"
+        html += f'<button class="subtab-button{active_class}" onclick="switchSubtab(\'{tab_id}\')">{viz["title"]}</button>\n'
+    html += '</div>\n'
+
+    # Create subtab content
+    for idx, viz in enumerate(available_viz):
+        active_class = ' active' if idx == 0 else ''
+        tab_id = f"viz-tab-{idx}"
+        html += f'<div id="{tab_id}" class="subtab-content{active_class}">\n'
+        html += '<div class="viz-container">\n'
+        html += f'<h3>{viz["title"]}</h3>\n'
+        html += f'<p class="viz-description">{viz["description"]}</p>\n'
+        html += f'<img src="{viz["encoded_image"]}" alt="{viz["title"]}" class="viz-image">\n'
+        html += '</div>\n'
+        html += '</div>\n'
 
     html += '</div>\n'
     return html

@@ -533,12 +533,16 @@ def run_pipeline(
 
                 # Save color map to multiple directories for easy access
                 color_map_df = pd.DataFrame(color_map_data)
+                saved_paths = []
                 for dir_key in ['visualization', 'phylogenetic', 'geographic']:
                     if dir_key in dirs:
                         color_map_path = dirs[dir_key] / f"{organism_name}_genotype_color_map.csv"
                         color_map_df.to_csv(color_map_path, index=False)
+                        saved_paths.append(str(color_map_path))
 
-                logger.debug(f"Created genotype color map with {len(genotype_order)} genotypes ordered by abundance")
+                logger.info(f"Created genotype color map with {len(genotype_order)} genotypes ordered by abundance")
+                logger.debug(f"  Sample entries (first 3): {color_map_df.head(3)[['consensus_group_sp', 'color']].to_dict('records')}")
+                logger.debug(f"  Saved to {len(saved_paths)} locations")
 
             for fmt in cfg.visualization.figure_format:
                 # Geographic visualizations (if analysis was performed)
@@ -606,9 +610,14 @@ def run_pipeline(
                                 color_df = pd.read_csv(color_map_path)
                                 if 'consensus_group_sp' in color_df.columns and 'color' in color_df.columns:
                                     genotype_colors = dict(zip(color_df['consensus_group_sp'], color_df['color']))
-                                    logger.debug(f"Loaded {len(genotype_colors)} genotype colors")
+                                    logger.info(f"Loaded genotype color map with {len(genotype_colors)} genotypes")
+                                    logger.debug(f"  Color map keys (first 3): {list(genotype_colors.keys())[:3]}")
+                                else:
+                                    logger.warning(f"Color map CSV exists but missing required columns. Found: {color_df.columns.tolist()}")
                             except Exception as e:
-                                logger.debug(f"Could not load color map: {e}")
+                                logger.warning(f"Could not load color map: {e}")
+                        else:
+                            logger.warning(f"Color map file not found at: {color_map_path}")
 
                         tree_plot_path = dirs['phylogenetic'] / f"{organism_name}_tree.{fmt}"
                         visualization.plot_phylogenetic_tree(
