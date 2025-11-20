@@ -39,7 +39,7 @@ setup(
     # Python version requirement
     python_requires=">=3.8",
 
-    # Core dependencies
+    # Core dependencies (minimal install)
     install_requires=[
         "biopython>=1.79",
         "pandas>=1.3.0",
@@ -48,6 +48,7 @@ setup(
         "matplotlib>=3.4.0",
         "seaborn>=0.11.0",
         "jinja2>=3.0.0",
+        "edlib>=1.3.9",  # Fast edit distance for genotype assignment
     ],
 
     # Optional dependencies for specific features
