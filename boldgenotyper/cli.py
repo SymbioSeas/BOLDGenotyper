@@ -79,7 +79,6 @@ def setup_directories(base_output: Path) -> dict:
         'assignments': base_output / 'genotype_assignments',
         'taxonomy': base_output / 'taxonomy',
         'phylogenetic': base_output / 'phylogenetic',
-        'visualization': base_output / 'visualization',
         'reports': base_output / 'reports',
     }
 
@@ -94,7 +93,11 @@ def run_pipeline(
     organism: str,
     output_dir: Path,
     cfg: config.PipelineConfig,
+<<<<<<< HEAD
     no_report: bool = False,
+=======
+    skip_geo: bool = False,
+>>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -168,16 +171,37 @@ def run_pipeline(
 
         # Assign ocean basins
         logger.info("1.3: Assigning ocean basins...")
-        if cfg.geographic.goas_shapefile_path.exists():
-            goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
-            df_with_basins = geographic.assign_ocean_basins(
-                df_filtered, goas_data=goas_data, coord_col="coord"
-            )
-            logger.info(f"  ✓ Assigned ocean basins to samples")
-        else:
-            logger.warning(f"  ⚠ GOaS shapefile not found, skipping basin assignment")
+        geo_analysis_performed = False  # Track whether geographic analysis was successful
+
+        if skip_geo:
+            logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
             df_with_basins = df_filtered.copy()
             df_with_basins['ocean_basin'] = 'Unknown'
+        elif not cfg.geographic.goas_shapefile_path.exists():
+            logger.warning(f"  ⚠ GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
+            logger.warning("")
+            logger.warning("  To enable geographic analysis, download the GOaS shapefile:")
+            logger.warning("  1. Run: python -m boldgenotyper.goas_downloader")
+            logger.warning("  2. Or download manually from: https://www.marineregions.org/download_file.php?name=World_Seas_IHO_v3.zip")
+            logger.warning(f"  3. Extract to: {cfg.geographic.goas_shapefile_path.parent}")
+            logger.warning("  4. Ensure the .shp file is named: goas_v01.shp")
+            logger.warning("")
+            logger.warning("  Pipeline will continue without geographic analysis...")
+            df_with_basins = df_filtered.copy()
+            df_with_basins['ocean_basin'] = 'Unknown'
+        else:
+            try:
+                goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
+                df_with_basins = geographic.assign_ocean_basins(
+                    df_filtered, goas_data=goas_data, coord_col="coord"
+                )
+                logger.info(f"  ✓ Assigned ocean basins to samples")
+                geo_analysis_performed = True  # Geographic analysis was successful
+            except Exception as e:
+                logger.error(f"  ✗ Failed to load GOaS data: {e}")
+                logger.warning("  Pipeline will continue without geographic analysis...")
+                df_with_basins = df_filtered.copy()
+                df_with_basins['ocean_basin'] = 'Unknown'
 
         basins_tsv = dirs['intermediate_geographic'] / "samples_with_ocean_basins.tsv"
         df_with_basins.to_csv(basins_tsv, sep='\t', index=False)
@@ -464,6 +488,7 @@ def run_pipeline(
 
         # Generate visualizations for each format
         for fmt in cfg.visualization.figure_format:
+<<<<<<< HEAD
             # Distribution maps
             if 'lat' in df_final.columns and 'lon' in df_final.columns:
                 try:
@@ -520,10 +545,71 @@ def run_pipeline(
                     logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
 
             # Identity distribution
+=======
+            # Geographic visualizations - only if geographic analysis was performed
+            if geo_analysis_performed:
+                # Distribution maps
+                if 'lat' in df_final.columns and 'lon' in df_final.columns:
+                    try:
+                        visualization.plot_distribution_map(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_map.{fmt}"),
+                            genotype_column='consensus_group_sp',
+                            latitude_col='lat',
+                            longitude_col='lon'
+                        )
+                    except Exception as e:
+                        logger.debug(f"Distribution map skipped: {e}")
+
+                # Ocean basin abundance bar plot
+                if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                    try:
+                        visualization.plot_ocean_basin_abundance(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_bar.{fmt}"),
+                            genotype_column='consensus_group_sp',
+                            basin_column='ocean_basin'
+                        )
+                    except Exception as e:
+                        logger.debug(f"Ocean basin bar plot skipped: {e}")
+
+                # Faceted distribution map by consensus_group_sp
+                if ('lat' in df_final.columns and 'lon' in df_final.columns and
+                    'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
+                    try:
+                        visualization.plot_distribution_map_faceted(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_map_faceted.{fmt}"),
+                            genotype_column='consensus_group',
+                            species_column='consensus_group_sp',
+                            latitude_col='lat',
+                            longitude_col='lon'
+                        )
+                    except Exception as e:
+                        logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
+
+                # Faceted ocean basin bar plot by consensus_group_sp
+                if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
+                    'consensus_group' in df_final.columns):
+                    try:
+                        visualization.plot_ocean_basin_abundance_faceted(
+                            df=df_final,
+                            output_path=str(dirs['geographic'] / f"{organism}_distribution_bar_faceted.{fmt}"),
+                            genotype_column='consensus_group',
+                            species_column='consensus_group_sp',
+                            basin_column='ocean_basin'
+                        )
+                    except Exception as e:
+                        logger.debug(f"Faceted basin bar plot skipped: {e}")
+            else:
+                logger.info("  ⊘ Skipping geographic visualizations (geographic analysis not performed)")
+
+            # Identity distribution (always generated if diagnostics exist)
+>>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
             if diagnostics_csv.exists():
                 visualization.plot_identity_distribution(
                     diagnostics_csv=str(diagnostics_csv),
-                    output_path=str(dirs['visualization'] / f"{organism}_identity_distribution.{fmt}"),
+                    output_path=str(dirs['assignments'] / f"{organism}_identity_distribution.{fmt}"),
                     figsize=(10, 6),
                     dpi=cfg.visualization.figure_dpi
                 )
@@ -539,7 +625,7 @@ def run_pipeline(
                     tree_to_plot = tree_path
 
                 # Load color map if it exists
-                color_map_path = dirs['visualization'] / f"{organism}_genotype_color_map.csv"
+                color_map_path = dirs['assignments'] / f"{organism}_genotype_color_map.csv"
                 genotype_colors = None
                 if color_map_path.exists():
                     color_df = pd.read_csv(color_map_path)
@@ -547,7 +633,7 @@ def run_pipeline(
 
                 visualization.plot_phylogenetic_tree(
                     tree_file=str(tree_to_plot),
-                    output_path=str(dirs['visualization'] / f"{organism}_tree.{fmt}"),
+                    output_path=str(dirs['phylogenetic'] / f"{organism}_tree.{fmt}"),
                     genotype_colors=genotype_colors,
                     show_bootstrap=True,
                     bootstrap_threshold=cfg.visualization.show_bootstrap_threshold,
@@ -555,6 +641,7 @@ def run_pipeline(
                     dpi=cfg.visualization.figure_dpi
                 )
 
+<<<<<<< HEAD
             # Faceted distribution map by consensus_group_sp
             if ('lat' in df_final.columns and 'lon' in df_final.columns and
                 'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
@@ -595,6 +682,8 @@ def run_pipeline(
                 except Exception as e:
                     logger.debug(f"Faceted basin bar plot skipped: {e}")
 
+=======
+>>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
         logger.info(f"  ✓ Generated visualization plots")
 
     except Exception as e:
@@ -924,9 +1013,16 @@ For more information: https://github.com/your-repo/boldgenotyper
     )
 
     parser.add_argument(
+<<<<<<< HEAD
         '--no-report',
         action='store_true',
         help='Skip generating HTML summary report'
+=======
+        '--no-geo',
+        action='store_true',
+        help='Skip geographic analysis (ocean basin assignment and related visualizations). '
+             'Use this if you only need genotyping and phylogeny without geographic distribution.'
+>>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
     )
 
     parser.add_argument(
@@ -1001,7 +1097,11 @@ For more information: https://github.com/your-repo/boldgenotyper
             organism=organism,
             output_dir=output_dir,
             cfg=cfg,
+<<<<<<< HEAD
             no_report=args.no_report
+=======
+            skip_geo=args.no_geo
+>>>>>>> ea71d3cf57e7890da2d1de0821d2ef1a2ba3887d
         )
 
         return 0 if success else 1
