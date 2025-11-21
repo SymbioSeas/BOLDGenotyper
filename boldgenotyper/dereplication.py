@@ -939,7 +939,7 @@ def dereplicate_sequences(
                 
             gap_frac = seq.count('-') / len(seq) if len(seq) else 1.0
             if gap_frac > 0.8:
-                logger.warning(f"Skipping {seq_id}: Excessive gaps ({gap_frac:..1%})")
+                logger.warning(f"Skipping {seq_id}: Excessive gaps ({gap_frac:.1%})")
                 continue
             
             records.append(SeqRecord(Seq(seq), id=seq_id, description=""))

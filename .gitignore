@@ -24,19 +24,41 @@ wheels/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Data files
+# Data files (exclude analysis outputs but keep test data and examples)
 *.fasta
 *.tsv
 *.csv
 !examples/*.tsv
 !examples/*.fasta
+!tests/data/*.tsv
+!tests/data/*.fasta
+!tests/data/*.csv
 
-# Results
+# Results and intermediate files
 results/
 output/
+*_output/
 alignments/
 trimmed/
 consensus/
+intermediate/
+
+# Analysis outputs in data directories
+data/*/visualization/
+data/*/*.html
+data/*/*.pdf
+data/*/*.png
+data/*/*.json
+data/*/*.log
+data/*/phylogenetic/
+data/*/genotype_assignments/
+data/*/taxonomy/
+data/*/reports/
+data/*/intermediate/
+
+# Large example data files (keep structure but not outputs)
+data/*.tsv
+!data/*/input.tsv
 
 # IDE
 .vscode/
@@ -50,5 +72,4 @@ Thumbs.db
 
 # Environment
 environment.yml.backup
-GOaS_v1_20211214/
 GOaS_v1_20211214/
