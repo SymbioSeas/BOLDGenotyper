@@ -410,9 +410,9 @@ BOLDGenotyper runs a comprehensive 7-phase pipeline:
 - Aligns consensus sequences with MAFFT
 - Constructs maximum-likelihood tree with FastTree (GTR+Gamma model)
 - Generates tree visualizations with tip labels
-- Outputs Newick format for further analysis
+- Outputs Newick format for further analysis in tree editors (e.g., [TreeViewer](https://treeviewer.org/), FigTree, iTOL)
 
-**Output**: Tree files (.nwk), visualizations (.png, .pdf)
+**Output**: Tree files (.nwk), relabeled tree with readable tip labels (_relabeled.nwk), visualizations (.png, .pdf)
 
 ### Phase 6: Visualization
 - **Identity Distribution**: Histogram of sequence identity scores for assigned samples
@@ -637,9 +637,11 @@ boldgenotyper --help
 │
 ├── phylogenetic/                         # (only if --build-tree)
 │   ├── {organism}_tree.nwk               # Newick format tree
-│   ├── {organism}_tree_relabeled.nwk     # Tree with readable tip labels
+│   ├── {organism}_tree_relabeled.nwk     # Tree with readable tip labels (for tree editors like TreeViewer)
 │   ├── {organism}_tree.png               # Tree visualization
 │   └── {organism}_tree.pdf
+│   # 💡 Open _relabeled.nwk files in tree editors such as TreeViewer (https://treeviewer.org/),
+│   #    FigTree, or iTOL for re-rooting, customization, and publication-quality figures
 │
 ├── visualization/
 │   ├── {organism}_identity_distribution.*       # Identity histogram
@@ -719,6 +721,12 @@ All visualization outputs are provided in multiple formats:
 - **Total Abundance** (`*_totaldistribution_bar.*`): Stacked bar chart showing raw sample counts by basin
 - **Faceted Bar Charts** (`*_distribution_bar_faceted.*`): Separate bar chart for each species
 - **Phylogenetic Tree** (`*_tree.*`): Maximum-likelihood tree with tip labels (if `--build-tree`)
+
+**Newick Tree Files** (`.nwk`): Phylogenetic trees in standard Newick format can be found in `phylogenetic/{organism}_tree_relabeled.nwk`. These files can be opened in any tree editor of your choice for re-rooting, annotation, and customization:
+- **[TreeViewer](https://treeviewer.org/)** (Bianchini & Sánchez-Baracaldo, 2024) - Modern, flexible, modular tree visualization software
+- **FigTree** - Popular tree viewer with extensive annotation options
+- **iTOL** (Interactive Tree of Life) - Web-based tree display and annotation
+- **R (ape/ggtree)** - For programmatic tree manipulation and publication figures
 
 #### 5. `{organism}_pipeline.log`
 
@@ -1250,6 +1258,8 @@ Please also cite these foundational tools:
 - **trimAl**: Capella-Gutiérrez, S., Silla-Martínez, J.M., & Gabaldón, T. (2009). trimAl: a tool for automated alignment trimming in large-scale phylogenetic analyses. *Bioinformatics*, 25(15), 1972-1973. [doi:10.1093/bioinformatics/btp348](https://doi.org/10.1093/bioinformatics/btp348)
 
 - **FastTree**: Price, M.N., Dehal, P.S., & Arkin, A.P. (2010). FastTree 2 – Approximately Maximum-Likelihood Trees for Large Alignments. *PLoS ONE*, 5(3), e9490. [doi:10.1371/journal.pone.0009490](https://doi.org/10.1371/journal.pone.0009490)
+
+- **TreeViewer** (optional, for tree customization): Bianchini, G. & Sánchez-Baracaldo, P. (2024). TreeViewer: Flexible, modular software to visualise and manipulate phylogenetic trees. *Ecology and Evolution*, 14, e10873. [doi:10.1002/ece3.10873](https://doi.org/10.1002/ece3.10873)
 
 - **COI Barcoding**: Hebert, P.D.N., Cywinska, A., Ball, S.L., & deWaard, J.R. (2003). Biological identifications through DNA barcodes. *Proceedings of the Royal Society B*, 270(1512), 313-321. [doi:10.1098/rspb.2002.2218](https://doi.org/10.1098/rspb.2002.2218)
 

@@ -572,7 +572,7 @@ HTML_REPORT_CSS = """
 
     /* Left Sidebar Navigation */
     .sidebar {
-        width: 240px;
+        width: 300px;
         background: linear-gradient(180deg, var(--primary-color), #1a252f);
         color: white;
         position: fixed;
@@ -637,14 +637,14 @@ HTML_REPORT_CSS = """
     /* Main Content Area */
     .main-wrapper {
         flex: 1;
-        margin-left: 240px;
+        margin-left: 300px;
         display: flex;
         flex-direction: column;
     }
     
     .metric-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
         gap: 20px;
         margin-bottom: 30px;
     }
@@ -919,9 +919,11 @@ HTML_REPORT_CSS = """
     }
 
     .viz-image {
-        width: 100%;
-        max-width: 100%;
+        width: 65%;
+        max-width: 80%;
         height: auto;
+        display: block;
+        margin: 0 auto;
         border: 1px solid #ddd;
         border-radius: 4px;
         background-color: white;
@@ -995,6 +997,17 @@ HTML_REPORT_CSS = """
         font-weight: 600;
         margin-bottom: 8px;
         color: var(--text-color);
+    }
+
+    .controls-flex-container {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .controls-flex-container .control-group {
+        flex: 1;
+        margin-bottom: 0;
     }
 
     .threshold-slider {
@@ -1419,6 +1432,10 @@ HTML_REPORT_TEMPLATE = """
         // Global state for interactive plots
         const plotState = {};
 
+        // Global color state - shared across all plots
+        const globalColors = {};
+        let allGenotypes = new Set();
+
         // Initialize all interactive plots
         function initializeInteractivePlots() {
             // Find all embedded plot data
@@ -1427,6 +1444,16 @@ HTML_REPORT_TEMPLATE = """
             plotDataElements.forEach(dataElement => {
                 const idx = parseInt(dataElement.id.replace('plot-data-', ''));
                 const plotData = JSON.parse(dataElement.textContent);
+
+                // Collect all genotypes across all plots
+                if (plotData.genotypes) {
+                    plotData.genotypes.forEach(g => allGenotypes.add(g));
+                }
+
+                // Initialize global colors from first plot's colors if not already set
+                if (plotData.colors && Object.keys(globalColors).length === 0) {
+                    Object.assign(globalColors, plotData.colors);
+                }
 
                 // Initialize plot state
                 plotState[idx] = {
@@ -1443,6 +1470,72 @@ HTML_REPORT_TEMPLATE = """
                 if (plotData.ocean_basins && plotData.ocean_basins.length > 0) {
                     populateBasinCheckboxes(idx);
                 }
+            });
+
+            // Initialize global color picker
+            initializeGlobalColorPicker();
+        }
+
+        // Initialize global color picker panel
+        function initializeGlobalColorPicker() {
+            const container = document.getElementById('global-color-picker');
+            if (!container || allGenotypes.size === 0) return;
+
+            let html = '<h4>Global Genotype Colors</h4>';
+            html += '<p style="font-size: 0.85em; color: #666; margin-bottom: 10px;">Adjust colors for all interactive plots simultaneously</p>';
+            html += '<div style="max-height: 400px; overflow-y: auto;">';
+
+            const sortedGenotypes = Array.from(allGenotypes).sort();
+            sortedGenotypes.forEach(genotype => {
+                const color = globalColors[genotype] || '#888888';
+                // Escape genotype name for use in HTML IDs and JavaScript
+                const escapedId = genotype.replace(/[^a-zA-Z0-9-_]/g, '_');
+                html += '<div style="display: flex; align-items: center; margin-bottom: 8px; padding: 5px; border-radius: 4px; background: #f8f9fa;">';
+                html += `<input type="color" id="color-${escapedId}" value="${color}" `;
+                html += `onchange="updateGlobalColor(\`${genotype}\`, this.value)" `;
+                html += 'style="width: 40px; height: 30px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; margin-right: 10px;">';
+                html += `<label for="color-${escapedId}" style="flex: 1; font-size: 0.9em; cursor: pointer;">${genotype}</label>`;
+                html += '</div>';
+            });
+
+            html += '</div>';
+            html += '<button class="btn" onclick="resetAllColors()" style="margin-top: 10px; width: 100%;">Reset to Default Colors</button>';
+
+            container.innerHTML = html;
+        }
+
+        // Update a single genotype's global color
+        function updateGlobalColor(genotype, color) {
+            globalColors[genotype] = color;
+
+            // Update all plots
+            Object.keys(plotState).forEach(idx => {
+                updatePlot(parseInt(idx));
+            });
+        }
+
+        // Reset all colors to defaults
+        function resetAllColors() {
+            // Reset globalColors to original values from plot data
+            Object.keys(plotState).forEach(idx => {
+                const plotData = plotState[idx].data;
+                if (plotData.colors) {
+                    Object.assign(globalColors, plotData.colors);
+                }
+            });
+
+            // Update color picker inputs
+            Object.keys(globalColors).forEach(genotype => {
+                const escapedId = genotype.replace(/[^a-zA-Z0-9-_]/g, '_');
+                const input = document.getElementById(`color-${escapedId}`);
+                if (input) {
+                    input.value = globalColors[genotype];
+                }
+            });
+
+            // Re-render all plots
+            Object.keys(plotState).forEach(idx => {
+                updatePlot(parseInt(idx));
             });
         }
 
@@ -1746,7 +1839,11 @@ HTML_REPORT_TEMPLATE = """
                     y: y,
                     type: 'bar',
                     marker: {
-                        color: colors[genotype] || '#888'
+                        color: globalColors[genotype] || colors[genotype] || '#888',
+                        line: {
+                            color: 'black',
+                            width: 1
+                        }
                     }
                 });
             });
@@ -1776,7 +1873,7 @@ HTML_REPORT_TEMPLATE = """
                     t: 40,
                     b: 80
                 },
-                height: 500,
+                height: 300,
                 hovermode: 'closest'
             };
 
@@ -1836,7 +1933,11 @@ HTML_REPORT_TEMPLATE = """
                         y: y,
                         type: 'bar',
                         marker: {
-                            color: colors[genotype] || '#888'
+                            color: globalColors[genotype] || colors[genotype] || '#888',
+                            line: {
+                                color: 'black',
+                                width: 1
+                            }
                         }
                     });
                 });
@@ -1874,7 +1975,7 @@ HTML_REPORT_TEMPLATE = """
                     t: 40,
                     b: 80
                 },
-                height: 600,
+                height: 450,
                 hovermode: 'closest'
             };
 
@@ -1952,7 +2053,7 @@ HTML_REPORT_TEMPLATE = """
                     lon: lons,
                     marker: {
                         size: scaledSizes,
-                        color: colors[genotype] || '#888',
+                        color: globalColors[genotype] || colors[genotype] || '#888',
                         line: {
                             color: 'black',
                             width: 0.5
@@ -1994,7 +2095,7 @@ HTML_REPORT_TEMPLATE = """
                     t: 40,
                     b: 0
                 },
-                height: 600,
+                height: 450,
                 hovermode: 'closest'
             };
 
@@ -2640,7 +2741,12 @@ def _build_visualizations_section(
     """
     html = '<div class="section" id="section-visualizations">\n'
     html += '<h2>Visualizations</h2>\n'
-    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 High-resolution images (PNG/PDF) and data files (JSON/CSV) available at: <code>visualization/</code></p>\n'
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 High-resolution images (PNG/PDF) and data files (JSON/CSV) available in output directories (see individual plots for locations)</p>\n'
+
+    # Add global color picker container
+    html += '<div id="global-color-picker" class="plot-controls" style="margin-bottom: 20px; max-width: 600px;">\n'
+    html += '<!-- Global color picker will be populated by JavaScript -->\n'
+    html += '</div>\n'
 
     viz_dir = output_dir / 'visualization'
 
@@ -2654,12 +2760,15 @@ def _build_visualizations_section(
         {
             'title': 'Identity Distribution',
             'pattern': f'{organism}_identity_distribution.png',
+            'directory': 'genotype_assignments',
             'description': 'Distribution of sequence identity scores for assigned samples'
         },
         {
             'title': 'Phylogenetic Tree',
             'pattern': f'{organism}_tree.png',
-            'description': 'Phylogenetic tree showing relationships between consensus groups'
+            'directory': 'phylogenetic',
+            'description': 'Phylogenetic tree showing relationships between consensus groups',
+            'note': f'💡 Newick tree file available at <code>phylogenetic/{organism}_tree_relabeled.nwk</code> for opening in tree editors such as <a href="https://treeviewer.org/" target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024) for re-rooting and customization'
         },
         {
             'title': 'Relative Abundance by Ocean Basin',
@@ -2695,7 +2804,13 @@ def _build_visualizations_section(
     # Filter to available visualizations
     available_viz = []
     for viz in viz_categories:
-        image_path = viz_dir / viz['pattern']
+        # Determine which directory to look in
+        if 'directory' in viz:
+            search_dir = output_dir / viz['directory']
+        else:
+            search_dir = viz_dir
+
+        image_path = search_dir / viz['pattern']
         if image_path.exists():
             encoded_image = _encode_image_to_base64(image_path)
             if encoded_image:
@@ -2736,10 +2851,15 @@ def _build_visualizations_section(
         html += '<div class="viz-container">\n'
         html += f'<h3>{viz["title"]}</h3>\n'
         html += f'<p class="viz-description">{viz["description"]}</p>\n'
-        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">📁 Files: <code>visualization/{viz["pattern"]}</code>, <code>{viz["pattern"].replace(".png", ".pdf")}</code>'
+        # Determine directory for file paths
+        file_dir = viz.get('directory', 'visualization')
+        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">📁 Files: <code>{file_dir}/{viz["pattern"]}</code>, <code>{viz["pattern"].replace(".png", ".pdf")}</code>'
         if 'json_pattern' in viz:
             html += f', <code>{viz["json_pattern"]}</code>'
         html += '</p>\n'
+        # Add optional note if present
+        if 'note' in viz:
+            html += f'<p style="color: #2563eb; font-size: 0.85em; margin-bottom: 10px; padding: 8px; background-color: #eff6ff; border-left: 3px solid #2563eb; border-radius: 3px;">{viz["note"]}</p>\n'
 
         # Add interactive controls for plots with JSON data (except faceted plots)
         if 'plot_data' in viz and viz['plot_data'].get('plot_type') != 'faceted_abundance':
@@ -2792,6 +2912,9 @@ def _build_visualizations_section(
             html += f'oninput="updateThreshold({idx}); updatePlot({idx})">\n'
             html += '</div>\n'
 
+            # Wrap basin filter and genotype checkboxes in flex container
+            html += '<div class="controls-flex-container">\n'
+
             # Ocean basin filter (only for distribution maps with ocean basin data)
             if viz['plot_data'].get('plot_type') == 'distribution_map' and viz['plot_data'].get('ocean_basins'):
                 html += '<div class="control-group">\n'
@@ -2816,6 +2939,8 @@ def _build_visualizations_section(
             html += '<!-- Checkboxes will be populated by JavaScript -->\n'
             html += '</div>\n'
             html += '</div>\n'
+
+            html += '</div>\n'  # Close controls-flex-container
 
             # Download options
             html += '<div class="control-group">\n'
@@ -3399,6 +3524,10 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
     html += '<div id="methods-references" class="subtab-content">\n'
     html += '<h3>9. References</h3>\n'
     html += '<div style="font-size: 0.9em; line-height: 1.8;">\n'
+
+    if params.get('build_tree', False):
+        html += '<p>Bianchini, G., &amp; Sánchez-Baracaldo, P. (2024). TreeViewer: Flexible, modular software to visualise and manipulate phylogenetic trees. <em>Ecology and Evolution</em>, 14, e10873. <a href="https://doi.org/10.1002/ece3.10873" target="_blank">https://doi.org/10.1002/ece3.10873</a></p>\n'
+
     html += '<p>Capella-Gutiérrez, S., Silla-Martínez, J. M., &amp; Gabaldón, T. (2009). trimAl: a tool for automated alignment trimming in large-scale phylogenetic analyses. <em>Bioinformatics</em>, 25(15), 1972-1973.</p>\n'
     html += '<p>Flanders Marine Institute (2021). Global Oceans and Seas, version 1. Available online at <a href="https://www.marineregions.org/" target="_blank">https://www.marineregions.org/</a></p>\n'
     html += '<p>Katoh, K., &amp; Standley, D. M. (2013). MAFFT multiple sequence alignment software version 7: improvements in performance and usability. <em>Molecular Biology and Evolution</em>, 30(4), 772-780.</p>\n'

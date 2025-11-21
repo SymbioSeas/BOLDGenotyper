@@ -1,50 +1,60 @@
 {
   "facet_by": "species",
   "facets": {
-    "Sphyrna lewini c1_n217": {
+    "Sphyrna lewini c10_n1": {
       "genotypes": [
-        "consensus_c1_n217"
+        "consensus_c10_n1"
       ],
       "counts": {
-        "consensus_c1_n217": {
-          "Indian Ocean": 18,
+        "consensus_c10_n1": {
+          "North Atlantic Ocean": 1
+        }
+      },
+      "sample_count": 1
+    },
+    "Sphyrna lewini c1_n211": {
+      "genotypes": [
+        "consensus_c1_n211"
+      ],
+      "counts": {
+        "consensus_c1_n211": {
+          "Indian Ocean": 17,
           "South Atlantic Ocean": 3,
           "South China and Easter Archipelagic Seas": 2
         }
       },
-      "sample_count": 23
+      "sample_count": 22
     },
-    "Sphyrna lewini c2_n249": {
+    "Sphyrna lewini c3_n146": {
       "genotypes": [
-        "consensus_c2_n249"
+        "consensus_c3_n146"
       ],
       "counts": {
-        "consensus_c2_n249": {
-          "Indian Ocean": 2,
+        "consensus_c3_n146": {
+          "Indian Ocean": 3,
           "South Atlantic Ocean": 1,
-          "South China and Easter Archipelagic Seas": 29,
           "South Pacific Ocean": 1
         }
       },
-      "sample_count": 33
+      "sample_count": 5
     },
-    "Sphyrna lewini c3_n5": {
+    "Sphyrna lewini c6_n5": {
       "genotypes": [
-        "consensus_c3_n5"
+        "consensus_c6_n5"
       ],
       "counts": {
-        "consensus_c3_n5": {
+        "consensus_c6_n5": {
           "North Atlantic Ocean": 2
         }
       },
       "sample_count": 2
     },
-    "Sphyrna lewini c4_n122": {
+    "Sphyrna lewini c7_n101": {
       "genotypes": [
-        "consensus_c4_n122"
+        "consensus_c7_n101"
       ],
       "counts": {
-        "consensus_c4_n122": {
+        "consensus_c7_n101": {
           "Indian Ocean": 1,
           "North Pacific Ocean": 1,
           "South China and Easter Archipelagic Seas": 8,
@@ -53,24 +63,25 @@
       },
       "sample_count": 12
     },
-    "Sphyrna lewini c6_n1": {
+    "Sphyrna lewini c8_n127": {
       "genotypes": [
-        "consensus_c6_n1"
+        "consensus_c8_n127"
       ],
       "counts": {
-        "consensus_c6_n1": {
-          "North Atlantic Ocean": 1
+        "consensus_c8_n127": {
+          "South China and Easter Archipelagic Seas": 29
         }
       },
-      "sample_count": 1
+      "sample_count": 29
     }
   },
   "all_genotypes": [
-    "consensus_c2_n249",
-    "consensus_c1_n217",
-    "consensus_c4_n122",
-    "consensus_c3_n5",
-    "consensus_c6_n1"
+    "consensus_c8_n127",
+    "consensus_c1_n211",
+    "consensus_c7_n101",
+    "consensus_c3_n146",
+    "consensus_c6_n5",
+    "consensus_c10_n1"
   ],
   "basins": [
     "North Atlantic Ocean",
@@ -89,25 +100,28 @@
     "North Pacific Ocean": "North\nPacific"
   },
   "colors": {
-    "consensus_c2_n249": "#8545C1",
-    "consensus_c1_n217": "#10B3A5",
-    "consensus_c4_n122": "#FFB031",
-    "consensus_c3_n5": "#3874F4",
-    "consensus_c6_n1": "#D975C7"
+    "consensus_c8_n127": "#8545C1",
+    "consensus_c1_n211": "#10B3A5",
+    "consensus_c7_n101": "#FFB031",
+    "consensus_c3_n146": "#3874F4",
+    "consensus_c6_n5": "#D975C7",
+    "consensus_c10_n1": "#0173b2"
   },
   "sample_counts": {
-    "consensus_c1_n217": 23,
-    "consensus_c2_n249": 33,
-    "consensus_c3_n5": 2,
-    "consensus_c4_n122": 12,
-    "consensus_c6_n1": 1
+    "consensus_c10_n1": 1,
+    "consensus_c1_n211": 22,
+    "consensus_c3_n146": 5,
+    "consensus_c6_n5": 2,
+    "consensus_c7_n101": 12,
+    "consensus_c8_n127": 29
   },
   "labels": {
-    "consensus_c2_n249": "Sphyrna lewini c2_n249",
-    "consensus_c1_n217": "Sphyrna lewini c1_n217",
-    "consensus_c4_n122": "Sphyrna lewini c4_n122",
-    "consensus_c3_n5": "Sphyrna lewini c3_n5",
-    "consensus_c6_n1": "Sphyrna lewini c6_n1"
+    "consensus_c3_n146": "Sphyrna lewini c3_n146",
+    "consensus_c1_n211": "Sphyrna lewini c1_n211",
+    "consensus_c7_n101": "Sphyrna lewini c7_n101",
+    "consensus_c6_n5": "Sphyrna lewini c6_n5",
+    "consensus_c8_n127": "Sphyrna lewini c8_n127",
+    "consensus_c10_n1": "Sphyrna lewini c10_n1"
   },
   "plot_type": "faceted_abundance"
 }

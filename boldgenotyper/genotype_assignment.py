@@ -1095,7 +1095,8 @@ def assign_genotypes(
                 writer.writerow({
                     'processid': result['processid'],
                     'consensus_group': result['consensus_group'] or '',
-                    'n_assigned_to_consensus': result.get('n_assigned_to_consensus', ''),                    'identity': round(result['identity'], 6),
+                    'n_assigned_to_consensus': result.get('n_assigned_to_consensus', ''),
+                    'identity': round(result['identity'], 6),
                     'target_identity': round(result['target_identity'], 6),
                     'classic_identity': round(result['classic_identity'], 6),
                     'identity_method': result['identity_method'],
