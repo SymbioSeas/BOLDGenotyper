@@ -21,7 +21,7 @@ import pandas as pd
 from . import (
     utils, config, metadata, geographic, dereplication,
     genotype_assignment, phylogenetics, visualization, reports,
-    cluster_diagnostics,
+    cluster_diagnostics, quality_control, plot_export, comparative_analysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,8 +78,10 @@ def setup_directories(base_output: Path) -> dict:
         'intermediate_geographic': base_output / 'intermediate' / 'geographic',
         'assignments': base_output / 'genotype_assignments',
         'taxonomy': base_output / 'taxonomy',
+        'quality_control': base_output / 'quality_control',
         'phylogenetic': base_output / 'phylogenetic',
         'visualization': base_output / 'visualization',
+        'genotype_plots': base_output / 'visualization' / 'genotype_plots',
         'reports': base_output / 'reports',
     }
 
@@ -96,6 +98,7 @@ def run_pipeline(
     cfg: config.PipelineConfig,
     no_report: bool = False,
     skip_geo: bool = False,
+    export_plot_data: bool = False,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -404,6 +407,53 @@ def run_pipeline(
         return False
 
     # ========================================================================
+    # PHASE 4.5: Quality Control and Contamination Detection
+    # ========================================================================
+    logger.info("")
+    logger.info("PHASE 4.5: Quality Control and Contamination Detection")
+    logger.info("-" * 80)
+
+    try:
+        logger.info("4.5.1: Adding contamination analysis columns to main output...")
+
+        # Add contamination columns to the dataframe
+        df_final_enhanced = quality_control.add_contamination_columns(
+            df_final,
+            group_col="consensus_group",
+            species_col="species",
+            notes_col="notes" if "notes" in df_final.columns else None,
+            majority_threshold=cfg.taxonomy.majority_species_threshold
+        )
+
+        # Save enhanced annotated file
+        annotated_csv_enhanced = dirs['base'] / f"{organism}_annotated.csv"
+        df_final_enhanced.to_csv(annotated_csv_enhanced, index=False, quoting=1)
+        logger.info(f"  ✓ Enhanced annotated dataset with QC columns: {annotated_csv_enhanced}")
+
+        # Update df_final to use the enhanced version
+        df_final = df_final_enhanced
+
+        logger.info("4.5.2: Generating quality control reports...")
+
+        # Generate comprehensive QC report
+        qc_results = quality_control.generate_quality_control_report(
+            df_final,
+            output_dir=dirs['quality_control'],
+            organism=organism,
+            group_col="consensus_group",
+            species_col="species"
+        )
+
+        logger.info(f"  ✓ Quality control reports saved to: {dirs['quality_control']}")
+
+        # Print quality alerts to console
+        quality_control.print_quality_alert(qc_results)
+
+    except Exception as e:
+        logger.warning(f"Quality control analysis failed (non-critical): {e}")
+        logger.debug("QC error details:", exc_info=True)
+
+    # ========================================================================
     # PHASE 5: Phylogenetic Analysis (Optional)
     # ========================================================================
     logger.info("")
@@ -559,7 +609,9 @@ def run_pipeline(
                             facet_by=cfg.visualization.facet_by,
                             map_buffer_degrees=cfg.visualization.map_buffer_degrees,
                             show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
-                            show_scale_bar=cfg.visualization.show_scale_bar
+                            show_scale_bar=cfg.visualization.show_scale_bar,
+                            genotype_plots_dir=dirs['genotype_plots'],
+                            formats=cfg.visualization.figure_format
                         )
                     except Exception as e:
                         logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
@@ -574,7 +626,9 @@ def run_pipeline(
                             genotype_column='consensus_group',
                             species_column='consensus_group_sp',
                             basin_column='ocean_basin',
-                            facet_by=cfg.visualization.facet_by
+                            facet_by=cfg.visualization.facet_by,
+                            genotype_plots_dir=dirs['genotype_plots'],
+                            formats=cfg.visualization.figure_format
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if faceted_bar_data:
@@ -627,6 +681,39 @@ def run_pipeline(
 
     except Exception as e:
         logger.warning(f"Visualization generation encountered errors (non-critical): {e}")
+
+    # ========================================================================
+    # PHASE 6.5: Plot Data Export (Optional)
+    # ========================================================================
+    if export_plot_data:
+        logger.info("")
+        logger.info("PHASE 6.5: Plot Data Export")
+        logger.info("-" * 80)
+
+        try:
+            # Get color map if it exists
+            color_map_path = dirs['assignments'] / f"{organism}_genotype_color_map.csv"
+            genotype_colors = None
+            if color_map_path.exists():
+                color_df = pd.read_csv(color_map_path)
+                genotype_colors = dict(zip(color_df['consensus_group_sp'], color_df['color']))
+
+            # Export plot data and regeneration kit
+            plot_export_results = plot_export.export_plots_complete(
+                df=df_final,
+                output_dir=output_dir,
+                organism=organism,
+                consensus_path=consensus_path if consensus_path.exists() else None,
+                tree_path=Path(tree_path) if tree_path and Path(tree_path).exists() else None,
+                diagnostics_path=diagnostics_csv if diagnostics_csv.exists() else None,
+                color_map=genotype_colors
+            )
+
+            logger.info(f"  ✓ Plot regeneration kit exported to {output_dir / 'plots'}")
+
+        except Exception as e:
+            logger.warning(f"Plot data export failed (non-critical): {e}")
+            logger.debug("Plot export error details:", exc_info=True)
 
     # ========================================================================
     # PHASE 7: Reports
@@ -834,6 +921,226 @@ def main_cluster_diagnostics(argv=None) -> int:
     logger.info("Cluster diagnostics completed.")
     return 0
 
+def main_compare(argv=None) -> int:
+    """
+    CLI entry point for the 'boldgenotyper-compare' command.
+
+    Compare species-level and family-level analyses to detect contamination.
+
+    Example:
+        boldgenotyper-compare \
+            --species-level Sphyrna_lewini_output/ \
+            --family-level Sphyrnidae_output/ \
+            --output comparative_analysis/ \
+            --generate-reassignment-table
+    """
+    parser = argparse.ArgumentParser(
+        prog="boldgenotyper-compare",
+        description="Compare species-level and family-level analyses for contamination detection",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Compare two completed analyses
+  boldgenotyper-compare --species-level Sphyrna_lewini_output/ \
+                         --family-level Sphyrnidae_output/
+
+  # Generate sample reassignment table
+  boldgenotyper-compare --species-level species_analysis/ \
+                         --family-level family_analysis/ \
+                         --generate-reassignment-table
+
+  # Specify custom output directory
+  boldgenotyper-compare --species-level sp/ --family-level fam/ \
+                         --output custom_comparison/
+
+For more information: https://github.com/your-repo/boldgenotyper
+        """
+    )
+
+    parser.add_argument(
+        '--species-level',
+        type=Path,
+        required=True,
+        help='Path to species-level analysis directory or annotated CSV'
+    )
+
+    parser.add_argument(
+        '--family-level',
+        type=Path,
+        required=True,
+        help='Path to family-level analysis directory or annotated CSV'
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=Path,
+        default=Path('comparative_analysis'),
+        help='Output directory for comparison results (default: comparative_analysis/)'
+    )
+
+    parser.add_argument(
+        '--generate-reassignment-table',
+        action='store_true',
+        help='Generate sample-level reassignment table (Table S4 equivalent)'
+    )
+
+    parser.add_argument(
+        '--majority-threshold',
+        type=float,
+        default=0.7,
+        help='Threshold for species-level assignment (default: 0.7)'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default='INFO',
+        help='Logging verbosity (default: INFO)'
+    )
+
+    args = parser.parse_args(argv)
+
+    # Setup logging
+    utils.setup_logging(log_level=args.log_level, log_file=None)
+
+    # Validate inputs
+    if not args.species_level.exists():
+        print(f"Error: Species-level path not found: {args.species_level}", file=sys.stderr)
+        return 1
+
+    if not args.family_level.exists():
+        print(f"Error: Family-level path not found: {args.family_level}", file=sys.stderr)
+        return 1
+
+    # Run comparison
+    try:
+        results = comparative_analysis.compare_analyses(
+            species_path=args.species_level,
+            family_path=args.family_level,
+            output_dir=args.output,
+            generate_reassignment_table=args.generate_reassignment_table,
+            majority_threshold=args.majority_threshold
+        )
+
+        print("\n✓ Comparative analysis complete!")
+        print(f"  Results saved to: {args.output}")
+        print("\nGenerated files:")
+        for key, path in results.items():
+            if isinstance(path, Path):
+                print(f"  - {path.name}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Comparative analysis failed: {e}", exc_info=True)
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
+
+
+def main_sweep(argv=None) -> int:
+    """
+    CLI entry point for the 'boldgenotyper-sweep' command.
+
+    Test multiple parameter values to optimize clustering thresholds.
+
+    Example:
+        boldgenotyper-sweep Sphyrna_lewini.tsv \
+            --thresholds 0.01,0.015,0.02,0.03,0.05 \
+            --output parameter_sweep/
+    """
+    parser = argparse.ArgumentParser(
+        prog="boldgenotyper-sweep",
+        description="Parameter sweep tool for threshold optimization",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Test default threshold range
+  boldgenotyper-sweep data/Sphyrna_lewini.tsv
+
+  # Test custom thresholds
+  boldgenotyper-sweep data/samples.tsv --thresholds 0.005,0.01,0.015,0.02
+
+  # Run in parallel with 8 threads
+  boldgenotyper-sweep data/samples.tsv --threads 8
+
+For more information: https://github.com/your-repo/boldgenotyper
+        """
+    )
+
+    parser.add_argument(
+        'tsv',
+        type=Path,
+        help='Input BOLD TSV file'
+    )
+
+    parser.add_argument(
+        '--thresholds',
+        type=str,
+        default='0.01,0.015,0.02,0.03,0.05',
+        help='Comma-separated threshold values to test (default: 0.01,0.015,0.02,0.03,0.05)'
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=Path,
+        default=Path('parameter_sweep'),
+        help='Output directory (default: parameter_sweep/)'
+    )
+
+    parser.add_argument(
+        '--threads',
+        type=int,
+        default=4,
+        help='Number of parallel threads (default: 4, sequential by default)'
+    )
+
+    parser.add_argument(
+        '--keep-intermediates',
+        action='store_true',
+        help='Keep full output for each threshold (default: False)'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default='INFO',
+        help='Logging verbosity (default: INFO)'
+    )
+
+    args = parser.parse_args(argv)
+
+    # Setup logging
+    utils.setup_logging(log_level=args.log_level, log_file=None)
+
+    # Parse thresholds
+    try:
+        thresholds = [float(t.strip()) for t in args.thresholds.split(',')]
+    except ValueError:
+        print(f"Error: Invalid threshold format: {args.thresholds}", file=sys.stderr)
+        print("  Expected comma-separated floats, e.g.: 0.01,0.015,0.02", file=sys.stderr)
+        return 1
+
+    # Validate input
+    if not args.tsv.exists():
+        print(f"Error: Input TSV not found: {args.tsv}", file=sys.stderr)
+        return 1
+
+    print("="*70)
+    print("BOLDGenotyper Parameter Sweep")
+    print("="*70)
+    print(f"Input: {args.tsv}")
+    print(f"Testing {len(thresholds)} thresholds: {thresholds}")
+    print(f"Output: {args.output}")
+    print("="*70)
+    print()
+
+    print("⚠️  Parameter sweep tool not yet implemented")
+    print("    This feature is scheduled for development")
+    print()
+
+    return 1
+
+
 def main():
     """Main CLI entry point."""
     # Support subcommands such as:
@@ -952,6 +1259,12 @@ For more information: https://github.com/your-repo/boldgenotyper
     )
 
     parser.add_argument(
+        '--export-plot-data',
+        action='store_true',
+        help='Export raw plot data and R regeneration scripts for custom publication figures'
+    )
+
+    parser.add_argument(
         '--no-report',
         action='store_true',
         help='Skip generating HTML summary report'
@@ -1037,7 +1350,8 @@ For more information: https://github.com/your-repo/boldgenotyper
             output_dir=output_dir,
             cfg=cfg,
             no_report=args.no_report,
-            skip_geo=args.no_geo
+            skip_geo=args.no_geo,
+            export_plot_data=args.export_plot_data
         )
 
         return 0 if success else 1

@@ -457,7 +457,7 @@ HTML_REPORT_CSS = """
         position: relative;
         width: 100%;
         max-width: 100%;
-        height: 400px;
+        height: 500px;
         border: 1px solid var(--border-color);
         border-radius: 6px;
         background-color: #f8f9fa;
@@ -1051,7 +1051,7 @@ HTML_REPORT_CSS = """
     }
 
     .genotype-checkboxes {
-        max-height: 300px;
+        max-height: 250px;
         overflow-y: auto;
         border: 1px solid #dee2e6;
         border-radius: 4px;
@@ -1262,6 +1262,140 @@ HTML_REPORT_CSS = """
             display: block !important;
         }
     }
+
+    /* Species Composition Styling */
+    .stats-summary {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }
+
+    .stat-box {
+        flex: 1;
+        min-width: 200px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        text-align: center;
+        border-left: 4px solid #007bff;
+    }
+
+    .stat-box.warning {
+        border-left-color: #ff9800;
+        background: #fff3e0;
+    }
+
+    .stat-box.alert {
+        border-left-color: #f44336;
+        background: #ffebee;
+    }
+
+    .stat-box strong {
+        font-size: 2em;
+        display: block;
+        margin-bottom: 5px;
+        color: var(--text-color);
+    }
+
+    .table-container {
+        overflow-x: auto;
+        margin-top: 20px;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .data-table th {
+        background: #007bff;
+        color: white;
+        padding: 12px;
+        text-align: left;
+        cursor: pointer;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .data-table th:hover {
+        background: #0056b3;
+    }
+
+    .data-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .data-table tbody tr:hover {
+        background: #e3f2fd;
+    }
+
+    .data-table tbody tr.alert-row {
+        background-color: #ffebee;
+    }
+
+    .data-table tbody tr.alert-row:hover {
+        background-color: #ffcdd2;
+    }
+
+    .data-table tbody tr.warning-row {
+        background-color: #fff3e0;
+    }
+
+    .data-table tbody tr.warning-row:hover {
+        background-color: #ffe0b2;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-weight: 600;
+        margin: 2px;
+    }
+
+    .badge-warning {
+        background: #ff9800;
+        color: white;
+    }
+
+    .badge-alert {
+        background: #f44336;
+        color: white;
+    }
+
+    .composition-cell {
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+        max-width: 400px;
+        word-wrap: break-word;
+    }
+
+    .filter-container {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .filter-container label {
+        font-weight: 600;
+        margin-right: 10px;
+    }
+
+    .filter-container select {
+        padding: 8px 12px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 1em;
+        cursor: pointer;
+    }
 </style>
 """
 
@@ -1305,6 +1439,9 @@ HTML_REPORT_TEMPLATE = """
                     </li>
                     <li class="sidebar-nav-item">
                         <a href="#section-taxonomy" class="sidebar-nav-link">Taxonomy</a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="#section-species-composition" class="sidebar-nav-link">Species Composition</a>
                     </li>
                     <li class="sidebar-nav-item">
                         <a href="#section-geographic" class="sidebar-nav-link">Geography</a>
@@ -1483,7 +1620,7 @@ HTML_REPORT_TEMPLATE = """
 
             let html = '<h4>Global Genotype Colors</h4>';
             html += '<p style="font-size: 0.85em; color: #666; margin-bottom: 10px;">Adjust colors for all interactive plots simultaneously</p>';
-            html += '<div style="max-height: 400px; overflow-y: auto;">';
+            html += '<div style="max-height: 300px; overflow-y: auto;">';
 
             const sortedGenotypes = Array.from(allGenotypes).sort();
             sortedGenotypes.forEach(genotype => {
@@ -2202,6 +2339,34 @@ HTML_REPORT_TEMPLATE = """
             link.click();
             document.body.removeChild(link);
         }
+
+        // Species composition table filtering
+        function filterCompositionTable() {
+            const filter = document.getElementById('comp-filter').value;
+            const table = document.getElementById('composition-table');
+            if (!table) return;
+
+            const tbody = table.getElementsByTagName('tbody')[0];
+            if (!tbody) return;
+
+            const rows = tbody.getElementsByTagName('tr');
+
+            for (let row of rows) {
+                const isMulti = row.getAttribute('data-multi') === 'True';
+                const isAmbiguous = row.getAttribute('data-ambiguous') === 'True';
+
+                let show = false;
+                if (filter === 'all') {
+                    show = true;
+                } else if (filter === 'multi' && isMulti) {
+                    show = true;
+                } else if (filter === 'ambiguous' && isAmbiguous) {
+                    show = true;
+                }
+
+                row.style.display = show ? '' : 'none';
+            }
+        }
     </script>
 </body>
 </html>
@@ -2500,6 +2665,129 @@ def _build_taxonomy_section(
             html += f'<p class="alert alert-warning">Could not load species composition: {e}</p>\n'
     else:
         html += '<p class="alert alert-info">Species composition file not found</p>\n'
+
+    html += '</div>\n'  # Close section
+    return html
+
+
+def _build_species_composition_section(
+    results_dir: Path,
+    organism: str
+) -> str:
+    """Build HTML section showing species composition of consensus groups."""
+    html = '<div class="section" id="section-species-composition">\n'
+    html += '<h2>Species Composition of Consensus Groups</h2>\n'
+
+    # Load species composition file
+    comp_file = results_dir / f"{organism}_species_composition.csv"
+
+    if not comp_file.exists():
+        html += '<p class="alert alert-info">Species composition analysis not available. This may be because:</p>\n'
+        html += '<ul>\n'
+        html += '<li>No species information was present in the input metadata</li>\n'
+        html += '<li>The pipeline was run before this feature was added</li>\n'
+        html += '</ul>\n'
+        html += '</div>\n'
+        return html
+
+    try:
+        comp_df = pd.read_csv(comp_file)
+    except Exception as e:
+        html += f'<p class="alert alert-warning">Could not load species composition file: {e}</p>\n'
+        html += '</div>\n'
+        return html
+
+    if len(comp_df) == 0:
+        html += '<p class="alert alert-info">No species composition data available.</p>\n'
+        html += '</div>\n'
+        return html
+
+    # Add explanation
+    html += '<p style="margin-bottom: 20px;">'
+    html += 'This table shows which species names were reported for sequences within each consensus group. '
+    html += 'Multi-species groups may indicate taxonomic uncertainty, cryptic species, or potential misidentifications in the BOLD database.'
+    html += '</p>\n'
+
+    # Summary statistics
+    total_groups = len(comp_df)
+    multi_species = comp_df['is_multi_species'].sum()
+    ambiguous = comp_df['is_ambiguous'].sum()
+
+    html += '<div class="stats-summary">\n'
+    html += f'<div class="stat-box"><strong>{total_groups}</strong><br>Total Consensus Groups</div>\n'
+    html += f'<div class="stat-box warning"><strong>{multi_species}</strong><br>Multi-Species Groups</div>\n'
+    html += f'<div class="stat-box alert"><strong>{ambiguous}</strong><br>Ambiguous Groups (&lt;70% primary)</div>\n'
+    html += '</div>\n'
+
+    # Filter options
+    html += '<div class="filter-container">\n'
+    html += '<label for="comp-filter">Filter:</label>\n'
+    html += '<select id="comp-filter" onchange="filterCompositionTable()">\n'
+    html += '<option value="all">All Groups</option>\n'
+    html += '<option value="multi">Multi-Species Only</option>\n'
+    html += '<option value="ambiguous">Ambiguous Only</option>\n'
+    html += '</select>\n'
+    html += '</div>\n'
+
+    # Download note
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>{}_species_composition.csv</code></p>\n'.format(organism)
+
+    # Interactive table
+    html += '<div class="table-container">\n'
+    html += '<table id="composition-table" class="data-table">\n'
+    html += '<thead><tr>\n'
+    html += '<th>Consensus Group</th>\n'
+    html += '<th>Total Samples</th>\n'
+    html += '<th># Species</th>\n'
+    html += '<th>Primary Species</th>\n'
+    html += '<th>Primary %</th>\n'
+    html += '<th>Species Composition</th>\n'
+    html += '<th>Flags</th>\n'
+    html += '</tr></thead>\n'
+    html += '<tbody>\n'
+
+    for _, row in comp_df.iterrows():
+        # Apply row highlighting for multi-species/ambiguous
+        row_class = ""
+        if row['is_ambiguous']:
+            row_class = ' class="alert-row"'
+        elif row['is_multi_species']:
+            row_class = ' class="warning-row"'
+
+        flags = []
+        if row['is_multi_species']:
+            flags.append('<span class="badge badge-warning">Multi-species</span>')
+        if row['is_ambiguous']:
+            flags.append('<span class="badge badge-alert">Ambiguous</span>')
+        flags_html = " ".join(flags) if flags else "—"
+
+        html += f'<tr{row_class} data-multi="{row["is_multi_species"]}" data-ambiguous="{row["is_ambiguous"]}">\n'
+        html += f'<td><strong>{row["consensus_group"]}</strong></td>\n'
+        html += f'<td>{row["n_total_samples"]}</td>\n'
+        html += f'<td>{row["n_species"]}</td>\n'
+        html += f'<td><em>{row["primary_species"]}</em></td>\n'
+        html += f'<td>{row["primary_species_pct"]}</td>\n'
+        html += f'<td class="composition-cell">{row["species_composition"]}</td>\n'
+        html += f'<td>{flags_html}</td>\n'
+        html += '</tr>\n'
+
+    html += '</tbody>\n'
+    html += '</table>\n'
+    html += '</div>\n'
+
+    # Legend
+    html += '<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">\n'
+    html += '<h4 style="margin-top: 0;">Understanding the Flags:</h4>\n'
+    html += '<ul style="margin-bottom: 0;">\n'
+    html += '<li><strong>Multi-species:</strong> This consensus group contains sequences reported under multiple species names (each >1% abundance)</li>\n'
+    html += '<li><strong>Ambiguous:</strong> No single species accounts for >70% of the sequences in this consensus group</li>\n'
+    html += '</ul>\n'
+    html += '<p style="margin-top: 10px; margin-bottom: 0; font-size: 0.9em; color: #666;">'
+    html += '<strong>Note:</strong> Multi-species or ambiguous groups may indicate taxonomic uncertainty, cryptic species complexes, '
+    html += 'or potential misidentifications in the reference database. Cross-reference with phylogenetic trees and geographic distributions '
+    html += 'to investigate further.'
+    html += '</p>\n'
+    html += '</div>\n'
 
     html += '</div>\n'  # Close section
     return html
@@ -3631,6 +3919,7 @@ def generate_html_report(
         builder.add_section(_build_methods_section(output_dir, organism, version))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
+        builder.add_section(_build_species_composition_section(output_dir / 'genotype_assignments', organism))
         builder.add_section(_build_geographic_section(annotated_df))
 
         # Render HTML

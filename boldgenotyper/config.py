@@ -488,7 +488,7 @@ class VisualizationConfig:
         "#F2CC8F",  # Yellow
     ])
     figure_dpi: int = 300
-    figure_format: List[str] = field(default_factory=lambda: ["png", "pdf"])
+    figure_format: List[str] = field(default_factory=lambda: ["png", "pdf", "svg"])
     map_projection: str = "PlateCarree"
     map_figsize: tuple = (12, 6)
     barplot_figsize: tuple = (10, 6)

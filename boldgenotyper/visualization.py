@@ -40,6 +40,7 @@ Design Specifications:
   * Yellow (#FFB031)
   * Blue (#3874F4)
   * Pink (#D975C7)
+  * Indigo (#132C54)
 - Output formats: PNG (300 DPI) and PDF (vector)
 - Figure size: Publication-ready (e.g., 10x6 inches for maps)
 - Font: Arial or Helvetica, 10-12pt
@@ -79,7 +80,7 @@ import cartopy.feature as cfeature
 logger = logging.getLogger(__name__)
 
 # Define reference color palette
-REFERENCE_COLORS = ['#8545C1', '#10B3A5', '#FFB031', '#3874F4', '#D975C7']
+REFERENCE_COLORS = ['#8545C1', '#10B3A5', '#FFB031', '#3874F4', '#D975C7', "#132C54"]
 
 
 def _get_genotype_order_by_abundance(
@@ -236,7 +237,7 @@ def get_genotype_colors(n_genotypes: int) -> List[str]:
     if n_genotypes <= len(base):
         return base[:n_genotypes]
     try:
-        pal = sns.color_palette("colorblind", max(n_genotypes, 10)).as_hex()
+        pal = sns.color_palette("husl", max(n_genotypes, 10)).as_hex()
     except Exception:
         # fallback to matplotlib tab colors
         pal = list(mcolors.TABLEAU_COLORS.values())
@@ -246,8 +247,82 @@ def get_genotype_colors(n_genotypes: int) -> List[str]:
     remainder = [c for c in pal if c not in base]
     out = (base + remainder)[:n_genotypes]
     return out
-    
+
     pass
+
+
+def _save_individual_facet(
+    fig: plt.Figure,
+    ax: plt.Axes,
+    output_dir: Path,
+    organism: str,
+    facet_value: str,
+    plot_type: str,
+    dpi: int = 300,
+    formats: List[str] = None
+) -> List[Path]:
+    """
+    Save an individual facet/subplot as separate files in multiple formats.
+
+    Parameters
+    ----------
+    fig : plt.Figure
+        Matplotlib figure object (containing all facets)
+    ax : plt.Axes
+        Specific axes object to save as individual file
+    output_dir : Path
+        Directory to save the files
+    organism : str
+        Organism name
+    facet_value : str
+        Value of the facet (e.g., genotype or species name)
+    plot_type : str
+        Type of plot ('map' or 'bar')
+    dpi : int
+        Resolution for PNG output (default: 300)
+    formats : List[str]
+        List of formats to save (default: ["png", "pdf", "svg"])
+
+    Returns
+    -------
+    List[Path]
+        List of paths to saved files
+    """
+    if formats is None:
+        formats = ["png", "pdf", "svg"]
+
+    # Create output directory if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Sanitize facet value for filename (remove spaces, special chars)
+    safe_facet = facet_value.replace(" ", "_").replace("/", "_").replace("\\", "_").replace(".", "_")
+
+    saved_files = []
+
+    for fmt in formats:
+        output_path = output_dir / f"{organism}_{safe_facet}_distribution_{plot_type}.{fmt}"
+
+        try:
+            # Force a draw to ensure extent is calculated
+            fig.canvas.draw()
+
+            # Get the bounding box of the axes in inches
+            bbox = ax.get_tightbbox(fig.canvas.get_renderer())
+            bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
+
+            # Save just this axes with tight bounding box
+            if fmt == "png":
+                fig.savefig(output_path, bbox_inches=bbox_inches, dpi=dpi, pad_inches=0.1)
+            else:
+                fig.savefig(output_path, bbox_inches=bbox_inches, pad_inches=0.1)
+
+            saved_files.append(output_path)
+            logger.debug(f"Saved individual facet: {output_path}")
+
+        except Exception as e:
+            logger.warning(f"Failed to save individual facet '{facet_value}' as {fmt}: {e}")
+
+    return saved_files
 
 
 def plot_distribution_map(
@@ -699,6 +774,8 @@ def plot_distribution_map_faceted(
     map_buffer_degrees: float = 20.0,
     show_unknown_annotation: bool = True,
     show_scale_bar: bool = True,
+    genotype_plots_dir: Optional[Path] = None,
+    formats: Optional[List[str]] = None,
 ) -> None:
     """
     Create distribution map with separate facets.
@@ -954,6 +1031,23 @@ def plot_distribution_map_faceted(
         else:
             ax.set_title(facet_value, fontsize=11, fontweight='bold', loc='left', pad=10)
 
+        # Save individual facet if directory provided
+        if genotype_plots_dir is not None:
+            organism = Path(output_path).stem.split('_distribution_map')[0]
+            # Extract just the organism name, removing any faceting suffix
+            if '_faceted' in organism:
+                organism = organism.replace('_faceted', '')
+            _save_individual_facet(
+                fig=fig,
+                ax=ax,
+                output_dir=genotype_plots_dir,
+                organism=organism,
+                facet_value=facet_value,
+                plot_type="map",
+                dpi=dpi,
+                formats=formats
+            )
+
     plt.tight_layout()
     if out.suffix.lower() == ".png":
         plt.savefig(out, dpi=dpi, bbox_inches="tight")
@@ -973,6 +1067,8 @@ def plot_ocean_basin_abundance_faceted(
     height_per_facet: int = 5,
     dpi: int = 300,
     facet_by: str = "species",
+    genotype_plots_dir: Optional[Path] = None,
+    formats: Optional[List[str]] = None,
 ) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create bar chart with separate facets.
@@ -1151,6 +1247,33 @@ def plot_ocean_basin_abundance_faceted(
         # Set title with italic style for species names, positioned at top-left
         ax.set_title(display_label, fontsize=11, fontweight='bold', fontstyle='italic',
                     loc='left', pad=10)
+
+        # Save individual facet if directory provided (with xlabel hidden)
+        if genotype_plots_dir is not None:
+            organism = Path(output_path).stem.split('_distribution_bar')[0]
+            # Extract just the organism name, removing any faceting suffix
+            if '_faceted' in organism:
+                organism = organism.replace('_faceted', '')
+
+            # Hide x-axis label for individual facet (it's redundant)
+            ax.set_xlabel('')
+
+            _save_individual_facet(
+                fig=fig,
+                ax=ax,
+                output_dir=genotype_plots_dir,
+                organism=organism,
+                facet_value=facet_value,
+                plot_type="bar",
+                dpi=dpi,
+                formats=formats
+            )
+
+    # Restore x-axis labels for combined plot (after all individual facets are saved)
+    if genotype_plots_dir is not None:
+        for idx in range(n_facets):
+            if idx < len(axes_flat):
+                axes_flat[idx].set_xlabel("Ocean basin")
 
     # Hide unused subplots if n_facets is odd
     for idx in range(n_facets, len(axes_flat)):

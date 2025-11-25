@@ -822,6 +822,106 @@ def assign_species_to_consensus(
       consensus_group, cluster_seq_sp, cluster_seq_level, cluster_seq_best_identity, cluster_seq_qcov, cluster_seq_top2_delta, n_top_ties
     """
 
+
+def compute_species_composition(
+    assignments_with_metadata: pd.DataFrame,
+    species_column: str = 'species_name',
+    min_abundance_pct: float = 1.0,
+    logger: Optional[logging.Logger] = None
+) -> pd.DataFrame:
+    """
+    Compute species composition for each consensus group.
+
+    Args:
+        assignments_with_metadata: DataFrame with consensus_group and species columns
+        species_column: Name of the column containing species information
+        min_abundance_pct: Only report species above this percentage (default 1%)
+        logger: Optional logger for warnings
+
+    Returns:
+        DataFrame with columns:
+            - consensus_group: Name of the consensus group
+            - n_total_samples: Total number of samples in this consensus group
+            - n_species: Number of distinct species (above min_abundance_pct)
+            - species_list: Comma-separated list of all significant species
+            - primary_species: Most abundant species
+            - primary_species_pct: Percentage of primary species (as string with %)
+            - species_composition: Detailed breakdown with counts and percentages
+            - is_multi_species: True if >1 species with >min_abundance_pct
+            - is_ambiguous: True if no species has >70% abundance
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    # Check if species column exists
+    if species_column not in assignments_with_metadata.columns:
+        logger.warning(f"Species column '{species_column}' not found in metadata. Returning empty composition.")
+        return pd.DataFrame()
+
+    # Filter to only assigned samples (where consensus_group is not None/NaN)
+    assigned = assignments_with_metadata[
+        assignments_with_metadata['consensus_group'].notna()
+    ].copy()
+
+    if len(assigned) == 0:
+        logger.warning("No assigned samples found for species composition analysis.")
+        return pd.DataFrame()
+
+    # Group by consensus_group and compute composition
+    composition_data = []
+
+    for group, group_df in assigned.groupby('consensus_group'):
+        # Get species counts, handling NaN values
+        species_series = group_df[species_column].fillna('Unknown')
+        species_counts = species_series.value_counts()
+        total_samples = len(group_df)
+
+        # Calculate percentages
+        species_pcts = (species_counts / total_samples * 100)
+
+        # Filter species by min_abundance
+        significant_species = species_pcts[species_pcts >= min_abundance_pct]
+
+        # Build detailed composition string
+        composition_parts = [
+            f"{sp}: {species_counts[sp]} ({species_pcts[sp]:.1f}%)"
+            for sp in significant_species.index
+        ]
+        composition_str = "; ".join(composition_parts)
+
+        # Compute flags
+        is_multi_species = len(significant_species) > 1
+        primary_species = species_counts.index[0]
+        primary_pct = species_pcts.iloc[0]
+        is_ambiguous = primary_pct < 70.0
+
+        composition_data.append({
+            'consensus_group': group,
+            'n_total_samples': total_samples,
+            'n_species': len(significant_species),
+            'species_list': ", ".join(significant_species.index),
+            'primary_species': primary_species,
+            'primary_species_pct': f"{primary_pct:.1f}%",
+            'species_composition': composition_str,
+            'is_multi_species': is_multi_species,
+            'is_ambiguous': is_ambiguous
+        })
+
+    result_df = pd.DataFrame(composition_data).sort_values('n_total_samples', ascending=False)
+
+    # Log summary
+    if len(result_df) > 0:
+        multi_count = result_df['is_multi_species'].sum()
+        ambiguous_count = result_df['is_ambiguous'].sum()
+        logger.info(f"Species composition computed for {len(result_df)} consensus groups")
+        if multi_count > 0:
+            logger.info(f"  - {multi_count} groups contain multiple species")
+        if ambiguous_count > 0:
+            logger.info(f"  - {ambiguous_count} groups are taxonomically ambiguous (<70% primary species)")
+
+    return result_df
+
+
 def assign_genotypes(
     metadata_path: str,
     fasta_path: str,
@@ -1075,6 +1175,50 @@ def assign_genotypes(
     # Write updated metadata
     metadata_df.to_csv(output_path, sep='\t', index=False)
     logger.info(f"Wrote updated metadata to {output_path}")
+
+    # Compute and write species composition
+    # Try to find species column - check common variations
+    species_column = None
+    for col_name in ['species_name', 'species', 'species name']:
+        if col_name in metadata_df.columns:
+            species_column = col_name
+            break
+
+    if species_column:
+        logger.info("Computing species composition for consensus groups...")
+        species_comp_df = compute_species_composition(
+            metadata_df,
+            species_column=species_column,
+            min_abundance_pct=1.0,
+            logger=logger
+        )
+
+        if not species_comp_df.empty:
+            # Determine output path for species composition
+            # Write to same directory as diagnostics file if provided, otherwise use output_path parent
+            if diagnostics_path:
+                diagnostics_path_obj = Path(diagnostics_path)
+                organism_name = diagnostics_path_obj.stem.replace('_diagnostics', '')
+                composition_path = diagnostics_path_obj.parent / f"{organism_name}_species_composition.csv"
+            else:
+                output_path_obj = Path(output_path)
+                organism_name = output_path_obj.stem.replace('_with_genotypes', '')
+                composition_path = output_path_obj.parent / f"{organism_name}_species_composition.csv"
+
+            species_comp_df.to_csv(composition_path, index=False)
+            logger.info(f"Wrote species composition to {composition_path}")
+
+            # Log warnings for multi-species or ambiguous groups
+            multi_species_groups = species_comp_df[species_comp_df['is_multi_species']]
+            if not multi_species_groups.empty:
+                logger.warning(
+                    f"Found {len(multi_species_groups)} consensus groups with multiple species. "
+                    f"See {composition_path} for details."
+                )
+        else:
+            logger.info("No species composition data to write (no assigned samples with species information)")
+    else:
+        logger.info("Species column not found in metadata. Skipping species composition analysis.")
 
     # Write diagnostics if requested
     if diagnostics_path:

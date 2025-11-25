@@ -513,13 +513,6 @@ boldgenotyper data/my_species.tsv \
 Genus_species.tsv
 ```
 
-Examples:
-- ✅ `Sphyrna_lewini.tsv`
-- ✅ `Carcharodon_carcharias.tsv`
-- ✅ `Euprymna_scolopes.tsv`
-- ❌ `shark_data.tsv` (no organism info)
-- ❌ `Sphyrna-lewini.tsv` (hyphens instead of underscores)
-
 **Override organism name** with `--organism` flag if needed:
 ```bash
 boldgenotyper data/bold_download_2024.tsv --organism Sphyrna_lewini
@@ -640,8 +633,8 @@ boldgenotyper --help
 │   ├── {organism}_tree_relabeled.nwk     # Tree with readable tip labels (for tree editors like TreeViewer)
 │   ├── {organism}_tree.png               # Tree visualization
 │   └── {organism}_tree.pdf
-│   # 💡 Open _relabeled.nwk files in tree editors such as TreeViewer (https://treeviewer.org/),
-│   #    FigTree, or iTOL for re-rooting, customization, and publication-quality figures
+│   #	Open _relabeled.nwk files in tree editors such as TreeViewer (https://treeviewer.org/),
+│   #   FigTree, or iTOL for re-rooting, customization, and publication-quality figures
 │
 ├── visualization/
 │   ├── {organism}_identity_distribution.*       # Identity histogram

@@ -62,6 +62,9 @@ setup(
             "ete3>=3.1.2",
             "dendropy>=4.5.0",
         ],
+        "config": [
+            "pyyaml>=5.0.0",
+        ],
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=3.0.0",
@@ -70,6 +73,7 @@ setup(
             "mypy>=0.950",
             "sphinx>=4.5.0",
             "sphinx-rtd-theme>=1.0.0",
+            "pyyaml>=5.0.0",
         ],
         "all": [
             "geopandas>=0.10.0",
@@ -77,6 +81,7 @@ setup(
             "shapely>=1.8.0",
             "ete3>=3.1.2",
             "dendropy>=4.5.0",
+            "pyyaml>=5.0.0",
         ],
     },
 
@@ -84,6 +89,8 @@ setup(
     entry_points={
         'console_scripts': [
             'boldgenotyper=boldgenotyper.cli:main',
+            'boldgenotyper-compare=boldgenotyper.cli:main_compare',
+            'boldgenotyper-sweep=boldgenotyper.cli:main_sweep',
         ],
     },
 
