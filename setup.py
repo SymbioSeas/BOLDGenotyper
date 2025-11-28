@@ -39,7 +39,7 @@ setup(
     # Python version requirement
     python_requires=">=3.8",
 
-    # Core dependencies (minimal install)
+    # Core dependencies
     install_requires=[
         "biopython>=1.79",
         "pandas>=1.3.0",
@@ -48,22 +48,19 @@ setup(
         "matplotlib>=3.4.0",
         "seaborn>=0.11.0",
         "jinja2>=3.0.0",
+        "pyyaml>=5.0.0",
         "edlib>=1.3.9",  # Fast edit distance for genotype assignment
+        # Geographic analysis (required for plot regeneration)
+        "geopandas>=0.10.0",
+        "cartopy>=0.20.0",
+        "shapely>=1.8.0",
     ],
 
     # Optional dependencies for specific features
     extras_require={
-        "geo": [
-            "geopandas>=0.10.0",
-            "cartopy>=0.20.0",
-            "shapely>=1.8.0",
-        ],
         "phylo": [
             "ete3>=3.1.2",
             "dendropy>=4.5.0",
-        ],
-        "config": [
-            "pyyaml>=5.0.0",
         ],
         "dev": [
             "pytest>=7.0.0",
@@ -73,15 +70,10 @@ setup(
             "mypy>=0.950",
             "sphinx>=4.5.0",
             "sphinx-rtd-theme>=1.0.0",
-            "pyyaml>=5.0.0",
         ],
         "all": [
-            "geopandas>=0.10.0",
-            "cartopy>=0.20.0",
-            "shapely>=1.8.0",
             "ete3>=3.1.2",
             "dendropy>=4.5.0",
-            "pyyaml>=5.0.0",
         ],
     },
 
@@ -91,6 +83,7 @@ setup(
             'boldgenotyper=boldgenotyper.cli:main',
             'boldgenotyper-compare=boldgenotyper.cli:main_compare',
             'boldgenotyper-sweep=boldgenotyper.cli:main_sweep',
+            'boldgenotyper-enrich=boldgenotyper.cli:main_enrich',
         ],
     },
 

@@ -1226,14 +1226,12 @@ def assign_consensus_taxonomy(
     
         
     # pick winner per group (majority species; else fall back to genus
-    def _choose(group_df: pd.DataFrame) -> Dict[str, str]:
-        gname = group_df[group_col].iloc[0]
-        
+    def _choose(gname: str, group_df: pd.DataFrame) -> Dict[str, str]:
         # sort by count desc, then species name for determinism
         gsorted = group_df.sort_values(["n", species_col], ascending=[False, True])
         top = gsorted.iloc[0]
         tie = (gsorted["n"].values == top["n"]).sum() > 1
-        
+
         # majority species?
         if (not tie) and (top["frac"] > majority_threshold) and isinstance(top[species_col], str) and top[species_col]:
             assigned_sp = top[species_col]
@@ -1248,7 +1246,7 @@ def assign_consensus_taxonomy(
             assigned_sp = members.value_counts().idxmax() if not members.empty else ""
             level = "genus" if assigned_sp else "unassigned"
             notes = "tie or not majority; fell back to genus" if assigned_sp else "no genus available"
-            
+
         return {
             "consensus_group": gname,
             "assigned_sp": assigned_sp,
@@ -1256,16 +1254,13 @@ def assign_consensus_taxonomy(
             "assignment_notes": notes,
         }
 
-    # pick winner per group (kept as nested function so it can see df/*_col/threshold)
-    def _choose_series(g: pd.DataFrame) -> pd.Series:
-        d = _choose(g)  # your existing function that returns a dict
-        return pd.Series(d, dtype="object")
-    
-    assign = (
-        counts.groupby(group_col, group_keys=False)   # <- prevents group col duplication
-              .apply(_choose_series)
-              .reset_index(drop=True)
-    )
+    # Build assignment list by iterating through groups explicitly
+    assign_list = []
+    for gname, group_df in counts.groupby(group_col):
+        result = _choose(gname, group_df)
+        assign_list.append(result)
+
+    assign = pd.DataFrame(assign_list)
     
     # Merge in majority_fraction
     assign = assign.merge(

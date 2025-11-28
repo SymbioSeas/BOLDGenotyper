@@ -601,6 +601,169 @@ def assign_ocean_basins(
     return df_copy
 
 
+def assign_regions_from_shapefile(
+    df: pd.DataFrame,
+    shapefile_path: Union[str, Path],
+    shapefile_field: str = 'name',
+    output_column: str = 'geographic_region',
+    lat_col: str = 'lat',
+    lon_col: str = 'lon'
+) -> pd.DataFrame:
+    """
+    Assign geographic regions from a custom shapefile.
+
+    This function works with any shapefile containing geographic polygons
+    (ocean basins, ecoregions, watersheds, etc.) and assigns region labels
+    to samples based on their coordinates.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with latitude/longitude coordinates
+    shapefile_path : str or Path
+        Path to shapefile containing geographic regions
+    shapefile_field : str, default='name'
+        Name of shapefile attribute containing region labels
+    output_column : str, default='geographic_region'
+        Name of output column for region assignments
+    lat_col : str, default='lat'
+        Name of latitude column
+    lon_col : str, default='lon'
+        Name of longitude column
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of input DataFrame with added region assignment column
+
+    Examples
+    --------
+    >>> # For freshwater basins
+    >>> df = assign_regions_from_shapefile(
+    ...     df,
+    ...     shapefile_path='freshwater_basins.shp',
+    ...     shapefile_field='basin_name',
+    ...     output_column='freshwater_basin'
+    ... )
+
+    >>> # For ecoregions
+    >>> df = assign_regions_from_shapefile(
+    ...     df,
+    ...     shapefile_path='ecoregions.shp',
+    ...     shapefile_field='ECO_NAME',
+    ...     output_column='ecoregion'
+    ... )
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Assigning regions from shapefile: {shapefile_path}")
+    logger.info(f"  Shapefile field: {shapefile_field}")
+    logger.info(f"  Output column: {output_column}")
+
+    # Check for geopandas
+    try:
+        import geopandas as gpd
+        from shapely.geometry import Point
+    except ImportError:
+        raise GeospatialLibraryError(
+            "geopandas is required for custom shapefile support. "
+            "Install with: pip install geopandas"
+        )
+
+    # Create a copy to avoid modifying original
+    df_copy = df.copy()
+
+    # Check if coordinate columns exist
+    if lat_col not in df_copy.columns or lon_col not in df_copy.columns:
+        logger.warning(f"Coordinate columns not found: {lat_col}, {lon_col}")
+        df_copy[output_column] = 'Unknown'
+        return df_copy
+
+    # Filter to samples with valid coordinates
+    has_coords = df_copy[lat_col].notna() & df_copy[lon_col].notna()
+    n_with_coords = has_coords.sum()
+
+    if n_with_coords == 0:
+        logger.warning("No samples with coordinates found")
+        df_copy[output_column] = 'Unknown'
+        return df_copy
+
+    logger.info(f"Processing {n_with_coords} samples with coordinates")
+
+    # Load shapefile
+    try:
+        regions_gdf = gpd.read_file(shapefile_path)
+        logger.info(f"Loaded shapefile with {len(regions_gdf)} regions")
+    except Exception as e:
+        logger.error(f"Failed to load shapefile: {e}")
+        df_copy[output_column] = 'Unknown'
+        return df_copy
+
+    # Check if shapefile field exists
+    if shapefile_field not in regions_gdf.columns:
+        available_fields = ', '.join(regions_gdf.columns)
+        raise ValueError(
+            f"Field '{shapefile_field}' not found in shapefile. "
+            f"Available fields: {available_fields}"
+        )
+
+    # Ensure shapefile is in WGS84 (EPSG:4326)
+    if regions_gdf.crs is not None and regions_gdf.crs.to_epsg() != 4326:
+        logger.info(f"Reprojecting shapefile from {regions_gdf.crs} to EPSG:4326")
+        regions_gdf = regions_gdf.to_crs(epsg=4326)
+
+    # Create points from coordinates
+    try:
+        points_gdf = create_points_geodataframe(
+            df_copy[has_coords],
+            lat_col=lat_col,
+            lon_col=lon_col
+        )
+    except Exception as e:
+        logger.error(f"Failed to create point geometries: {e}")
+        df_copy[output_column] = 'Unknown'
+        return df_copy
+
+    # Perform spatial join
+    try:
+        joined = gpd.sjoin(
+            points_gdf,
+            regions_gdf[[shapefile_field, 'geometry']],
+            how='left',
+            predicate='within'
+        )
+
+        # Extract region assignments
+        region_assignments = joined[shapefile_field].fillna('Unknown')
+
+        # Assign to output dataframe
+        df_copy.loc[has_coords, output_column] = region_assignments.values
+
+        # Fill samples without coordinates
+        df_copy.loc[~has_coords, output_column] = 'Unknown'
+
+        # Report statistics
+        n_assigned = (df_copy[output_column] != 'Unknown').sum()
+        n_unassigned = (df_copy[output_column] == 'Unknown').sum()
+        unique_regions = df_copy[df_copy[output_column] != 'Unknown'][output_column].nunique()
+
+        logger.info(f"Region assignment complete:")
+        logger.info(f"  {n_assigned} samples assigned to {unique_regions} regions")
+        logger.info(f"  {n_unassigned} samples could not be assigned")
+
+        # Show top regions
+        if n_assigned > 0:
+            top_regions = df_copy[df_copy[output_column] != 'Unknown'][output_column].value_counts().head(5)
+            logger.info(f"  Top regions: {', '.join(top_regions.index)}")
+
+    except Exception as e:
+        logger.error(f"Spatial join failed: {e}")
+        df_copy[output_column] = 'Unknown'
+
+    return df_copy
+
+
 def get_basin_counts(
     df: pd.DataFrame,
     basin_col: str = 'ocean_basin',

@@ -22,13 +22,38 @@ from . import (
     utils, config, metadata, geographic, dereplication,
     genotype_assignment, phylogenetics, visualization, reports,
     cluster_diagnostics, quality_control, plot_export, comparative_analysis,
+    divergence_analysis, parameter_sweep, geographic_enhancement,
+    metadata_enrichment, popgen_export,
 )
 
 logger = logging.getLogger(__name__)
 
 
 def extract_organism_from_path(path: Path) -> str:
-    """Extract organism name from TSV filename."""
+    """
+    Extract organism name from TSV filename and sanitize for consistent file naming.
+
+    This function extracts the organism name from common BOLD filename patterns
+    and ensures the result uses underscores instead of spaces for consistent
+    output file naming across all modules.
+
+    Parameters
+    ----------
+    path : Path
+        Path to input TSV file
+
+    Returns
+    -------
+    str
+        Sanitized organism name with underscores (no spaces)
+
+    Examples
+    --------
+    >>> extract_organism_from_path(Path("Sphyrna_lewini.tsv"))
+    'Sphyrna_lewini'
+    >>> extract_organism_from_path(Path("Great White Shark.tsv"))
+    'Great_White_Shark'
+    """
     # Remove extension and path
     name = path.stem
     # Common patterns: "Genus_species.tsv", "Genus.tsv", "genus_species_data.tsv"
@@ -36,8 +61,12 @@ def extract_organism_from_path(path: Path) -> str:
     parts = name.split('_')
     if len(parts) >= 2 and parts[1] not in ['data', 'bold', 'samples', 'sequences']:
         # Likely "Genus_species" format
-        return '_'.join(parts[:2])
-    return parts[0].capitalize()
+        result = '_'.join(parts[:2])
+    else:
+        result = parts[0].capitalize()
+
+    # Always sanitize to ensure spaces are replaced with underscores
+    return utils.sanitize_filename(result)
 
 
 def remove_empty_directories(base_path: Path) -> None:
@@ -79,6 +108,8 @@ def setup_directories(base_output: Path) -> dict:
         'assignments': base_output / 'genotype_assignments',
         'taxonomy': base_output / 'taxonomy',
         'quality_control': base_output / 'quality_control',
+        'divergence_analysis': base_output / 'divergence_analysis',
+        'geographic_analysis': base_output / 'geographic_analysis',
         'phylogenetic': base_output / 'phylogenetic',
         'visualization': base_output / 'visualization',
         'genotype_plots': base_output / 'visualization' / 'genotype_plots',
@@ -99,6 +130,7 @@ def run_pipeline(
     no_report: bool = False,
     skip_geo: bool = False,
     export_plot_data: bool = False,
+    export_popgen_formats: Optional[list] = None,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -117,6 +149,10 @@ def run_pipeline(
         Skip HTML report generation (default: False)
     skip_geo : bool, optional
         Skip geographic analysis (default: False)
+    export_plot_data : bool, optional
+        Export raw plot data and R regeneration scripts (default: False)
+    export_popgen_formats : list, optional
+        List of population genetics formats to export (default: None)
 
     Returns
     -------
@@ -164,21 +200,21 @@ def run_pipeline(
         parsed_tsv = dirs['intermediate'] / "01_parsed_metadata.tsv"
         df.to_csv(parsed_tsv, sep='\t', index=False)
 
-        # Filter coordinates
-        logger.info("1.2: Filtering coordinate quality...")
-        df_filtered = metadata.filter_by_coordinate_quality(df, cfg.geographic)
-        logger.info(f"  ✓ Retained {len(df_filtered)}/{len(df)} samples after coordinate filtering")
+        # Mark coordinate quality (don't filter - keep all samples for genotyping)
+        logger.info("1.2: Marking coordinate quality...")
+        df = metadata.mark_coordinate_quality(df)
 
-        filtered_tsv = dirs['intermediate'] / "02_filtered_metadata.tsv"
-        df_filtered.to_csv(filtered_tsv, sep='\t', index=False)
+        # Save metadata with quality markers
+        marked_tsv = dirs['intermediate'] / "02_marked_metadata.tsv"
+        df.to_csv(marked_tsv, sep='\t', index=False)
 
-        # Assign ocean basins
+        # Assign ocean basins (only to samples with geographic quality)
         logger.info("1.3: Assigning ocean basins...")
         geo_analysis_performed = False  # Track whether geographic analysis was successful
 
         if skip_geo:
             logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
-            df_with_basins = df_filtered.copy()
+            df_with_basins = df.copy()
             df_with_basins['ocean_basin'] = 'Unknown'
         elif not cfg.geographic.goas_shapefile_path.exists():
             logger.warning(f"  ⚠ GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
@@ -190,20 +226,44 @@ def run_pipeline(
             logger.warning("  4. Ensure the .shp file is named: goas_v01.shp")
             logger.warning("")
             logger.warning("  Pipeline will continue without geographic analysis...")
-            df_with_basins = df_filtered.copy()
+            df_with_basins = df.copy()
             df_with_basins['ocean_basin'] = 'Unknown'
         else:
             try:
                 goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
-                df_with_basins = geographic.assign_ocean_basins(
-                    df_filtered, goas_data=goas_data, coord_col="coord"
-                )
-                logger.info(f"  ✓ Assigned ocean basins to samples")
-                geo_analysis_performed = True  # Geographic analysis was successful
+
+                # Only assign basins to samples with geographic quality coordinates
+                df_geo_quality = df[df['is_geographic_quality']].copy()
+                logger.info(f"  → {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
+
+                if len(df_geo_quality) > 0:
+                    df_geo_assigned = geographic.assign_ocean_basins(
+                        df_geo_quality, goas_data=goas_data, coord_col="coord"
+                    )
+
+                    # Merge back with full dataset
+                    df_with_basins = df.copy()
+                    # First set all to Unknown
+                    df_with_basins['ocean_basin'] = 'Unknown'
+                    # Then update with assigned basins for geographic-quality samples
+                    df_with_basins.loc[df_with_basins['processid'].isin(df_geo_assigned['processid']), 'ocean_basin'] = \
+                        df_with_basins.loc[df_with_basins['processid'].isin(df_geo_assigned['processid'])].merge(
+                            df_geo_assigned[['processid', 'ocean_basin']], on='processid', how='left', suffixes=('', '_new')
+                        )['ocean_basin_new']
+
+                    n_assigned = (df_with_basins['ocean_basin'] != 'Unknown').sum()
+                    logger.info(f"  ✓ Assigned ocean basins to {n_assigned} samples")
+                    logger.info(f"  → {len(df) - n_assigned} samples marked as 'Unknown' (centroid/missing coordinates)")
+                    geo_analysis_performed = True
+                else:
+                    logger.warning("  ⚠ No samples with geographic-quality coordinates")
+                    df_with_basins = df.copy()
+                    df_with_basins['ocean_basin'] = 'Unknown'
+
             except Exception as e:
                 logger.error(f"  ✗ Failed to load GOaS data: {e}")
                 logger.warning("  Pipeline will continue without geographic analysis...")
-                df_with_basins = df_filtered.copy()
+                df_with_basins = df.copy()
                 df_with_basins['ocean_basin'] = 'Unknown'
 
         basins_tsv = dirs['intermediate_geographic'] / "samples_with_ocean_basins.tsv"
@@ -221,13 +281,14 @@ def run_pipeline(
     logger.info("-" * 80)
 
     try:
-        # Generate FASTA
+        # Generate FASTA from ALL samples (including those with centroid coordinates)
         logger.info("2.1: Generating FASTA from sequences...")
+        logger.info(f"  Using all {len(df_with_basins)} samples (including those with centroid coordinates)")
         logger.info(f"  Minimum sequence length: {cfg.dereplication.min_sequence_length} bp")
         fasta_records = []
         skipped_count = 0
         skipped_reasons = {}
-        for _, row in df_filtered.iterrows():
+        for _, row in df_with_basins.iterrows():
             header = f"{organism}_{row['processid']}.COI-5P"
             sequence = row['nuc']
 
@@ -284,11 +345,12 @@ def run_pipeline(
 
     try:
         logger.info("3.1: Assigning samples to genotypes...")
+        logger.info(f"  Using all {len(df_with_basins)} samples (including those with centroid coordinates)")
         annotated_tsv = dirs['intermediate_assignments'] / f"{organism}_with_genotypes.tsv"
         diagnostics_csv = dirs['assignments'] / f"{organism}_diagnostics.csv"
 
         stats = genotype_assignment.assign_genotypes(
-            metadata_path=str(filtered_tsv),
+            metadata_path=str(basins_tsv),  # Use full dataset with ocean basins
             fasta_path=str(fasta_path),
             consensus_path=str(consensus_path),
             output_path=str(annotated_tsv),
@@ -454,6 +516,40 @@ def run_pipeline(
         logger.debug("QC error details:", exc_info=True)
 
     # ========================================================================
+    # PHASE 4.7: Geographic Analysis Enhancement
+    # ========================================================================
+    if geo_analysis_performed:
+        logger.info("")
+        logger.info("PHASE 4.7: Geographic Analysis Enhancement")
+        logger.info("-" * 80)
+
+        try:
+            logger.info("4.7.1: Assessing geographic data coverage and quality...")
+
+            # Run geographic enhancement
+            geo_enhancement_results = geographic_enhancement.enhance_geographic_analysis(
+                df=df_final,
+                output_dir=dirs['geographic_analysis'],
+                organism=organism,
+                goas_data=goas_data if 'goas_data' in locals() else None
+            )
+
+            # Update df_final with enhanced geographic data
+            if 'enhanced_df' in geo_enhancement_results:
+                df_final = geo_enhancement_results['enhanced_df']
+
+                # Re-save the enhanced annotated CSV
+                annotated_csv_enhanced = dirs['base'] / f"{organism}_annotated.csv"
+                df_final.to_csv(annotated_csv_enhanced, index=False, quoting=1)
+                logger.info(f"  ✓ Updated annotated dataset with geographic enhancements")
+
+            logger.info(f"  ✓ Geographic enhancement complete: {dirs['geographic_analysis']}")
+
+        except Exception as e:
+            logger.warning(f"Geographic enhancement failed (non-critical): {e}")
+            logger.debug("Geographic enhancement error details:", exc_info=True)
+
+    # ========================================================================
     # PHASE 5: Phylogenetic Analysis (Optional)
     # ========================================================================
     logger.info("")
@@ -525,6 +621,40 @@ def run_pipeline(
             logger.warning(f"Phylogenetic analysis failed (non-critical): {e}")
     else:
         logger.info("  ⊘ Phylogenetic tree building disabled in config")
+
+    # ========================================================================
+    # PHASE 5.5: Divergence Analysis
+    # ========================================================================
+    logger.info("")
+    logger.info("PHASE 5.5: Divergence Analysis")
+    logger.info("-" * 80)
+
+    try:
+        logger.info("5.5.1: Calculating pairwise divergence between consensus groups...")
+
+        # Check if we have the required files
+        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_consensus_taxonomy.csv"
+
+        if consensus_path.exists() and taxonomy_csv_path.exists():
+            # Run divergence analysis
+            divergence_results = divergence_analysis.generate_divergence_analysis(
+                consensus_fasta=consensus_path,
+                taxonomy_csv=taxonomy_csv_path,
+                output_dir=dirs['divergence_analysis'],
+                organism=organism
+            )
+
+            logger.info(f"  ✓ Divergence analysis complete: {dirs['divergence_analysis']}")
+
+            # Print summary to console
+            divergence_analysis.print_divergence_summary(divergence_results)
+
+        else:
+            logger.warning("  ⊘ Skipping divergence analysis (consensus or taxonomy files not found)")
+
+    except Exception as e:
+        logger.warning(f"Divergence analysis failed (non-critical): {e}")
+        logger.debug("Divergence analysis error details:", exc_info=True)
 
     # ========================================================================
     # PHASE 6: Visualization
@@ -714,6 +844,31 @@ def run_pipeline(
         except Exception as e:
             logger.warning(f"Plot data export failed (non-critical): {e}")
             logger.debug("Plot export error details:", exc_info=True)
+
+    # ========================================================================
+    # PHASE 6.6: Population Genetics Export (Optional)
+    # ========================================================================
+    if export_popgen_formats:
+        logger.info("")
+        logger.info("PHASE 6.6: Population Genetics Export")
+        logger.info("-" * 80)
+
+        try:
+            # Export to population genetics software formats
+            popgen_results = popgen_export.export_population_genetics_formats(
+                df=df_final,
+                consensus_fasta_path=consensus_path,
+                output_dir=output_dir,
+                organism=organism,
+                formats=export_popgen_formats,
+                group_by='consensus_group'
+            )
+
+            logger.info(f"  ✓ Population genetics formats exported to {output_dir / 'exports'}")
+
+        except Exception as e:
+            logger.warning(f"Population genetics export failed (non-critical): {e}")
+            logger.debug("Popgen export error details:", exc_info=True)
 
     # ========================================================================
     # PHASE 7: Reports
@@ -1125,20 +1280,237 @@ For more information: https://github.com/your-repo/boldgenotyper
         print(f"Error: Input TSV not found: {args.tsv}", file=sys.stderr)
         return 1
 
-    print("="*70)
-    print("BOLDGenotyper Parameter Sweep")
-    print("="*70)
-    print(f"Input: {args.tsv}")
-    print(f"Testing {len(thresholds)} thresholds: {thresholds}")
-    print(f"Output: {args.output}")
-    print("="*70)
-    print()
+    # Run parameter sweep
+    try:
+        results = parameter_sweep.run_parameter_sweep(
+            tsv_path=args.tsv,
+            thresholds=thresholds,
+            output_dir=args.output,
+            organism=None,  # Will be inferred
+            threads=args.threads,
+            keep_intermediates=args.keep_intermediates
+        )
 
-    print("⚠️  Parameter sweep tool not yet implemented")
-    print("    This feature is scheduled for development")
-    print()
+        print("\n✓ Parameter sweep complete!")
+        recommended = results.get('recommended_threshold', 'N/A')
+        if isinstance(recommended, (int, float)):
+            print(f"  Recommended threshold: {recommended:.3f}")
+        else:
+            print(f"  Recommended threshold: {recommended}")
+        print(f"  Results saved to: {args.output}")
+        print("\nKey files:")
+        print(f"  - {args.output / 'recommendations.txt'}")
+        print(f"  - {args.output / 'sweep_summary.csv'}")
+        print(f"  - {args.output / 'elbow_plot.pdf'}")
+        print()
 
-    return 1
+        return 0
+
+    except Exception as e:
+        logger.error(f"Parameter sweep failed: {e}", exc_info=True)
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
+
+
+def main_enrich(argv=None) -> int:
+    """
+    CLI entry point for the 'boldgenotyper-enrich' command.
+
+    Add custom metadata or update geographic assignments in BOLDGenotyper output.
+
+    Example:
+        boldgenotyper-enrich Sphyrnidae_annotated.csv \
+            --add-metadata my_sampling_data.csv \
+            --join-on processid \
+            --output enriched_analysis/
+    """
+    parser = argparse.ArgumentParser(
+        prog="boldgenotyper-enrich",
+        description="Add custom metadata or update geographic assignments",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Add custom metadata
+  boldgenotyper-enrich Sphyrnidae_annotated.csv \
+                       --add-metadata sampling_data.csv \
+                       --output enriched_analysis/
+
+  # Update geographic regions with custom shapefile (e.g., freshwater basins)
+  boldgenotyper-enrich Salmo_trutta_annotated.csv \
+                       --custom-shp freshwater_basins.shp \
+                       --shp-field basin_name \
+                       --geo-category freshwater_basin \
+                       --output enriched_analysis/
+
+  # Add custom grouping variable
+  boldgenotyper-enrich Sphyrnidae_annotated.csv \
+                       --add-metadata expedition_data.csv \
+                       --add-grouping sampling_expedition \
+                       --output enriched_analysis/
+
+  # Combine multiple operations
+  boldgenotyper-enrich Sphyrnidae_annotated.csv \
+                       --add-metadata data1.csv \
+                       --add-metadata data2.csv \
+                       --recalculate-geography \
+                       --add-grouping expedition \
+                       --output enriched_analysis/
+
+For more information: https://github.com/your-repo/boldgenotyper
+        """
+    )
+
+    parser.add_argument(
+        'input_csv',
+        type=Path,
+        help='Input annotated CSV from BOLDGenotyper output'
+    )
+
+    parser.add_argument(
+        '--add-metadata',
+        type=Path,
+        action='append',
+        dest='metadata_files',
+        help='CSV file(s) with additional metadata to merge (can specify multiple times)'
+    )
+
+    parser.add_argument(
+        '--join-on',
+        type=str,
+        default='processid',
+        help='Column name to join metadata on (default: processid)'
+    )
+
+    parser.add_argument(
+        '--custom-shp',
+        type=Path,
+        dest='shapefile_path',
+        help='Path to custom shapefile for geographic region assignment '
+             '(ocean basins, freshwater basins, ecoregions, etc.)'
+    )
+
+    parser.add_argument(
+        '--shp-field',
+        type=str,
+        default='name',
+        dest='shapefile_field',
+        help='Name of shapefile attribute containing region labels (default: name). '
+             'Use this to specify which field in your shapefile contains the region names.'
+    )
+
+    parser.add_argument(
+        '--geo-category',
+        type=str,
+        default='ocean_basin',
+        dest='geo_category',
+        help='Name for geographic category (default: ocean_basin). '
+             'Examples: "ecoregion", "watershed", "freshwater_basin", "biome"'
+    )
+
+    parser.add_argument(
+        '--add-grouping',
+        type=str,
+        dest='grouping_column',
+        help='Column name to use for custom grouping (e.g., sampling_expedition)'
+    )
+
+    parser.add_argument(
+        '--recalculate-geography',
+        action='store_true',
+        help='Recalculate all geographic summaries with updated data'
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=Path,
+        default=Path('enriched_analysis'),
+        help='Output directory for enriched data (default: enriched_analysis/)'
+    )
+
+    parser.add_argument(
+        '--organism',
+        type=str,
+        help='Organism name (extracted from filename if not provided)'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default='INFO',
+        help='Logging verbosity (default: INFO)'
+    )
+
+    args = parser.parse_args(argv)
+
+    # Setup logging
+    utils.setup_logging(log_level=args.log_level, log_file=None)
+
+    # Validate input
+    if not args.input_csv.exists():
+        print(f"Error: Input CSV not found: {args.input_csv}", file=sys.stderr)
+        return 1
+
+    # Check that at least one enrichment operation is specified
+    if not any([args.metadata_files, args.shapefile_path,
+                args.grouping_column, args.recalculate_geography]):
+        print("Error: No enrichment operations specified.", file=sys.stderr)
+        print("  Specify at least one of:", file=sys.stderr)
+        print("    --add-metadata", file=sys.stderr)
+        print("    --custom-shp", file=sys.stderr)
+        print("    --add-grouping", file=sys.stderr)
+        print("    --recalculate-geography", file=sys.stderr)
+        return 1
+
+    # Validate metadata files
+    if args.metadata_files:
+        for metadata_file in args.metadata_files:
+            if not metadata_file.exists():
+                print(f"Error: Metadata file not found: {metadata_file}", file=sys.stderr)
+                return 1
+
+    # Validate shapefile
+    if args.shapefile_path and not args.shapefile_path.exists():
+        print(f"Error: Shapefile not found: {args.shapefile_path}", file=sys.stderr)
+        return 1
+
+    # Run enrichment
+    try:
+        results = metadata_enrichment.enrich_metadata(
+            input_csv=args.input_csv,
+            output_dir=args.output,
+            metadata_files=args.metadata_files,
+            join_column=args.join_on,
+            shapefile_path=args.shapefile_path,
+            shapefile_field=args.shapefile_field,
+            geo_category=args.geo_category,
+            grouping_column=args.grouping_column,
+            recalculate_geography=args.recalculate_geography,
+            organism=args.organism
+        )
+
+        print("\n✓ Metadata enrichment complete!")
+        print(f"  Enriched CSV: {results['enriched_csv']}")
+        print(f"  Report: {results['report']}")
+        print(f"\nEnrichment summary:")
+        print(f"  Samples: {results['n_samples']}")
+        print(f"  Columns: {results['n_columns']}")
+        print(f"  Merge operations: {results['merge_operations']}")
+        print(f"  Geographic regions updated: {results['region_updated']}")
+        print(f"  Grouping added: {results['grouping_added']}")
+        print(f"  Visualizations generated: {results['plots_generated']}")
+
+        if results['plot_paths']:
+            print("\nGenerated plots:")
+            for plot_name, plot_path in results['plot_paths'].items():
+                print(f"  - {plot_path.name}")
+        print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Metadata enrichment failed: {e}", exc_info=True)
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
 
 
 def main():
@@ -1265,6 +1637,16 @@ For more information: https://github.com/your-repo/boldgenotyper
     )
 
     parser.add_argument(
+        '--export-format',
+        nargs='+',
+        choices=['arlequin', 'popart', 'dnasp', 'generic', 'all'],
+        help='Export genotypes to population genetics software formats. '
+             'Options: arlequin (Arlequin), popart (PopART/NEXUS), dnasp (DnaSP), '
+             'generic (CSV/FASTA), all (export all formats). '
+             'Example: --export-format arlequin popart'
+    )
+
+    parser.add_argument(
         '--no-report',
         action='store_true',
         help='Skip generating HTML summary report'
@@ -1297,8 +1679,10 @@ For more information: https://github.com/your-repo/boldgenotyper
         print(f"Error: Input TSV file not found: {args.tsv}", file=sys.stderr)
         return 1
 
-    # Determine organism name
+    # Determine organism name and sanitize for consistent file naming
     organism = args.organism if args.organism else extract_organism_from_path(args.tsv)
+    # Always sanitize to ensure consistent filenames (replace spaces with underscores)
+    organism = utils.sanitize_filename(organism)
 
     # Determine output directory
     output_dir = args.output if args.output else Path(f"{organism}_output")
@@ -1351,7 +1735,8 @@ For more information: https://github.com/your-repo/boldgenotyper
             cfg=cfg,
             no_report=args.no_report,
             skip_geo=args.no_geo,
-            export_plot_data=args.export_plot_data
+            export_plot_data=args.export_plot_data,
+            export_popgen_formats=args.export_format
         )
 
         return 0 if success else 1

@@ -111,7 +111,11 @@ def export_plot_data(
 
         # 3. Distribution bar data (absolute)
         bar_abs_path = plot_data_dir / "distribution_bar_absolute.csv"
-        basin_counts[['ocean_basin', 'consensus_group', 'species', 'n_samples']].to_csv(bar_abs_path, index=False)
+        # Include consensus_group_sp if it exists
+        abs_cols = ['ocean_basin', 'consensus_group', 'species', 'n_samples']
+        if 'consensus_group_sp' in basin_counts.columns:
+            abs_cols.append('consensus_group_sp')
+        basin_counts[abs_cols].to_csv(bar_abs_path, index=False)
         exported_files['distribution_bar_absolute'] = bar_abs_path
 
     # 4. Identity distribution data
@@ -125,10 +129,19 @@ def export_plot_data(
         if 'is_low_confidence' in diag_df.columns:
             identity_cols.append('is_low_confidence')
 
-        # Merge with species info
+        # Merge with species info and consensus_group_sp if available
+        merge_cols = ['processid']
         if 'species' in df.columns:
-            diag_df = diag_df.merge(df[['processid', 'species']], on='processid', how='left')
+            merge_cols.append('species')
             identity_cols.append('species')
+        if 'consensus_group_sp' in df.columns:
+            merge_cols.append('consensus_group_sp')
+            identity_cols.append('consensus_group_sp')
+
+        if len(merge_cols) > 1:
+            # Need to get consensus_group_sp from main df by matching on processid + consensus_group
+            merge_df = df[merge_cols + ['consensus_group']].drop_duplicates()
+            diag_df = diag_df.merge(merge_df, on=['processid', 'consensus_group'], how='left', suffixes=('', '_y'))
 
         identity_path = plot_data_dir / "identity_distribution.csv"
         diag_df[identity_cols].to_csv(identity_path, index=False)
@@ -231,13 +244,22 @@ def create_plot_config(
     # Default configuration
     config = {
         'general': {
-            'output_format': ['pdf', 'png'],
-            'dpi': 300,
-            'width_inches': 10,
-            'height_inches': 8
+            'output_format': ['pdf', 'png', 'svg'],  # Include SVG for vector graphics
+            'dpi': 600,  # High resolution for publication
+            'width_inches': 10,  # Default width (can be overridden per plot)
+            'height_inches': 8   # Default height (can be overridden per plot)
         },
         'colors': color_map or {},
+        'filters': {
+            'include_genotypes': [],
+            'exclude_genotypes': [],
+            'exclude_unknown_geography': False  # Set to true to omit 'Unknown' ocean basins
+        },
         'map': {
+            # Map-specific dimensions (overrides general settings)
+            'width_inches': 12,
+            'height_inches': 8,
+            # Projection settings
             'projection': 'robinson',
             'center_longitude': 0,
             'show_country_borders': True,
@@ -248,11 +270,21 @@ def create_plot_config(
             'point_alpha': 0.7,
             'point_size_range': [2, 10],
             'point_stroke': 0.5,
+            # Legend settings
             'show_legend': True,
-            'legend_position': 'right',
-            'legend_title': 'Genotype'
+            'legend_position': 'bottom',  # Options: right, left, top, bottom
+            'legend_title': 'Genotype',
+            # Gridline settings for lat/lon coordinates
+            'show_gridlines': True,
+            'gridline_labels': True,  # Show lat/lon coordinate labels
+            'gridline_alpha': 0.5,
+            'gridline_style': '--'
         },
         'bars': {
+            # Bar chart dimensions (overrides general settings)
+            'width_inches': 10,
+            'height_inches': 6,
+            # Layout
             'orientation': 'vertical',
             'bar_width': 0.8,
             'show_percentages': True,
@@ -261,9 +293,19 @@ def create_plot_config(
             'facet_scales': 'free_y',
             'axis_text_angle': 45,
             'axis_text_size': 10,
-            'color_palette_type': 'discrete'
+            'color_palette_type': 'discrete',
+            # Bar styling
+            'bar_edgecolor': 'black',  # Outline color for bars
+            'bar_edgewidth': 0.5,      # Outline width for bars
+            'grid_behind_bars': True,  # Place grid behind bars (not on top)
+            # Recalculate relative abundance for filtered genotypes
+            'recalculate_relative': True  # Recalculate percentages to sum to 100% after filtering
         },
         'identity': {
+            # Identity plot dimensions (overrides general settings)
+            'width_inches': 8,
+            'height_inches': 6,
+            # Histogram settings
             'binwidth': 0.5,
             'show_mean': True,
             'show_median': True,
@@ -324,9 +366,9 @@ def create_plot_config(
     return config_path
 
 
-def create_r_scripts(output_dir: Path, organism: str) -> Dict[str, Path]:
+def create_python_scripts(output_dir: Path, organism: str) -> Dict[str, Path]:
     """
-    Create R scripts for regenerating plots.
+    Create Python scripts for regenerating plots.
 
     Parameters
     ----------
@@ -350,33 +392,43 @@ def create_r_scripts(output_dir: Path, organism: str) -> Dict[str, Path]:
 
 ## Quick Start
 
-1. Install required R packages:
-   ```R
-   install.packages(c("ggplot2", "dplyr", "yaml", "sf", "rnaturalearth",
-                      "rnaturalearthdata", "ape", "ggtree"))
+1. Ensure you have the boldgenotyper conda environment activated:
+   ```bash
+   conda activate boldgenotyper
    ```
 
 2. Modify `plot_config.yaml` to customize colors, sizes, labels
 
 3. Run all scripts:
    ```bash
-   bash regenerate_all.sh
+   python regenerate_all.py
    ```
 
 4. Or run individual scripts:
    ```bash
-   Rscript regenerate_map.R
-   Rscript regenerate_bars.R
-   Rscript regenerate_identity.R
+   python regenerate_map.py
+   python regenerate_bars.py
+   python regenerate_identity.py
    ```
 
 ## Files
 
-- **regenerate_all.sh**: Run all regeneration scripts
-- **regenerate_map.R**: Regenerate distribution maps
-- **regenerate_bars.R**: Regenerate bar charts
-- **regenerate_identity.R**: Regenerate identity histograms
-- **requirements.txt**: R package dependencies
+- **regenerate_all.py**: Run all regeneration scripts
+- **regenerate_map.py**: Regenerate distribution maps
+- **regenerate_bars.py**: Regenerate bar charts
+- **regenerate_identity.py**: Regenerate identity histograms
+
+## Requirements
+
+All required packages are included in the boldgenotyper conda environment:
+- matplotlib
+- seaborn
+- pandas
+- geopandas
+- cartopy
+- pyyaml
+
+No additional installation needed!
 
 ## Customization
 
@@ -386,6 +438,7 @@ Edit `plot_config.yaml` to change:
 - Map projections and styling
 - Bar chart orientations
 - Histogram bin widths
+- Genotype filters (include/exclude specific consensus groups)
 
 ## Output
 
@@ -398,62 +451,180 @@ replacing the original plots.
         f.write(readme_content)
     scripts['readme'] = readme_path
 
-    # Bash script to run all
-    regenerate_all = """#!/bin/bash
-# Regenerate all plots from exported data
+    # Master regeneration script
+    regenerate_all = """#!/usr/bin/env python3
+\"\"\"Regenerate all plots from exported data.\"\"\"
 
-set -e  # Exit on error
+import sys
+from pathlib import Path
 
-echo "Regenerating all plots..."
-echo ""
+# Add parent directory to path to import boldgenotyper
+parent_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(parent_dir))
 
-if ! command -v Rscript &> /dev/null; then
-    echo "Error: Rscript not found. Please install R."
-    exit 1
-fi
+from boldgenotyper.plot_regeneration import regenerate_all_plots
 
-cd "$(dirname "$0")"
+def main():
+    # Base directory is parent of scripts/
+    scripts_dir = Path(__file__).parent
+    base_dir = scripts_dir.parent
 
-echo "1. Regenerating distribution maps..."
-Rscript regenerate_map.R
+    print("Regenerating all plots...")
+    print()
 
-echo ""
-echo "2. Regenerating bar charts..."
-Rscript regenerate_bars.R
+    try:
+        results = regenerate_all_plots(base_dir)
 
-echo ""
-echo "3. Regenerating identity distribution..."
-Rscript regenerate_identity.R
+        total_files = sum(len(files) for files in results.values())
+        print()
+        print(f"✓ All plots regenerated successfully! ({total_files} files)")
+        print(f"  Check {base_dir / 'visualization'} for updated plots")
 
-echo ""
-echo "✓ All plots regenerated successfully!"
-echo "  Check ../visualization/ for updated plots"
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
 """
 
-    regenerate_all_path = scripts_dir / "regenerate_all.sh"
+    regenerate_all_path = scripts_dir / "regenerate_all.py"
     with open(regenerate_all_path, 'w') as f:
         f.write(regenerate_all)
     regenerate_all_path.chmod(0o755)  # Make executable
     scripts['regenerate_all'] = regenerate_all_path
 
-    # R requirements
-    requirements_r = """# Required R packages for plot regeneration
-ggplot2>=3.3.0
-dplyr>=1.0.0
-yaml>=2.2.0
-sf>=1.0.0
-rnaturalearth>=0.3.0
-rnaturalearthdata>=0.1.0
-ape>=5.5
-ggtree>=3.0.0
+    # Individual script templates
+    map_script = """#!/usr/bin/env python3
+\"\"\"Regenerate distribution map from exported data.\"\"\"
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import boldgenotyper
+parent_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(parent_dir))
+
+from boldgenotyper.plot_regeneration import regenerate_distribution_map
+
+def main():
+    # Base directory is parent of scripts/
+    scripts_dir = Path(__file__).parent
+    base_dir = scripts_dir.parent
+
+    print("Regenerating distribution map...")
+
+    try:
+        output_files = regenerate_distribution_map(base_dir)
+        print()
+        print(f"✓ Generated {len(output_files)} file(s)")
+        for f in output_files:
+            print(f"  - {f}")
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
 """
 
-    requirements_path = scripts_dir / "requirements.txt"
-    with open(requirements_path, 'w') as f:
-        f.write(requirements_r)
-    scripts['requirements'] = requirements_path
+    bars_script = """#!/usr/bin/env python3
+\"\"\"Regenerate bar charts from exported data.\"\"\"
 
-    logger.info(f"  ✓ Created R regeneration scripts in {scripts_dir}")
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import boldgenotyper
+parent_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(parent_dir))
+
+from boldgenotyper.plot_regeneration import regenerate_bar_charts
+
+def main():
+    # Base directory is parent of scripts/
+    scripts_dir = Path(__file__).parent
+    base_dir = scripts_dir.parent
+
+    print("Regenerating bar charts...")
+
+    try:
+        output_files = regenerate_bar_charts(base_dir)
+        print()
+        print(f"✓ Generated {len(output_files)} file(s)")
+        for f in output_files:
+            print(f"  - {f}")
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+"""
+
+    identity_script = """#!/usr/bin/env python3
+\"\"\"Regenerate identity distribution histogram from exported data.\"\"\"
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import boldgenotyper
+parent_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(parent_dir))
+
+from boldgenotyper.plot_regeneration import regenerate_identity_distribution
+
+def main():
+    # Base directory is parent of scripts/
+    scripts_dir = Path(__file__).parent
+    base_dir = scripts_dir.parent
+
+    print("Regenerating identity distribution...")
+
+    try:
+        output_files = regenerate_identity_distribution(base_dir)
+        print()
+        print(f"✓ Generated {len(output_files)} file(s)")
+        for f in output_files:
+            print(f"  - {f}")
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+"""
+
+    # Write Python scripts
+    map_path = scripts_dir / "regenerate_map.py"
+    with open(map_path, 'w') as f:
+        f.write(map_script)
+    map_path.chmod(0o755)
+    scripts['regenerate_map'] = map_path
+
+    bars_path = scripts_dir / "regenerate_bars.py"
+    with open(bars_path, 'w') as f:
+        f.write(bars_script)
+    bars_path.chmod(0o755)
+    scripts['regenerate_bars'] = bars_path
+
+    identity_path = scripts_dir / "regenerate_identity.py"
+    with open(identity_path, 'w') as f:
+        f.write(identity_script)
+    identity_path.chmod(0o755)
+    scripts['regenerate_identity'] = identity_path
+
+    logger.info(f"  ✓ Created Python regeneration scripts in {scripts_dir}")
 
     return scripts
 
@@ -633,8 +804,8 @@ def export_plots_complete(
     config_path = create_plot_config(output_dir, organism, color_map=color_map)
     results['config'] = config_path
 
-    # Create R scripts
-    scripts = create_r_scripts(output_dir, organism)
+    # Create Python scripts
+    scripts = create_python_scripts(output_dir, organism)
     results['scripts'] = scripts
 
     # Create README

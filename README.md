@@ -23,6 +23,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - [Usage Guide](#usage-guide)
 - [Parameter Reference](#parameter-reference)
 - [Output Files](#output-files)
+- [Customizing Plots for Publication](#customizing-plots-for-publication)
 - [Biological Context for Threshold Selection](#biological-context-for-threshold-selection)
 - [Assumptions and Limitations](#assumptions-and-limitations)
 - [Troubleshooting](#troubleshooting)
@@ -55,77 +56,93 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 
 ## Installation
 
-### Prerequisites
+### Quick Install (Recommended)
 
-**Required Software**:
-- **Python**: ≥3.8
-- **MAFFT**: v7+ (multiple sequence alignment)
-- **trimAl**: v1.4+ (alignment trimming)
-- **FastTree**: v2+ (optional, for phylogenetic trees)
+BOLDGenotyper uses conda to manage all dependencies, including external tools (MAFFT, trimAl, FastTree) and Python packages. One command installs everything!
 
-**Recommended**: Conda/Mamba for dependency management
-
-### Option 1: Install from Source (Recommended for Development)
-
+**For Mac/Linux**:
 ```bash
 # Clone the repository
 git clone https://github.com/SymbioSeas/BOLDGenotyper.git
 cd BOLDGenotyper
 
-# Create and activate conda environment (includes all dependencies)
+# Run installation script (installs everything automatically)
+bash install.sh
+```
+
+**For Windows**:
+```bash
+# Clone the repository
+git clone https://github.com/SymbioSeas/BOLDGenotyper.git
+cd BOLDGenotyper
+
+# Run installation script
+install.bat
+```
+
+**Manual Installation** (if scripts don't work):
+```bash
+# Clone the repository
+git clone https://github.com/SymbioSeas/BOLDGenotyper.git
+cd BOLDGenotyper
+
+# Create and activate conda environment (includes ALL dependencies)
 conda env create -f environment.yml
 conda activate boldgenotyper
 
-# Install package in editable mode
+# Install package
 pip install -e .
 
 # Verify installation
 boldgenotyper --version
-
-# Alternative: If you have the old boldgenotyper_env.yml file
-# conda env create -f boldgenotyper_env.yml
-# conda activate depredation  # Note: old env name
 ```
 
-### Option 2: Install with pip (Coming Soon)
+### What Gets Installed
+
+The conda environment includes:
+
+**External Tools**:
+- MAFFT (multiple sequence alignment)
+- trimAl (alignment trimming)
+- FastTree (phylogenetic tree building)
+
+**Python Packages**:
+- Core: biopython, pandas, numpy, scipy, matplotlib, seaborn
+- Geographic: geopandas, cartopy, shapely (for maps and ocean basin analysis)
+- Utilities: pyyaml, jinja2
+
+**No additional installation needed!** All dependencies are managed by conda.
+
+### Verifying Installation
+
+```bash
+# Activate environment
+conda activate boldgenotyper
+
+# Check boldgenotyper
+boldgenotyper --version
+
+# Check external tools
+mafft --version
+trimal --version
+fasttree 2>&1 | head -1
+```
+
+### System Requirements
+
+- **Operating Systems**: macOS, Linux, Windows (via WSL2 or native conda)
+- **Python**: 3.8 - 3.13
+- **RAM**: 4GB minimum, 8GB+ recommended for large datasets
+- **Disk**: ~2GB for conda environment + space for your data
+
+### Install from PyPI (Coming Soon)
 
 ```bash
 # Once published to PyPI
 pip install boldgenotyper
 
-# Install with geographic analysis support
-pip install boldgenotyper[geo]
-
-# Install with all optional dependencies
-pip install boldgenotyper[all]
-```
-
-### Verifying External Dependencies
-
-```bash
-# Check MAFFT
-mafft --version
-
-# Check trimAl
-trimal --version
-
-# Check FastTree (optional, for phylogenetic analysis)
-fasttree 2>&1 | head -1
-
-# Verify Python packages
-python -c "import Bio, pandas, scipy, matplotlib, seaborn; print('Core packages OK')"
-
-# Verify geographic packages (if installed)
-python -c "import geopandas, cartopy, shapely; print('Geographic packages OK')"
-```
-
-### Installing External Tools with Conda
-
-If you don't have MAFFT, trimAl, or FastTree installed:
-
-```bash
-conda activate boldgenotyper
-conda install -c bioconda mafft trimal fasttree
+# Optional: phylogenetic tools
+pip install boldgenotyper[phylo]
 ```
 
 ---
@@ -284,6 +301,44 @@ Results are organized in the output directory:
 open {organism}_output/{organism}_summary_report.html
 ```
 
+### Step 4: Advanced Workflows (Optional)
+
+**Optimize clustering threshold** with parameter sweep:
+```bash
+boldgenotyper-sweep data/Sphyrna_lewini.tsv \
+  --thresholds 0.01,0.015,0.02,0.03,0.05 \
+  --output parameter_sweep/
+```
+
+**Compare species vs. family analysis** for contamination detection:
+```bash
+# First run both analyses
+boldgenotyper data/Sphyrna_lewini.tsv --output Sphyrna_lewini_output/
+boldgenotyper data/Sphyrnidae.tsv --output Sphyrnidae_output/
+
+# Then compare
+boldgenotyper-compare \
+  --species-level Sphyrna_lewini_output/ \
+  --family-level Sphyrnidae_output/ \
+  --output comparative_analysis/
+```
+
+**Enrich with custom metadata or geographic regions**:
+```bash
+# Add custom shapefile (e.g., freshwater basins for non-marine organisms)
+boldgenotyper-enrich Salmonidae_annotated.csv \
+  --custom-shp data/freshwater_basins.shp \
+  --shp-field basin_name \
+  --geo-category freshwater_basin \
+  --output enriched_analysis/
+
+# Add custom metadata
+boldgenotyper-enrich Sphyrnidae_annotated.csv \
+  --add-metadata sampling_data.csv \
+  --join-on processid \
+  --output enriched_analysis/
+```
+
 ---
 
 ## Obtaining Input Data from BOLD
@@ -374,11 +429,15 @@ BOLDGenotyper runs a comprehensive 7-phase pipeline:
 
 ### Phase 1: Data Loading and Quality Control
 - Parses BOLD TSV file and validates required columns
-- Filters samples based on coordinate quality (excludes country centroids)
-- Assigns samples to ocean basins using GOaS shapefile (if available)
-- Logs summary statistics (total samples, samples with coordinates, basin assignments)
+- **Marks coordinate quality** (identifies centroid, missing, or invalid coordinates)
+  - Samples with centroid/missing coordinates are **retained for genotyping**
+  - Quality markers used only for geographic analysis (not for filtering)
+- Assigns ocean basins using GOaS shapefile (only to samples with high-quality coordinates)
+  - Samples with centroid/missing coordinates marked as "Unknown" ocean basin
+- Logs summary statistics (total samples, geographic quality samples, basin assignments)
 
 ### Phase 2: Sequence Dereplication
+- **Uses ALL samples** (including those with centroid coordinates)
 - Filters sequences by length (default: ≥400 bp) and N content (default: ≤10%)
 - Aligns sequences with MAFFT (auto algorithm selection)
 - Trims alignment with trimAl (automated1 method)
@@ -390,13 +449,14 @@ BOLDGenotyper runs a comprehensive 7-phase pipeline:
 **Output**: Consensus FASTA file with representative genotypes
 
 ### Phase 3: Genotype Assignment
+- **Uses ALL samples** (including those with centroid coordinates)
 - Computes edit distance between each sample and all consensus sequences
 - Assigns samples to best-matching genotype above similarity threshold (default: 50%)
 - Flags ambiguous assignments (tie margin default: 0.003)
 - Flags low-confidence assignments (below tie threshold: 0.95)
 - Generates diagnostic CSV with identity scores and runner-up matches
 
-**Output**: Annotated dataset with genotype assignments and diagnostics
+**Output**: Annotated dataset with genotype assignments and diagnostics (all samples included)
 
 ### Phase 4: Taxonomic Analysis
 - Aggregates species names within each consensus group
@@ -438,6 +498,49 @@ BOLDGenotyper runs a comprehensive 7-phase pipeline:
 - Export functionality (PNG, SVG, CSV)
 
 **Output**: Comprehensive HTML report, assignment summary CSVs
+
+### Advanced Workflows
+
+Beyond the main pipeline, BOLDGenotyper provides three additional commands for specialized analyses:
+
+#### Parameter Sweep (`boldgenotyper-sweep`)
+
+Systematically tests multiple clustering thresholds to identify the optimal value for your dataset. The sweep analyzes:
+- Number of consensus groups vs. threshold
+- Assignment success rate vs. threshold
+- Sample clustering stability across thresholds
+- Identity score distributions
+- Automatic elbow-point detection
+
+**When to use**: Before running your final analysis, especially for taxonomic groups where the appropriate threshold is uncertain.
+
+**Output**: Threshold recommendations, stability plots, group membership tracking
+
+See `parameter_sweep/README.md` for interpretation guide.
+
+#### Comparative Analysis (`boldgenotyper-compare`)
+
+Compares species-level and family-level analyses to detect potential contamination, mislabeling, or cryptic species. Identifies samples that cluster with unexpected species at the family level.
+
+**When to use**: Quality control for published datasets, contamination detection, multi-species studies
+
+**Output**: Comparison metrics, genotype crosswalk table, sample reassignment recommendations, publication-ready methods text
+
+See `comparative_analysis/README.md` for detailed interpretation.
+
+#### Metadata Enrichment (`boldgenotyper-enrich`)
+
+Adds custom metadata, applies custom shapefiles for geographic analysis, or recalculates summaries with updated data. Enables:
+- Custom geographic regions (freshwater basins, ecoregions, etc.) for non-marine organisms
+- Integration of field sampling data
+- Custom population groupings
+- Updated visualizations with enriched data
+
+**When to use**: Non-marine organisms requiring custom shapefiles, integration with field metadata, custom population definitions
+
+**Output**: Enriched dataset, updated visualizations, geographic summaries
+
+See `CUSTOM_SHAPEFILES_GUIDE.md` for detailed instructions.
 
 ---
 
@@ -606,6 +709,81 @@ boldgenotyper --help
 
 **Recommendation**: Set to number of available cores (check with `nproc` or `sysctl -n hw.ncpu`)
 
+### Advanced Command Parameters
+
+#### `boldgenotyper-sweep` Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tsv` | Path | Required | Input BOLD TSV file |
+| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test |
+| `--output` | Path | parameter_sweep/ | Output directory |
+| `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
+| `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |
+| `--log-level` | String | INFO | Logging verbosity |
+
+**Example**:
+```bash
+boldgenotyper-sweep data/samples.tsv \
+  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
+  --threads 8 \
+  --output sweep_results/
+```
+
+#### `boldgenotyper-compare` Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--species-level` | Path | Required | Path to species-level analysis directory or annotated CSV |
+| `--family-level` | Path | Required | Path to family-level analysis directory or annotated CSV |
+| `--output` | Path | comparative_analysis/ | Output directory |
+| `--generate-reassignment-table` | Flag | False | Generate detailed sample-level reassignment table |
+| `--majority-threshold` | Float | 0.7 | Threshold for majority species assignment |
+| `--log-level` | String | INFO | Logging verbosity |
+
+**Example**:
+```bash
+boldgenotyper-compare \
+  --species-level Sphyrna_lewini_output/ \
+  --family-level Sphyrnidae_output/ \
+  --generate-reassignment-table \
+  --output comparison_results/
+```
+
+#### `boldgenotyper-enrich` Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `input_csv` | Path | Required | Input annotated CSV from BOLDGenotyper output |
+| `--add-metadata` | Path | None | CSV file(s) with additional metadata (can specify multiple times) |
+| `--join-on` | String | processid | Column name to join metadata on |
+| `--custom-shp` | Path | None | Custom shapefile for geographic region assignment |
+| `--shp-field` | String | name | Shapefile attribute field containing region labels |
+| `--geo-category` | String | ocean_basin | Name for geographic category (e.g., "freshwater_basin", "ecoregion") |
+| `--add-grouping` | String | None | Column name for custom grouping variable |
+| `--recalculate-geography` | Flag | False | Recalculate all geographic summaries |
+| `--output` | Path | enriched_analysis/ | Output directory |
+| `--organism` | String | Auto | Organism name (extracted from filename if not provided) |
+| `--log-level` | String | INFO | Logging verbosity |
+
+**Example**:
+```bash
+# Custom shapefile for freshwater organisms
+boldgenotyper-enrich Salmonidae_annotated.csv \
+  --custom-shp data/hydrobasins.shp \
+  --shp-field HYBAS_ID \
+  --geo-category freshwater_basin \
+  --output enriched/
+
+# Add field sampling metadata
+boldgenotyper-enrich Sphyrnidae_annotated.csv \
+  --add-metadata field_data.csv \
+  --add-metadata lab_results.csv \
+  --join-on processid \
+  --add-grouping expedition_id \
+  --output enriched/
+```
+
 ---
 
 ## Output Files
@@ -667,8 +845,14 @@ boldgenotyper --help
 - `consensus_group`: Assigned genotype (e.g., "Consensus_1")
 - `identity`: Sequence identity to assigned genotype (0-1)
 - `assignment_status`: "assigned", "low_confidence", "tie", "below_threshold", "no_sequence"
-- `ocean_basin`: Assigned ocean basin (e.g., "North Atlantic Ocean")
+- `ocean_basin`: Assigned ocean basin (e.g., "North Atlantic Ocean" or "Unknown")
 - `species`: Original BOLD species name
+- **Coordinate quality markers** (new):
+  - `has_centroid_coords`: True if coordinates are country/region centroids
+  - `has_missing_coords`: True if latitude or longitude is missing
+  - `has_zero_coords`: True if coordinates are [0, 0]
+  - `has_invalid_coords`: True if coordinates are out of valid range
+  - `is_geographic_quality`: True if coordinates suitable for ocean basin assignment
 - Original BOLD metadata columns preserved
 
 #### 2. `{organism}_summary_report.html`
@@ -733,6 +917,222 @@ All visualization outputs are provided in multiple formats:
 
 ---
 
+## Customizing Plots for Publication
+
+BOLDGenotyper exports all plot data and Python scripts for easy customization without re-running the entire analysis.
+
+**📚 Additional Resources:**
+- **Auto-generated guide**: After running the pipeline, see `{organism}_output/plots/README.md` for analysis-specific instructions
+- **Interactive tutorial**: See `notebooks/06_plot_customization_tutorial.ipynb` for detailed examples, common errors, and troubleshooting
+
+### Plot Regeneration Directory
+
+After running the pipeline, you'll find:
+
+```
+{organism}_output/plots/
+├── plot_config.yaml          # Customization settings (colors, sizes, formats)
+├── README.md                 # Quick start guide
+├── data/                     # Exported plot data (CSV files)
+│   ├── distribution_map.csv
+│   ├── distribution_bar_relative.csv
+│   ├── distribution_bar_absolute.csv
+│   ├── identity_distribution.csv
+│   └── genotype_colors.csv
+└── scripts/                  # Python regeneration scripts
+    ├── regenerate_all.py     # Run all plots at once
+    ├── regenerate_map.py     # Regenerate distribution map
+    ├── regenerate_bars.py    # Regenerate bar charts
+    └── regenerate_identity.py # Regenerate identity histogram
+```
+
+### Quick Start: Customize Your Plots
+
+**1. Edit the configuration file:**
+
+```bash
+cd {organism}_output/plots
+nano plot_config.yaml  # or use any text editor
+```
+
+**2. Modify settings:**
+
+```yaml
+# Example customizations
+general:
+  output_format: ['pdf', 'png']
+  dpi: 600  # High resolution for publication
+  width_inches: 12
+  height_inches: 8
+
+colors:
+  Consensus_1_S._lewini: "#E41A1C"    # Custom hex color
+  Consensus_2_S._lewini: "#377EB8"
+  Consensus_3_S._lewini: "#4DAF4A"
+
+filters:
+  include_genotypes: []              # Leave empty to include all
+  exclude_genotypes: ["Consensus_10"] # Hide specific genotypes
+
+map:
+  projection: "mollweide"             # robinson, mollweide, mercator
+  center_longitude: -180              # Center on Pacific Ocean
+  point_alpha: 0.8
+  point_size_range: [3, 12]
+  legend_position: "right"
+
+bars:
+  orientation: "horizontal"           # vertical or horizontal
+  bar_width: 0.7
+
+identity:
+  binwidth: 1.0
+  show_mean: true
+  show_median: true
+  x_limits: [95, 100]                # Focus on high-identity range
+```
+
+**3. Regenerate plots:**
+
+```bash
+# Regenerate all plots with new settings
+python scripts/regenerate_all.py
+
+# Or regenerate individual plots
+python scripts/regenerate_map.py
+python scripts/regenerate_bars.py
+python scripts/regenerate_identity.py
+```
+
+**4. Find updated plots:**
+
+Regenerated plots are saved to `{organism}_output/visualization/` with `_custom` suffix:
+- `distribution_map_custom.pdf`
+- `distribution_bar_relative_custom.pdf`
+- `identity_distribution_custom.pdf`
+
+### Customization Options
+
+**Colors**: Specify hex colors for each genotype
+**Figure size**: Control width, height, DPI for different journals
+**Map projection**: Robinson, Mollweide, Mercator, PlateCarree
+**Filters**: Include or exclude specific genotypes from plots
+**Bar orientation**: Vertical or horizontal stacking
+**Histogram binning**: Adjust bin width and statistical overlays
+
+### Requirements
+
+All required packages are in the boldgenotyper environment - no additional installation needed!
+- matplotlib, seaborn (plotting)
+- geopandas, cartopy (maps)
+- pandas (data handling)
+- pyyaml (configuration)
+
+### Advanced Customization and Troubleshooting
+
+For more detailed guidance including:
+- Common YAML syntax errors and solutions
+- 5+ example configurations (publication-quality, Pacific-focused, filtered genotypes, etc.)
+- Complete parameter reference for all settings
+- Three methods to regenerate plots (CLI, Python module, individual functions)
+- Troubleshooting guide
+
+See the **interactive tutorial**: `notebooks/06_plot_customization_tutorial.ipynb`
+
+---
+
+### Advanced Command Outputs
+
+#### Parameter Sweep Output (`parameter_sweep/`)
+
+```
+parameter_sweep/
+├── sweep_summary.csv              # Metrics for all tested thresholds
+├── threshold_stability.pdf        # Multi-panel stability visualization
+├── elbow_plot.pdf                # Optimal threshold detection plot
+├── group_membership_tracking.csv  # Sample clustering stability across thresholds
+├── recommendations.txt            # Detailed recommendations and rationale
+├── README.md                      # Interpretation guide
+└── runs/                          # Full outputs for each threshold (if --keep-intermediates)
+    ├── threshold_0_010/
+    ├── threshold_0_015/
+    └── ...
+```
+
+**Key files**:
+- `sweep_summary.csv`: Number of groups, assignment rates, mean identity for each threshold
+- `elbow_plot.pdf`: Visualizes elbow point for optimal threshold selection
+- `group_membership_tracking.csv`: Tracks which samples cluster together across thresholds (uses Jaccard similarity, not arbitrary group names)
+- `recommendations.txt`: Data-driven threshold recommendation with biological interpretation
+
+See `parameter_sweep/README.md` for detailed interpretation guide.
+
+#### Comparative Analysis Output (`comparative_analysis/`)
+
+```
+comparative_analysis/
+├── comparison_summary.csv         # High-level comparison metrics
+├── genotype_crosswalk.csv        # Mapping of species groups to family groups
+├── sample_reassignments.csv      # Sample-level reassignment recommendations
+├── methods_text.md               # Publication-ready methods section
+└── README.md                     # Interpretation guide
+```
+
+**Key files**:
+- `comparison_summary.csv`: Total samples, consensus groups, species detected, identity metrics, contamination signals
+- `genotype_crosswalk.csv`: Shows how species-level genotypes map to family-level genotypes
+- `sample_reassignments.csv` (if `--generate-reassignment-table`): Detailed sample-level analysis identifying potential contamination
+- `methods_text.md`: Ready-to-paste methods text for publications
+
+**Interpretation**: Samples that cluster with unexpected species at the family level may represent contamination, mislabeling, or introgression.
+
+#### Metadata Enrichment Output (`enriched_analysis/`)
+
+```
+enriched_analysis/
+├── {organism}_enriched.csv        # Annotated data with added metadata/geography
+├── geographic_summary.csv         # Summary by custom geographic regions
+├── enrichment_report.txt          # Summary of operations performed
+├── visualization/                 # Updated plots with enriched data
+│   ├── {geo_category}_distribution_map.*
+│   ├── {geo_category}_distribution_bar.*
+│   └── custom_grouping_summary.*
+└── README.md                      # Documentation of enrichment operations
+```
+
+**Key features**:
+- Custom geographic regions (e.g., freshwater basins, ecoregions, biomes) replace or supplement ocean basins
+- Merged field metadata accessible in all visualizations
+- Custom grouping variables for population structure analysis
+- Updated interactive visualizations using custom categories
+
+See `CUSTOM_SHAPEFILES_GUIDE.md` for detailed instructions on custom geographic analysis.
+
+#### Population Genetics Exports (`exports/`)
+
+When using `--export-format`, genotypes are exported to formats compatible with population genetics software:
+
+```
+exports/
+├── README.md                      # Format descriptions and usage
+├── arlequin/
+│   ├── {organism}.arp            # Arlequin project file
+│   └── populations.txt           # Population definitions
+├── popart/
+│   ├── {organism}.nexus          # NEXUS alignment with traits
+│   └── populations.csv           # Population mapping
+├── dnasp/
+│   └── {organism}.fas            # FASTA with population labels
+└── generic/
+    ├── alignment.fasta           # Consensus sequences
+    ├── genotype_membership.csv   # Sample-to-genotype mapping
+    └── haplotypes.csv            # Haplotype summary table
+```
+
+See `POPGEN_EXPORT_GUIDE.md` for detailed format specifications and usage examples.
+
+---
+
 ## Biological Context for Threshold Selection
 
 ### Understanding Clustering Threshold
@@ -754,6 +1154,8 @@ The **clustering threshold** determines how genetically similar sequences must b
 | **Species complex** | 0.05-0.10 (90-95%) | Handle cryptic species |
 
 **Example**: For *Sphyrna lewini* population study across ocean basins, `--clustering-threshold 0.03` captures intraspecific genotypes while avoiding oversplitting due to sequencing errors.
+
+**Data-Driven Approach**: Use `boldgenotyper-sweep` to empirically determine the optimal threshold for your specific dataset. The sweep tool analyzes multiple thresholds and identifies the elbow point where grouping structure stabilizes.
 
 ### Understanding Similarity Threshold
 
@@ -835,13 +1237,17 @@ Understanding these assumptions is critical for interpreting results and plannin
 
 #### 4. Geographic Coordinate Quality
 - **Assumption**: Country-level coordinates introduce ambiguity for multi-basin countries
-- **Pipeline behavior**: Excludes:
+- **Pipeline behavior**: **Marks** (not excludes) samples with:
   - Missing lat/lon (NaN, empty)
-  - Samples with "country centroid" in metadata
-  - Country-level coordinates without "precise" indicator
-- **Rationale**: A centroid for Mexico could fall in Pacific or Atlantic
-- **Implication**: Conservative approach prioritizes accuracy over sample size
-- **Override**: Not currently possible via CLI (feature request welcome)
+  - Centroid coordinates (coord_source contains "centroid")
+  - Invalid coordinates ([0, 0] or out of range)
+- **Key Distinction**:
+  - Samples with centroid/missing coordinates **ARE INCLUDED** in clustering and genotyping
+  - These samples **ARE EXCLUDED** from ocean basin assignment (marked as "Unknown")
+  - Users can see which samples have coordinate quality issues via marker columns
+- **Rationale**: A centroid for Mexico could fall in Pacific or Atlantic, but the sequence is still valid for genotyping
+- **Implication**: Maximizes samples for genotype identification while maintaining geographic accuracy
+- **Quality Markers**: Added columns include `has_centroid_coords`, `has_missing_coords`, `is_geographic_quality`
 
 #### 5. Ocean Basin Boundaries
 - **Assumption**: GOaS polygon definitions are accurate and appropriate
@@ -860,17 +1266,22 @@ Understanding these assumptions is critical for interpreting results and plannin
 
 ### Limitations
 
-#### 1. Marine Organisms Only (v1.0)
-- **Current**: Geographic analysis designed for marine taxa using GOaS
-- **Limitation**: No terrestrial or freshwater basin/region definitions
-- **Workaround**: Use `--no-geo` flag for non-marine organisms
-- **Planned**: Future versions will support terrestrial/freshwater environments
+#### 1. Custom Geographic Regions Supported
+- **Main pipeline**: Geographic analysis designed for marine taxa using GOaS (Global Oceans and Seas) shapefile
+- **Freshwater/Terrestrial organisms**: Use `boldgenotyper-enrich --custom-shp` to apply custom shapefiles for any geographic regiontype (freshwater basins, ecoregions, biomes, etc.)
+- **Examples**: HydroBASINS for freshwater organisms, WWF ecoregions for terrestrial species, custom study area boundaries
+- **No geographic analysis needed**: Use `--no-geo` flag to skip geographic analysis entirely
+- **See**: `CUSTOM_SHAPEFILES_GUIDE.md` for detailed instructions and examples
 
 #### 2. Coordinate Precision Requirements
 - **Requirement**: Geographic analysis requires precise GPS coordinates
 - **Problem**: Many BOLD records have country-level or imprecise coordinates
-- **Impact**: Samples with low-quality coordinates excluded from basin assignment
-- **Quantification**: Check HTML report for "samples excluded by coordinate filter"
+- **Impact**: Samples with low-quality coordinates are:
+  - **Included in genotyping and clustering** (sequences are still valid)
+  - **Marked as "Unknown" for ocean basin** (geographic location uncertain)
+  - Flagged with quality markers (`has_centroid_coords`, `has_missing_coords`)
+- **Benefit**: Maximizes samples for genotype identification while maintaining geographic accuracy
+- **Quantification**: Check HTML report for samples with "Unknown" ocean basin and coordinate quality markers
 
 #### 3. Single-Locus Limitation
 - **Current**: Pipeline designed for single-locus data (COI)
@@ -1086,16 +1497,25 @@ boldgenotyper data/my_species.tsv --tie-margin 0.001
 # Option 3: Manual review - inspect diagnostics file
 ```
 
-**Problem**: No samples in certain ocean basins
+**Problem**: Many samples marked as "Unknown" ocean basin
 
 ```bash
-# Check if GOaS assignment worked
+# Check how many samples have "Unknown" basin
 grep -c "Unknown" {organism}_output/{organism}_annotated.csv
 
-# If many "Unknown", check:
-# 1. Coordinate quality (might be filtered out)
-# 2. Sample actually in ocean (could be land-based)
-# 3. GOaS shapefile loaded correctly
+# If many "Unknown", check coordinate quality markers in annotated CSV:
+# - has_centroid_coords: True if coordinates are centroids (common in BOLD)
+# - has_missing_coords: True if lat/lon is missing
+# - has_zero_coords: True if coordinates are [0, 0]
+# - is_geographic_quality: False means one of the above issues
+
+# Note: Samples with "Unknown" basin are STILL INCLUDED in genotyping!
+# They're only excluded from geographic distribution analysis.
+
+# Other potential causes:
+# 1. Sample coordinates in ocean (correctly assigned)
+# 2. Coordinates on land (no basin to assign)
+# 3. GOaS shapefile not loaded correctly
 ```
 
 ### Performance Issues
@@ -1148,6 +1568,81 @@ cut -d',' -f<ocean_basin_column> {organism}_output/{organism}_annotated.csv | so
 # 3. Plotly.js CDN blocked (requires internet connection)
 
 # Check browser console for errors (F12)
+```
+
+### Advanced Command Troubleshooting
+
+**Problem**: `boldgenotyper-sweep` - How do I interpret the elbow plot?
+
+```bash
+# The elbow plot shows metrics vs. threshold
+# Look for the "elbow point" where curves level off
+# This indicates where adding more groups provides diminishing returns
+
+# Check the recommendations file:
+cat parameter_sweep/recommendations.txt
+
+# Examine stability plot:
+open parameter_sweep/threshold_stability.pdf
+```
+
+**Problem**: `boldgenotyper-sweep` - Samples have high `n_changes` in group membership tracking
+
+```bash
+# High n_changes indicates unstable clustering
+# These samples may be:
+# 1. Intermediates between genotypes
+# 2. Low-quality sequences
+# 3. Potential contamination
+
+# Review samples with n_changes > 2:
+# Sort by n_changes descending
+head -20 parameter_sweep/group_membership_tracking.csv
+
+# Consider excluding or manually reviewing these samples
+```
+
+**Problem**: `boldgenotyper-compare` - No contamination detected but I expected some
+
+```bash
+# Check that you're comparing the right datasets:
+# 1. Species-level should be a subset of family-level
+# 2. Both analyses should use same or similar thresholds
+
+# Review the comparison summary:
+cat comparative_analysis/comparison_summary.csv
+
+# Check if samples are genuinely clean or threshold is too permissive
+```
+
+**Problem**: `boldgenotyper-enrich` - Custom shapefile not working
+
+```bash
+# Verify shapefile has all required components (.shp, .shx, .dbf, .prj)
+ls -la path/to/shapefile.*
+
+# Check shapefile field names:
+# Use QGIS, ogrinfo, or GeoPandas to inspect
+ogrinfo -al -so path/to/shapefile.shp | grep -A 20 "Layer name"
+
+# Verify the field name matches your --shp-field argument
+# Field names are case-sensitive
+
+# Check coordinate reference system (CRS):
+# Shapefiles should use WGS84 (EPSG:4326) or will be reprojected automatically
+```
+
+**Problem**: `boldgenotyper-enrich` - Metadata merge created duplicates
+
+```bash
+# Check for duplicate processids in your metadata file:
+cut -d',' -f1 metadata.csv | sort | uniq -d
+
+# Ensure join column exists in both files:
+head -1 {organism}_annotated.csv
+head -1 metadata.csv
+
+# Verify column names match exactly (case-sensitive)
 ```
 
 ### Getting Help

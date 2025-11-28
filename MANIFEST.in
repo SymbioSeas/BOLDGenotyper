@@ -3,15 +3,12 @@ include README.md
 include LICENSE
 include CHANGELOG.md
 include CITATION.cff
-include QUICKSTART.md
-include DOCUMENTATION_PLAN.md
-include ZENODO_SETUP.md
 
 # Include configuration examples
 recursive-include examples *.yaml *.json
 
 # Include conda environment file
-include boldgenotyper_env.yml
+include environment.yml
 
 # Include test data (if any)
 recursive-include tests/data *.tsv *.fasta *.csv

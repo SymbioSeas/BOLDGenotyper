@@ -25,20 +25,26 @@ __author__ = "Steph Smith"
 __email__ = "steph.smith@unc.edu"
 
 # Import main modules for easy access
-from . import core
 from . import dereplication
 from . import metadata
 from . import geographic
 from . import visualization
 from . import phylogenetics
 from . import utils
+from . import comparative_analysis
+from . import parameter_sweep
+from . import metadata_enrichment
+from . import popgen_export
 
 __all__ = [
-    "core",
     "dereplication",
     "metadata",
     "geographic",
     "visualization",
     "phylogenetics",
     "utils",
+    "comparative_analysis",
+    "parameter_sweep",
+    "metadata_enrichment",
+    "popgen_export",
 ]

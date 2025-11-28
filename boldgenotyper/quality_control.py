@@ -224,7 +224,7 @@ def add_contamination_columns(
             return 0
         return (species_counts.iloc[0] / len(group_df)) * 100
 
-    group_majority_pct = df.groupby(group_col).apply(calc_majority_pct)
+    group_majority_pct = df.groupby(group_col, group_keys=False).apply(calc_majority_pct, include_groups=False)
     group_majority_pct.name = 'group_majority_pct'
 
     # Species count per group
@@ -426,7 +426,12 @@ def create_purity_distribution(
     # Create histogram
     purity = contamination_summary['primary_pct'].values
 
-    ax.hist(purity, bins=bins, color=colors, edgecolor='black', linewidth=1.2)
+    # Create histogram with default color first
+    counts, bin_edges, patches = ax.hist(purity, bins=bins, edgecolor='black', linewidth=1.2)
+
+    # Color each bar according to its bin
+    for patch, color in zip(patches, colors):
+        patch.set_facecolor(color)
 
     # Add threshold line
     ax.axvline(70, color='red', linestyle='--', linewidth=2, label='70% threshold')

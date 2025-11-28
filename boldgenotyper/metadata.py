@@ -632,6 +632,125 @@ def filter_by_coordinate_quality(
     return df_filtered
 
 
+def mark_coordinate_quality(
+    df: pd.DataFrame,
+    coord_source_column: str = 'coord_source',
+) -> pd.DataFrame:
+    """
+    Mark samples with low-quality coordinates instead of filtering them out.
+
+    This function adds boolean columns to identify samples with questionable
+    coordinates WITHOUT removing them from the dataset. This ensures that:
+    - Samples with centroid coordinates ARE included in clustering/genotyping
+    - Samples with centroid coordinates are EXCLUDED from geographic analysis
+    - Users can see which samples have coordinate quality issues
+
+    Added Columns
+    -------------
+    has_missing_coords : bool
+        True if latitude or longitude is missing/NaN
+    has_centroid_coords : bool
+        True if coord_source contains 'centroid'
+    has_zero_coords : bool
+        True if coordinates are exactly [0, 0]
+    has_invalid_coords : bool
+        True if coordinates are out of valid range
+    is_geographic_quality : bool
+        True if coordinates are suitable for geographic analysis
+        (False if any of the above quality issues exist)
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with parsed latitude/longitude columns
+    coord_source_column : str
+        Name of coordinate source column (default: 'coord_source')
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with added coordinate quality marker columns
+
+    Examples
+    --------
+    >>> df = parse_bold_tsv("data.tsv")
+    >>> df = parse_coordinates_column(df)
+    >>> df = mark_coordinate_quality(df)
+    >>> print(f"Samples with centroids: {df['has_centroid_coords'].sum()}")
+    >>> print(f"Geographic quality: {df['is_geographic_quality'].sum()}")
+
+    Notes
+    -----
+    This approach ensures that ALL samples with valid sequences are included
+    in clustering and genotyping, regardless of coordinate quality. Only
+    geographic analysis uses the quality markers to exclude problematic coordinates.
+    """
+    df_marked = df.copy()
+
+    # Initialize quality marker columns
+    df_marked['has_missing_coords'] = False
+    df_marked['has_centroid_coords'] = False
+    df_marked['has_zero_coords'] = False
+    df_marked['has_invalid_coords'] = False
+
+    # 1. Mark missing coordinates
+    if 'latitude' in df_marked.columns:
+        df_marked['has_missing_coords'] = (
+            df_marked['latitude'].isna() | df_marked['longitude'].isna()
+        )
+        n_missing = df_marked['has_missing_coords'].sum()
+        if n_missing > 0:
+            logger.info(f"Marked {n_missing} samples with missing coordinates")
+
+    # 2. Mark centroid coordinates
+    if coord_source_column in df_marked.columns:
+        df_marked['has_centroid_coords'] = df_marked[coord_source_column].str.contains(
+            'centroid', case=False, na=False
+        )
+        n_centroid = df_marked['has_centroid_coords'].sum()
+        if n_centroid > 0:
+            logger.info(f"Marked {n_centroid} samples with centroid coordinates")
+
+    # 3. Mark [0, 0] coordinates
+    if 'latitude' in df_marked.columns:
+        df_marked['has_zero_coords'] = (
+            (df_marked['latitude'] == 0) & (df_marked['longitude'] == 0)
+        )
+        n_zero = df_marked['has_zero_coords'].sum()
+        if n_zero > 0:
+            logger.info(f"Marked {n_zero} samples with [0, 0] coordinates")
+
+    # 4. Mark invalid coordinate ranges
+    if 'latitude' in df_marked.columns:
+        df_marked['has_invalid_coords'] = (
+            (df_marked['latitude'] < -90) | (df_marked['latitude'] > 90) |
+            (df_marked['longitude'] < -180) | (df_marked['longitude'] > 180)
+        )
+        n_invalid = df_marked['has_invalid_coords'].sum()
+        if n_invalid > 0:
+            logger.info(f"Marked {n_invalid} samples with invalid coordinate ranges")
+
+    # 5. Create overall geographic quality flag
+    # Geographic quality = no quality issues
+    df_marked['is_geographic_quality'] = ~(
+        df_marked['has_missing_coords'] |
+        df_marked['has_centroid_coords'] |
+        df_marked['has_zero_coords'] |
+        df_marked['has_invalid_coords']
+    )
+
+    n_total = len(df_marked)
+    n_geo_quality = df_marked['is_geographic_quality'].sum()
+    pct_geo_quality = (n_geo_quality / n_total * 100) if n_total > 0 else 0
+
+    logger.info(
+        f"Geographic quality: {n_geo_quality}/{n_total} samples ({pct_geo_quality:.1f}%) "
+        f"suitable for ocean basin assignment"
+    )
+
+    return df_marked
+
+
 def get_coordinate_quality_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Calculate statistics about coordinate quality.

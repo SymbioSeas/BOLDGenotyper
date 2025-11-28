@@ -35,6 +35,127 @@ class ComparativeAnalysisError(Exception):
     pass
 
 
+def _find_diagnostics_path(csv_path: Path, organism: str) -> Optional[Path]:
+    """
+    Locate the assignment diagnostics file for an analysis.
+
+    Supports legacy and current filenames and minor organism name variants.
+    """
+    if csv_path is None:
+        return None
+
+    diag_dir = csv_path.parent / "genotype_assignments"
+    name_variants = {
+        organism,
+        organism.replace("_", " "),
+        organism.replace(" ", "_")
+    }
+
+    candidates = []
+    for name in name_variants:
+        candidates.extend([
+            diag_dir / f"{name}_assignment_diagnostics.csv",
+            diag_dir / f"{name}_diagnostics.csv"
+        ])
+
+    for path in candidates:
+        if path.exists():
+            return path
+
+    return None
+
+
+def _load_identity_data(
+    df: pd.DataFrame,
+    meta: Dict[str, Any]
+) -> Tuple[Dict[str, float], pd.DataFrame]:
+    """
+    Extract identity statistics and per-sample identities.
+
+    Returns a stats dict plus a dataframe with `processid` and `identity`
+    (scaled to percentages when source data are proportions).
+    """
+    csv_path = Path(meta.get('path')) if meta.get('path') else None
+    organism = meta.get('organism', '')
+
+    diag_path = _find_diagnostics_path(csv_path, organism) if csv_path else None
+    identities_df = pd.DataFrame(columns=['processid', 'identity'])
+
+    if diag_path is not None:
+        try:
+            diag_df = pd.read_csv(diag_path)
+            if 'identity' in diag_df.columns and 'processid' in diag_df.columns:
+                identities_df = diag_df[['processid', 'identity']].copy()
+        except Exception as e:
+            logger.debug(f"Could not read diagnostics at {diag_path}: {e}")
+
+    if identities_df.empty and 'identity' in df.columns:
+        identities_df = df[['processid', 'identity']].copy()
+
+    if identities_df.empty:
+        return {'mean_identity': np.nan, 'median_identity': np.nan}, identities_df
+
+    # Coerce identity to numeric
+    identities_df['identity'] = pd.to_numeric(identities_df['identity'], errors='coerce')
+    identities_df = identities_df.dropna(subset=['identity'])
+
+    if identities_df.empty:
+        return {'mean_identity': np.nan, 'median_identity': np.nan}, identities_df
+
+    # Normalize to percent if stored as proportion (0-1)
+    if identities_df['identity'].max() <= 1.0:
+        identities_df = identities_df.copy()
+        identities_df['identity'] = identities_df['identity'] * 100
+
+    stats = {
+        'mean_identity': identities_df['identity'].mean(),
+        'median_identity': identities_df['identity'].median()
+    }
+
+    return stats, identities_df
+
+
+def _load_taxonomy_table(meta: Dict[str, Any]) -> Optional[pd.DataFrame]:
+    """
+    Load consensus taxonomy table to recover majority species/pct per group.
+    """
+    csv_path = Path(meta.get('path')) if meta.get('path') else None
+    organism = meta.get('organism', '')
+    if csv_path is None:
+        return None
+
+    tax_dir = csv_path.parent / "taxonomy"
+    candidates = [
+        tax_dir / f"{organism}_consensus_taxonomy.csv",
+        tax_dir / f"{organism.replace('_', ' ')}_consensus_taxonomy.csv",
+        tax_dir / f"{organism.replace(' ', '_')}_consensus_taxonomy.csv"
+    ]
+
+    tax_path = next((p for p in candidates if p.exists()), None)
+    if tax_path is None:
+        return None
+
+    try:
+        tax_df = pd.read_csv(tax_path)
+    except Exception as e:
+        logger.debug(f"Could not read taxonomy table {tax_path}: {e}")
+        return None
+
+    # Standardize columns
+    if 'assigned_sp' in tax_df.columns:
+        tax_df = tax_df.rename(columns={'assigned_sp': 'group_majority_species'})
+
+    if 'majority_fraction' in tax_df.columns and 'group_majority_pct' not in tax_df.columns:
+        pct = tax_df['majority_fraction']
+        tax_df['group_majority_pct'] = pct * 100 if pct.max() <= 1 else pct
+
+    keep_cols = [c for c in ['consensus_group', 'group_majority_species', 'group_majority_pct'] if c in tax_df.columns]
+    if not keep_cols:
+        return None
+
+    return tax_df[keep_cols]
+
+
 def load_analysis_results(
     analysis_path: Path
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
@@ -93,7 +214,9 @@ def generate_comparison_summary(
     species_df: pd.DataFrame,
     family_df: pd.DataFrame,
     species_meta: Dict[str, Any],
-    family_meta: Dict[str, Any]
+    family_meta: Dict[str, Any],
+    species_identity_stats: Optional[Dict[str, float]] = None,
+    family_identity_stats: Optional[Dict[str, float]] = None
 ) -> pd.DataFrame:
     """
     Generate high-level comparison summary metrics.
@@ -143,14 +266,13 @@ def generate_comparison_summary(
     })
 
     # Mean identity
-    if 'identity' in species_df.columns:
-        species_mean_id = species_df['identity'].mean()
-    else:
-        species_mean_id = np.nan
-    if 'identity' in family_df.columns:
-        family_mean_id = family_df['identity'].mean()
-    else:
-        family_mean_id = np.nan
+    if species_identity_stats is None:
+        species_identity_stats, _ = _load_identity_data(species_df, species_meta)
+    if family_identity_stats is None:
+        family_identity_stats, _ = _load_identity_data(family_df, family_meta)
+
+    species_mean_id = species_identity_stats.get('mean_identity', np.nan)
+    family_mean_id = family_identity_stats.get('mean_identity', np.nan)
     metrics.append({
         'metric': 'mean_identity',
         'species_level': species_mean_id,
@@ -230,7 +352,9 @@ def generate_comparison_summary(
 
 def generate_genotype_crosswalk(
     species_df: pd.DataFrame,
-    family_df: pd.DataFrame
+    family_df: pd.DataFrame,
+    species_taxonomy: Optional[pd.DataFrame] = None,
+    family_taxonomy: Optional[pd.DataFrame] = None
 ) -> pd.DataFrame:
     """
     Track how species-level groups map to family-level groups.
@@ -247,6 +371,20 @@ def generate_genotype_crosswalk(
     pd.DataFrame
         Crosswalk table showing group mappings
     """
+    species_tax_lookup = {}
+    species_pct_lookup = {}
+    if species_taxonomy is not None and not species_taxonomy.empty:
+        species_tax_lookup = species_taxonomy.set_index('consensus_group')['group_majority_species'].to_dict()
+        if 'group_majority_pct' in species_taxonomy.columns:
+            species_pct_lookup = species_taxonomy.set_index('consensus_group')['group_majority_pct'].to_dict()
+
+    family_tax_lookup = {}
+    family_pct_lookup = {}
+    if family_taxonomy is not None and not family_taxonomy.empty:
+        family_tax_lookup = family_taxonomy.set_index('consensus_group')['group_majority_species'].to_dict()
+        if 'group_majority_pct' in family_taxonomy.columns:
+            family_pct_lookup = family_taxonomy.set_index('consensus_group')['group_majority_pct'].to_dict()
+
     # Merge on processid to connect samples across analyses
     merged = species_df[['processid', 'consensus_group', 'species']].merge(
         family_df[['processid', 'consensus_group']],
@@ -280,15 +418,27 @@ def generate_genotype_crosswalk(
             else:
                 mapping_type = 'contamination'
 
+            sp_majority_species = species_tax_lookup.get(sp_group)
+            fam_majority_species = family_tax_lookup.get(fam_group)
+
             crosswalk_data.append({
                 'species_group': sp_group,
                 'species_group_size': sp_group_size,
+                'species_group_species': sp_majority_species,
+                'species_group_majority_pct': species_pct_lookup.get(sp_group),
                 'family_group': fam_group,
                 'family_group_size': fam_group_size,
+                'family_group_species': fam_majority_species,
+                'family_group_majority_pct': family_pct_lookup.get(fam_group),
                 'n_samples_mapped': n_mapped,
                 'pct_of_species_group': pct_of_sp_group,
                 'pct_of_family_group': pct_of_fam_group,
-                'mapping_type': mapping_type
+                'mapping_type': mapping_type,
+                'species_match': (
+                    sp_majority_species == fam_majority_species
+                    if sp_majority_species and fam_majority_species
+                    else None
+                )
             })
 
     crosswalk_df = pd.DataFrame(crosswalk_data)
@@ -305,6 +455,9 @@ def generate_genotype_crosswalk(
 def generate_sample_reassignments(
     species_df: pd.DataFrame,
     family_df: pd.DataFrame,
+    species_taxonomy: Optional[pd.DataFrame] = None,
+    family_taxonomy: Optional[pd.DataFrame] = None,
+    family_identity_map: Optional[pd.DataFrame] = None,
     majority_threshold: float = 0.7
 ) -> pd.DataFrame:
     """
@@ -324,8 +477,33 @@ def generate_sample_reassignments(
     pd.DataFrame
         Sample reassignment table
     """
+    species_df = species_df.copy()
+    family_df = family_df.copy()
+
+    # Fallback: derive majority pct from majority_fraction if present
+    for df in (species_df, family_df):
+        if 'majority_fraction' in df.columns and 'group_majority_pct' not in df.columns:
+            pct = pd.to_numeric(df['majority_fraction'], errors='coerce')
+            df['group_majority_pct'] = pct * 100 if pct.max() <= 1 else pct
+
+    # Attach majority species/pct from taxonomy tables when missing in annotated outputs
+    if species_taxonomy is not None and not species_taxonomy.empty:
+        species_df = species_df.merge(
+            species_taxonomy,
+            on='consensus_group',
+            how='left'
+        )
+
+    if family_taxonomy is not None and not family_taxonomy.empty:
+        family_df = family_df.merge(
+            family_taxonomy,
+            on='consensus_group',
+            how='left'
+        )
+
     # Select relevant columns from each analysis
-    species_cols = ['processid', 'species', 'consensus_group', 'identity']
+    species_cols = ['processid', 'species', 'assigned_sp', 'consensus_group', 'identity',
+                    'group_majority_species', 'group_majority_pct']
     if 'depositor_notes' in species_df.columns:
         species_cols.append('depositor_notes')
 
@@ -348,12 +526,24 @@ def generate_sample_reassignments(
     reassignments = merged.copy()
     if 'species_database' in reassignments.columns:
         reassignments['database_species_label'] = reassignments['species_database']
+    if 'assigned_sp_database' in reassignments.columns and 'database_species_label' not in reassignments.columns:
+        reassignments['database_species_label'] = reassignments['assigned_sp_database']
     if 'consensus_group_family' in reassignments.columns:
         reassignments['family_consensus_group'] = reassignments['consensus_group_family']
-    if 'identity_family' in reassignments.columns:
+    if 'consensus_group_database' in reassignments.columns:
+        reassignments['species_consensus_group'] = reassignments['consensus_group_database']
+
+    # Assignment identity (prefer diagnostics-derived values)
+    if family_identity_map is not None and not family_identity_map.empty:
+        identity_lookup = dict(zip(family_identity_map['processid'], family_identity_map['identity']))
+        reassignments['assignment_identity'] = reassignments['processid'].map(identity_lookup)
+    if 'identity_family' in reassignments.columns and 'assignment_identity' not in reassignments.columns:
         reassignments['assignment_identity'] = reassignments['identity_family']
 
     # Assess reassignment confidence
+    high_majority_cutoff = max(90, majority_threshold * 100)
+    medium_majority_cutoff = max(80, majority_threshold * 100 * 0.9)
+
     def assess_confidence(row):
         if 'group_majority_pct' not in row or pd.isna(row['group_majority_pct']):
             return 'unknown'
@@ -362,9 +552,9 @@ def generate_sample_reassignments(
         identity = row.get('assignment_identity', 95)
 
         # High confidence
-        if identity >= 95 and majority_pct > 90:
+        if identity >= 95 and majority_pct >= high_majority_cutoff:
             return 'high'
-        elif identity >= 90 or majority_pct >= 80:
+        elif identity >= 90 or majority_pct >= medium_majority_cutoff:
             return 'medium'
         else:
             return 'low'
@@ -382,7 +572,7 @@ def generate_sample_reassignments(
 
     # Select final columns
     final_cols = [
-        'processid', 'database_species_label', 'family_consensus_group',
+        'processid', 'database_species_label', 'species_consensus_group', 'family_consensus_group',
         'group_majority_species', 'group_majority_pct', 'assignment_identity',
         'reassignment_confidence'
     ]
@@ -530,9 +720,22 @@ def compare_analyses(
     results['species_meta'] = species_meta
     results['family_meta'] = family_meta
 
+    # Supporting lookups
+    species_identity_stats, species_identity_map = _load_identity_data(species_df, species_meta)
+    family_identity_stats, family_identity_map = _load_identity_data(family_df, family_meta)
+    species_taxonomy = _load_taxonomy_table(species_meta)
+    family_taxonomy = _load_taxonomy_table(family_meta)
+
     # Generate comparison summary
     logger.info("Generating comparison summary...")
-    summary_df = generate_comparison_summary(species_df, family_df, species_meta, family_meta)
+    summary_df = generate_comparison_summary(
+        species_df,
+        family_df,
+        species_meta,
+        family_meta,
+        species_identity_stats=species_identity_stats,
+        family_identity_stats=family_identity_stats
+    )
     summary_path = output_dir / "comparison_summary.csv"
     summary_df.to_csv(summary_path, index=False)
     results['comparison_summary'] = summary_path
@@ -540,7 +743,12 @@ def compare_analyses(
     # Generate genotype crosswalk
     logger.info("Generating genotype crosswalk...")
     try:
-        crosswalk_df = generate_genotype_crosswalk(species_df, family_df)
+        crosswalk_df = generate_genotype_crosswalk(
+            species_df,
+            family_df,
+            species_taxonomy=species_taxonomy,
+            family_taxonomy=family_taxonomy
+        )
         crosswalk_path = output_dir / "genotype_crosswalk.csv"
         crosswalk_df.to_csv(crosswalk_path, index=False)
         results['genotype_crosswalk'] = crosswalk_path
@@ -552,7 +760,12 @@ def compare_analyses(
         logger.info("Generating sample reassignment table...")
         try:
             reassignments = generate_sample_reassignments(
-                species_df, family_df, majority_threshold=majority_threshold
+                species_df,
+                family_df,
+                species_taxonomy=species_taxonomy,
+                family_taxonomy=family_taxonomy,
+                family_identity_map=family_identity_map,
+                majority_threshold=majority_threshold
             )
             reassign_path = output_dir / "sample_reassignments.csv"
             reassignments.to_csv(reassign_path, index=False)
