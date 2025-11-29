@@ -317,14 +317,25 @@ def create_plot_config(
             'x_breaks': [50, 60, 70, 80, 90, 100]
         },
         'tree': {
+            # Tree dimensions (overrides general settings)
+            # If not specified, height auto-scales based on number of tips
+            # 'width_inches': 10,
+            # 'height_inches': 8,
             'layout': 'rectangular',
+            # Outgroup for rerooting (optional, use consensus_group_sp format)
+            # Example: 'outgroup': 'Sphyrna corona c10_n5'
+            'outgroup': None,
             'show_bootstrap': True,
             'bootstrap_threshold': 70,
             'bootstrap_size': 3,
+            'bootstrap_offset_x': 0.0,  # Horizontal offset for bootstrap labels (positive = right)
+            'bootstrap_offset_y': 0.0,  # Vertical offset for bootstrap labels (positive = up)
             'tip_label_size': 3,
             'tip_label_offset': 0.001,
             'branch_width': 0.5,
             'show_scale_bar': True,
+            # Highlight specific groups with colors (uses colors section above)
+            # Tip colors are automatically matched from the 'colors' section
             'highlight_groups': []
         }
     }

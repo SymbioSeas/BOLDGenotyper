@@ -98,6 +98,12 @@ except ImportError:
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Suppress expected warnings from shapely and numpy when handling missing/invalid coordinates
+# These warnings are expected when data contains NaN values and don't affect geographic assignment
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='shapely')
+warnings.filterwarnings('ignore', message='invalid value encountered')
+np.seterr(invalid='ignore')
+
 
 class GOaSDataError(Exception):
     """Raised when GOaS shapefile data cannot be loaded or is invalid."""

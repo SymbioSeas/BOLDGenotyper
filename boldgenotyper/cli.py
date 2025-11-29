@@ -241,15 +241,39 @@ def run_pipeline(
                         df_geo_quality, goas_data=goas_data, coord_col="coord"
                     )
 
-                    # Merge back with full dataset
+                    # Merge back with full dataset, preserving lat/lon columns for visualization
                     df_with_basins = df.copy()
                     # First set all to Unknown
                     df_with_basins['ocean_basin'] = 'Unknown'
-                    # Then update with assigned basins for geographic-quality samples
-                    df_with_basins.loc[df_with_basins['processid'].isin(df_geo_assigned['processid']), 'ocean_basin'] = \
-                        df_with_basins.loc[df_with_basins['processid'].isin(df_geo_assigned['processid'])].merge(
-                            df_geo_assigned[['processid', 'ocean_basin']], on='processid', how='left', suffixes=('', '_new')
-                        )['ocean_basin_new']
+
+                    # Initialize lat/lon columns if not present
+                    if 'lat' not in df_with_basins.columns:
+                        df_with_basins['lat'] = pd.NA
+                    if 'lon' not in df_with_basins.columns:
+                        df_with_basins['lon'] = pd.NA
+
+                    # Extract columns to merge: ocean_basin and lat/lon (if they exist in df_geo_assigned)
+                    cols_to_merge = ['processid', 'ocean_basin']
+                    if 'lat' in df_geo_assigned.columns:
+                        cols_to_merge.append('lat')
+                    if 'lon' in df_geo_assigned.columns:
+                        cols_to_merge.append('lon')
+
+                    # Merge the geographic data back
+                    merged_geo = df_with_basins[['processid']].merge(
+                        df_geo_assigned[cols_to_merge], on='processid', how='left', suffixes=('', '_new')
+                    )
+
+                    # Update the columns
+                    df_with_basins['ocean_basin'] = merged_geo['ocean_basin'].fillna('Unknown')
+                    if 'lat_new' in merged_geo.columns:
+                        df_with_basins['lat'] = merged_geo['lat_new']
+                    elif 'lat' in merged_geo.columns:
+                        df_with_basins['lat'] = merged_geo['lat']
+                    if 'lon_new' in merged_geo.columns:
+                        df_with_basins['lon'] = merged_geo['lon_new']
+                    elif 'lon' in merged_geo.columns:
+                        df_with_basins['lon'] = merged_geo['lon']
 
                     n_assigned = (df_with_basins['ocean_basin'] != 'Unknown').sum()
                     logger.info(f"  ✓ Assigned ocean basins to {n_assigned} samples")
@@ -450,9 +474,20 @@ def run_pipeline(
 
         logger.info(f"  ✓ Assigned taxonomy to {len(assign_table)} consensus groups")
 
-        # Merge with geographic data
-        geo_keep = [c for c in ['processid', 'lat', 'lon', 'ocean_basin'] if c in df_with_basins.columns]
-        df_final = df_with_genotypes.merge(df_with_basins[geo_keep], on='processid', how='left', validate='one_to_one')
+        # Merge with geographic data (only if not already present in df_with_genotypes)
+        # df_with_genotypes may already have lat/lon/ocean_basin from the TSV file
+        geo_cols_to_merge = []
+        for col in ['lat', 'lon', 'ocean_basin']:
+            if col in df_with_basins.columns and col not in df_with_genotypes.columns:
+                geo_cols_to_merge.append(col)
+
+        if geo_cols_to_merge:
+            # Only merge if there are columns to add
+            geo_keep = ['processid'] + geo_cols_to_merge
+            df_final = df_with_genotypes.merge(df_with_basins[geo_keep], on='processid', how='left', validate='one_to_one')
+        else:
+            # df_with_genotypes already has all geographic data
+            df_final = df_with_genotypes.copy()
 
         # Save final annotated file with proper CSV quoting to handle fields with commas
         annotated_csv = dirs['base'] / f"{organism}_annotated.csv"

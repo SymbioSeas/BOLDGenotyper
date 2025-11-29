@@ -20,6 +20,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
 
+# Suppress expected warnings from shapely and numpy when handling missing/invalid coordinates
+# These warnings are expected when data contains NaN values and don't affect plot generation
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='shapely')
+warnings.filterwarnings('ignore', message='invalid value encountered')
+warnings.filterwarnings('ignore', message='Tight layout not applied')
+np.seterr(invalid='ignore')
+
 # Optional imports with fallbacks
 try:
     import yaml
@@ -229,11 +236,6 @@ def regenerate_distribution_map(
     filters = config.get('filters', {})
     map_cfg = config.get('map', {})
     general_cfg = config.get('general', {})
-
-    # Suppress numpy and shapely warnings about invalid values (from missing coordinates)
-    # These are expected and don't affect plot generation
-    np.seterr(invalid='ignore')
-    warnings.filterwarnings('ignore', category=RuntimeWarning)
 
     # Load data
     data_dir = base_dir / "data"
@@ -602,11 +604,13 @@ def regenerate_bar_charts(
         fig, ax = plt.subplots(figsize=(width, height))
 
         # Pivot data for stacking
+        # Use sum() to aggregate multiple rows with same genotype in same basin
         pivot_df = df.pivot_table(
             index='ocean_basin',
             columns='genotype',
             values=value_col,
-            fill_value=0
+            fill_value=0,
+            aggfunc='sum'
         )
 
         # Reorder columns by genotype order
@@ -867,6 +871,333 @@ def regenerate_identity_distribution(
     return output_files
 
 
+def regenerate_phylogenetic_tree(
+    base_dir: Path,
+    output_dir: Optional[Path] = None,
+    config: Optional[Dict[str, Any]] = None
+) -> List[Path]:
+    """
+    Regenerate phylogenetic tree from exported Newick file.
+
+    Parameters
+    ----------
+    base_dir : Path
+        Base directory containing plot_config.yaml and data/ subdirectory
+    output_dir : Path, optional
+        Output directory for plots (default: base_dir/visualization)
+    config : dict, optional
+        Configuration dictionary (if not provided, will load from plot_config.yaml)
+
+    Returns
+    -------
+    list of Path
+        Paths to generated plot files
+    """
+    try:
+        from Bio import Phylo
+    except ImportError:
+        logger.warning("BioPython not available, skipping tree regeneration")
+        return []
+
+    # Load configuration
+    if config is None:
+        config_path = base_dir / "plot_config.yaml"
+        config = load_config(config_path)
+
+    colors_cfg = config.get('colors', {})
+    filters = config.get('filters', {})
+    tree_cfg = config.get('tree', {})
+    general_cfg = config.get('general', {})
+
+    # Load tree data
+    data_dir = base_dir / "data"
+    tree_path = data_dir / "tree_data.nwk"
+
+    if not tree_path.exists():
+        logger.warning(f"tree_data.nwk not found in {data_dir}, skipping tree regeneration")
+        return []
+
+    # Load consensus_group to consensus_group_sp mapping
+    # Try multiple data files to find the mapping
+    label_map = {}
+    for csv_file in ['distribution_bar_relative.csv', 'distribution_bar_absolute.csv',
+                     'distribution_map.csv', 'identity_distribution.csv']:
+        csv_path = data_dir / csv_file
+        if csv_path.exists():
+            try:
+                df_mapping = pd.read_csv(csv_path)
+                if 'consensus_group' in df_mapping.columns and 'consensus_group_sp' in df_mapping.columns:
+                    # Create mapping, taking first occurrence for each consensus_group
+                    mapping_df = df_mapping[['consensus_group', 'consensus_group_sp']].drop_duplicates()
+
+                    # Build label map with fuzzy matching
+                    # Tree tips may have short names like "consensus_c14" while mapping has "consensus_c14_n11"
+                    for _, row in mapping_df.iterrows():
+                        full_name = row['consensus_group']
+                        label = row['consensus_group_sp']
+
+                        # Add full name mapping
+                        label_map[full_name] = label
+
+                        # Also add short name mapping (e.g., "consensus_c14" from "consensus_c14_n11")
+                        if '_n' in full_name:
+                            short_name = full_name.split('_n')[0]
+                            if short_name not in label_map:
+                                label_map[short_name] = label
+
+                    logger.info(f"Loaded {len(label_map)} tip label mappings from {csv_file}")
+                    break
+            except Exception as e:
+                logger.debug(f"Could not load mapping from {csv_file}: {e}")
+                continue
+
+    # Read tree
+    tree = Phylo.read(str(tree_path), "newick")
+
+    # Get tree parameters from config (check for outgroup before modifying tree)
+    outgroup = tree_cfg.get('outgroup', None)
+
+    # Reroot tree with outgroup if specified
+    if outgroup and label_map:
+        # Find the outgroup tip - try exact match first, then fuzzy match
+        outgroup_clade = None
+
+        # Try to find matching tip
+        for tip in tree.get_terminals():
+            # Check if tip name matches outgroup (before or after relabeling)
+            if tip.name == outgroup:
+                outgroup_clade = tip
+                break
+            # Check if tip will match after relabeling
+            elif tip.name in label_map and label_map[tip.name] == outgroup:
+                outgroup_clade = tip
+                break
+
+        if outgroup_clade:
+            tree.root_with_outgroup(outgroup_clade)
+            logger.info(f"Rerooted tree with outgroup: {outgroup}")
+        else:
+            logger.warning(f"Outgroup '{outgroup}' not found in tree tips, skipping rerooting")
+
+    # Apply label mapping to tree tips (consensus_group -> consensus_group_sp)
+    relabeled_count = 0
+    if label_map:
+        for clade in tree.get_terminals():
+            if clade.name in label_map:
+                old_name = clade.name
+                clade.name = label_map[clade.name]
+                logger.debug(f"Relabeled tip: {old_name} -> {clade.name}")
+                relabeled_count += 1
+        logger.info(f"Applied consensus_group_sp labels to {relabeled_count}/{len(tree.get_terminals())} tree tips")
+
+    # Get tree parameters from config
+    layout = tree_cfg.get('layout', 'rectangular')
+    show_bootstrap = tree_cfg.get('show_bootstrap', True)
+    bootstrap_threshold = tree_cfg.get('bootstrap_threshold', 70)
+    bootstrap_size = tree_cfg.get('bootstrap_size', 8)
+    bootstrap_offset_x = tree_cfg.get('bootstrap_offset_x', 0.0)
+    bootstrap_offset_y = tree_cfg.get('bootstrap_offset_y', 0.0)
+    tip_label_size = tree_cfg.get('tip_label_size', 10)
+    tip_label_offset = tree_cfg.get('tip_label_offset', 0.001)
+    branch_width = tree_cfg.get('branch_width', 1.0)
+    show_scale_bar = tree_cfg.get('show_scale_bar', True)
+    highlight_groups = tree_cfg.get('highlight_groups', [])
+
+    # Build color palette for tips (after relabeling to consensus_group_sp)
+    terminals = tree.get_terminals()
+    tip_names = [t.name for t in terminals]
+
+    # Match tip names (now consensus_group_sp format) to configured colors
+    palette = {}
+    for tip_name in tip_names:
+        # Check for exact match first (e.g., "Sphyrna lewini c18_n281")
+        if tip_name in colors_cfg:
+            palette[tip_name] = colors_cfg[tip_name]
+            logger.debug(f"Color matched (exact): {tip_name} -> {colors_cfg[tip_name]}")
+        else:
+            # Try partial matching by cluster ID (e.g., "c18_n281" in "Sphyrna lewini c18_n281")
+            for color_key, color_val in colors_cfg.items():
+                # Extract cluster from tip name (e.g., "c18_n281" from "Sphyrna lewini c18_n281")
+                parts = tip_name.split()
+                if len(parts) >= 2 and parts[-1].startswith('c') and '_n' in parts[-1]:
+                    tip_cluster = parts[-1]  # e.g., "c18_n281"
+                    # Check if this cluster appears in the color key
+                    if tip_cluster in color_key:
+                        palette[tip_name] = color_val
+                        logger.debug(f"Color matched (cluster): {tip_name} -> {color_val}")
+                        break
+
+    logger.info(f"Matched colors for {len(palette)}/{len(tip_names)} tree tips")
+
+    # Compute x (depth) and y positions for each clade
+    depths = tree.depths()
+    if not depths:
+        depths = tree.depths(unit_branch_lengths=True)
+
+    # y positions: leaves are evenly spaced, internal nodes are midpoints
+    y_pos: Dict[Any, float] = {
+        clade: float(i) for i, clade in enumerate(terminals)
+    }
+
+    def calc_y(clade):
+        if clade in y_pos:
+            return y_pos[clade]
+        if not clade.clades:
+            y_pos[clade] = 0.0
+            return 0.0
+        child_ys = [calc_y(child) for child in clade.clades]
+        y_val = (min(child_ys) + max(child_ys)) / 2.0
+        y_pos[clade] = y_val
+        return y_val
+
+    calc_y(tree.root)
+
+    # Calculate figure size
+    # Use tree-specific dimensions if provided, otherwise fall back to general settings
+    # If neither are specified, auto-calculate based on tree size
+    n_tips = len(terminals)
+
+    # Width: tree config > general config > default 10
+    width = tree_cfg.get('width_inches', general_cfg.get('width_inches', 10))
+
+    # Height: tree config > general config > auto-calculated based on number of tips
+    if 'height_inches' in tree_cfg:
+        height = tree_cfg['height_inches']
+    elif 'height_inches' in general_cfg:
+        height = general_cfg['height_inches']
+    else:
+        # Auto-calculate: 0.3 inches per tip, min 6, max 20
+        height = max(6, min(20, n_tips * 0.3))
+
+    logger.info(f"Tree figure size: {width}\" × {height}\" ({n_tips} tips)")
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(width, height))
+
+    # Draw tree using Phylo
+    # Map tip colors if available
+    tip_label_colors = None
+    if palette:
+        tip_label_colors = {}
+        for clade in terminals:
+            if clade.name in palette:
+                tip_label_colors[clade] = palette[clade.name]
+
+    Phylo.draw(
+        tree,
+        do_show=False,
+        axes=ax,
+        label_colors=tip_label_colors,
+        show_confidence=False  # We'll add bootstrap values manually for positioning control
+    )
+
+    # Extend x-axis to prevent tip labels from being cut off
+    xlim = ax.get_xlim()
+    x_range = xlim[1] - xlim[0]
+    ax.set_xlim(xlim[0], xlim[1] + x_range * 0.15)
+
+    # Add colored circular nodes at tips
+    if palette:
+        xs, ys, cs = [], [], []
+        for clade in terminals:
+            if clade.name in palette:
+                x = depths.get(clade, 0.0)
+                y = y_pos.get(clade, 0.0)
+                xs.append(x)
+                ys.append(y)
+                cs.append(palette[clade.name])
+
+        if xs:
+            ax.scatter(
+                xs, ys,
+                s=80,
+                c=cs,
+                marker='o',
+                edgecolors='black',
+                linewidths=1.0,
+                zorder=3,
+                clip_on=False
+            )
+
+    # Add bootstrap values with configurable positioning
+    if show_bootstrap:
+        for clade in tree.get_nonterminals():
+            if clade.confidence is not None:
+                val = float(clade.confidence)
+                if val >= bootstrap_threshold:
+                    x = depths.get(clade, 0.0)
+                    y = y_pos.get(clade, 0.0)
+
+                    # Apply configurable offsets for fine-tuning label positions
+                    label_x = x + bootstrap_offset_x
+                    label_y = y + bootstrap_offset_y
+
+                    ax.text(
+                        label_x, label_y,
+                        f'{int(val)}',
+                        fontsize=bootstrap_size,
+                        ha='center',
+                        va='bottom',
+                        color='red',
+                        weight='bold'
+                    )
+
+    # Add scale bar if requested
+    if show_scale_bar:
+        # Get the x-axis limits
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+
+        # Calculate a reasonable scale bar length (10-20% of x range)
+        x_range = xlim[1] - xlim[0]
+        y_range = ylim[1] - ylim[0]
+
+        # Round to a nice number
+        scale_length = 10 ** (np.floor(np.log10(x_range * 0.1)))
+
+        # Position scale bar at bottom left
+        scale_x = xlim[0] + x_range * 0.05
+        scale_y = ylim[0] - y_range * 0.05
+
+        # Draw scale bar
+        ax.plot([scale_x, scale_x + scale_length], [scale_y, scale_y],
+                'k-', linewidth=2, solid_capstyle='butt')
+
+        # Add label
+        ax.text(scale_x + scale_length / 2, scale_y - y_range * 0.02,
+                f'{scale_length:.3g}',
+                ha='center', va='top', fontsize=8)
+
+    # Remove axis labels
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+    plt.tight_layout()
+
+    # Save outputs
+    if output_dir is None:
+        output_dir = base_dir / "visualization"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_files = []
+    formats = general_cfg.get('output_format', ['pdf', 'png'])
+    dpi = general_cfg.get('dpi', 300)
+
+    for fmt in formats:
+        outfile = output_dir / f"phylogenetic_tree_custom.{fmt}"
+        plt.savefig(outfile, dpi=dpi, bbox_inches='tight')
+        output_files.append(outfile)
+        logger.info(f"✓ Wrote {outfile}")
+
+    plt.close()
+
+    return output_files
+
+
 def regenerate_all_plots(base_dir: Path, output_dir: Optional[Path] = None) -> Dict[str, List[Path]]:
     """
     Regenerate all plots from exported data.
@@ -914,6 +1245,14 @@ def regenerate_all_plots(base_dir: Path, output_dir: Optional[Path] = None) -> D
     except Exception as e:
         logger.error(f"  Failed to regenerate identity: {e}")
         results['identity'] = []
+
+    # Regenerate phylogenetic tree
+    try:
+        logger.info("  4. Regenerating phylogenetic tree...")
+        results['tree'] = regenerate_phylogenetic_tree(base_dir, output_dir, config)
+    except Exception as e:
+        logger.error(f"  Failed to regenerate tree: {e}")
+        results['tree'] = []
 
     total_files = sum(len(files) for files in results.values())
     logger.info(f"✓ All plots regenerated successfully! ({total_files} files)")
