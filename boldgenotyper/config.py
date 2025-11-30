@@ -527,6 +527,7 @@ class PhylogeneticConfig:
     Configuration for phylogenetic tree construction.
 
     Controls alignment and tree building for optional phylogenetic analysis.
+    Implements quality-filtered workflow to ensure biologically appropriate trees.
 
     Attributes
     ----------
@@ -537,20 +538,45 @@ class PhylogeneticConfig:
         Path to outgroup sequences for rooting (default: None)
 
     substitution_model : str
-        PhyML substitution model (default: "GTR")
+        Substitution model for tree building (default: "GTR")
 
     n_bootstrap : int
         Number of bootstrap replicates (default: 1000)
 
     tree_algorithm : str
-        Tree building method (default: "phyml")
+        Tree building method (default: "fasttree")
         Options: "phyml", "fasttree", "raxml"
 
     midpoint_root : bool
         Use midpoint rooting if no outgroup (default: True)
 
+    min_consensus_length : int
+        Minimum consensus sequence length for phylogenetics (default: 600 bp).
+        Sequences shorter than this are excluded from tree building but
+        retained for genotype assignment.
+
+    min_cluster_size : int
+        Minimum cluster size for phylogenetics (default: 5 sequences).
+        Clusters smaller than this produce incomplete consensus sequences
+        and are excluded from tree building.
+
+    trim_alignment : bool
+        Trim gappy alignment columns with trimAl (default: True).
+        Removes columns with excessive gaps.
+
+    trim_method : str
+        trimAl trimming method (default: "gappyout").
+        Options: gappyout, strict, automated1.
+
     Notes
     -----
+    Quality Filtering Rationale:
+    - Consensus sequences from small clusters (1-5 sequences) are 33-40% complete
+    - Short sequences create alignments with 60-70% gaps
+    - High gaps compromise phylogenetic inference
+    - Filtering ensures biologically meaningful trees
+    - ALL sequences still used for genotype assignment and geographic analysis
+
     Phylogenetic analysis is optional because:
     - Outgroup selection requires taxonomic expertise
     - Not all users need phylogenetic trees
@@ -565,8 +591,12 @@ class PhylogeneticConfig:
     outgroup_fasta: Optional[Path] = None
     substitution_model: str = "GTR"
     n_bootstrap: int = 1000
-    tree_algorithm: str = "phyml"
+    tree_algorithm: str = "fasttree"
     midpoint_root: bool = True
+    min_consensus_length: int = 200
+    min_cluster_size: int = 5
+    trim_alignment: bool = True
+    trim_method: str = "gappyout"
 
     def __post_init__(self):
         """Validate configuration parameters."""

@@ -610,7 +610,11 @@ def run_pipeline(
                 tree = phylogenetics.build_phylogeny(
                     consensus_fasta=str(consensus_path),
                     output_prefix=str(intermediate_prefix),
-                    threads=cfg.n_threads
+                    threads=cfg.n_threads,
+                    min_consensus_length=cfg.phylogenetic.min_consensus_length,
+                    min_cluster_size=cfg.phylogenetic.min_cluster_size,
+                    trim_alignment=cfg.phylogenetic.trim_alignment,
+                    trim_method=cfg.phylogenetic.trim_method
                 )
 
                 # Move tree files from intermediate to final directory

@@ -1,0 +1,381 @@
+BOLDGenotyper Migration Checklist
+
+Refactoring BOLDGenotyper into a COI-Focused, Haplotype-Centric Genotyping Pipeline
+
+Version: Draft 1.0
+Scope: Migration plan for revising BOLDGenotyper into a robust, biologically accurate, reproducible framework for analyzing COI sequences from BOLD.
+Audience: Developer implementing the refactor.
+Goal: Update pipeline logic, modules, CLI, and documentation to align with current best practices in COI barcoding, species delimitation, and phylogenetics.
+
+⸻
+
+1. Guiding Principles of the Refactor
+
+Core Biological & Methodological Shifts
+	•	Replace “genotype” logic with haplotype (ESV) logic.
+	•	Based on evidence that exact sequence variants (ESVs) preserve more biologically informative variation than traditional OTUs while maintaining ecological interpretability.
+	•	Reference: Porter & Hajibabaei 2020; various COI ESV benchmarking studies.
+	•	Address varying BOLD COI sequence lengths using a biologically grounded core shared region + masking approach.
+	•	Reference: Min & Hickey 2007; mini-barcode literature showing ~150–250 bp retains substantial discriminatory power.
+	•	Incorporate species delimitation tools (ABGD, ASAP, GMYC/PTP) to cluster haplotypes into higher-level molecular operational units (MOTUs/species hypotheses).
+	•	Reference: Puillandre et al. 2012, 2021; widely adopted in COI barcoding.
+	•	Add explicit workflows for outlier detection, outgroup rooting, phylogeny, and QC flagging.
+	•	Emphasize that BOLDGenotyper is a transparent, reproducible complement to BOLD’s BIN/RESL system, not a replacement.
+	•	Reference: Ratnasingham & Hebert 2013.
+
+Design Scope
+	•	Focus exclusively on COI sequences from BOLD for this revision.
+	•	Backwards compatibility is not required (project not yet public).
+	•	Preserve downstream modules (phylogeography, visualization) for future updates.
+
+⸻
+
+2. New High-Level Pipeline Structure
+	1.	Input & Metadata Parsing
+	2.	Orientation Normalization + COI Validation
+	3.	Dynamic QC Filtering (Raw + Core-region)
+	4.	Codon-aware Alignment → Core Shared Region + Masking
+	5.	Haplotype (ESV) Discovery
+	6.	Distance Matrix + Nearest-Neighbor Metrics
+	7.	Rare/Suspect Haplotype & Outlier Detection
+	8.	Haplotype Clustering + Species Delimitation (Optional)
+	9.	Phylogenetic Tree (FastTree) + Outgroup Rooting
+	10.	Reporting (Master TSV, Summary Tables, Alignments, Trees)
+
+⸻
+
+3. Module-by-Module Migration Tasks
+
+⸻
+
+3.1 config.py – New Configuration Architecture
+
+Tasks
+	•	Replace all “genotype” terminology with haplotype.
+	•	Introduce modular configuration objects:
+
+New Config Blocks
+
+COIValidationConfig
+	•	mitochondrial_code = 2
+	•	enable_orientation_check = True
+	•	orf_min_coverage = 0.7
+	•	orf_max_internal_stops = 2
+
+QCConfig
+	•	min_raw_length_abs = 200
+	•	min_raw_length_frac_of_median = 0.7
+	•	max_raw_N_fraction = 0.05
+	•	min_core_length_abs = 150
+	•	min_core_length_frac_of_median = 0.7
+
+CoreRegionConfig
+	•	core_min_coverage = 0.8
+	•	core_min_length = 200
+	•	mask_gap_threshold = 0.5
+	•	codon_aware_alignment = True
+
+HaplotypeConfig
+	•	max_singleton_distance = 0.05
+	•	flag_suspect_haplotypes = True
+	•	filter_suspect_haplotypes = False
+
+OutlierConfig
+	•	distance_outlier_min_abs = 0.10
+	•	distance_outlier_quantile = 0.95
+
+DistanceConfig
+	•	distance_metric_primary = "p"
+	•	compute_k2p = False
+
+DelimitationConfig
+	•	enable_simple_clustering = True
+	•	simple_clustering_threshold = 0.03
+	•	run_abgd = False
+	•	run_asap = False
+	•	run_gmyc = False
+	•	run_ptp = False
+
+PhylogenyConfig
+	•	build_tree = True
+	•	include_outgroups_in_tree = True
+	•	min_haplotype_sample_count_for_tree = 1
+
+Documentation
+
+Add rationale and citations (Porter & Hajibabaei 2020; Min & Hickey 2007; ABGD/ASAP papers; RESL/BIN papers).
+
+⸻
+
+3.2 cli.py – Public Interface Overhaul
+
+Tasks
+	•	Standardize terminology:
+	•	Replace every --genotype instance with --haplotype.
+	•	Add new CLI flags:
+	•	QC parameters (--min-raw-length-abs, etc.)
+	•	Alignment/core-region (--core-min-coverage, --no-codon-aware-alignment)
+	•	Haplotype/rare sequence handling (--filter-suspect-haplotypes, etc.)
+	•	Species delimitation (--run-abgd, --run-asap, --run-gmyc, --run-ptp)
+	•	Outgroup support:
+	•	--outgroup-species "Rhizoprionodon acutus"
+
+Outgroup Assignment Logic
+	•	After loading metadata:
+	•	Create phylo_role column default "ingroup".
+	•	If --outgroup-species string appears anywhere in row metadata → mark "outgroup".
+
+Pipeline Orchestration
+
+Ensure cli.py executes the new 10-phase pipeline in order.
+
+Terminal Logging
+	•	Log thresholds, alignment stats, and counts pre/post QC.
+
+⸻
+
+3.3 quality_control.py – Orientation Normalization & QC
+
+Orientation Normalization
+	•	Create normalize_orientation_and_orf():
+	•	Try both orientations.
+	•	Translate all 3 frames under mtDNA code 2.
+	•	Score ORFs → choose best orientation.
+	•	Return:
+	•	normalized nucleotide sequence,
+	•	orientation,
+	•	frame,
+	•	orf_coverage,
+	•	n_internal_stops,
+	•	fails_ORF_check.
+
+Dynamic QC
+
+Implement raw QC using median length and N-fraction.
+Implement core-region QC using median core-length.
+
+Output Flags
+	•	fails_raw_length_qc
+	•	fails_N_content_qc
+	•	fails_ORF_check
+	•	is_suspect_coi
+
+⸻
+
+3.4 dereplication.py – Haplotype (ESV) Discovery
+
+Replace clustering-first logic → haplotype-first
+	•	Deduplicate core-region sequences → haplotype_id.
+	•	Map samples → haplotypes.
+
+Distance Metrics
+	•	Compute full p-distance matrix between haplotypes.
+	•	Add K2P optional support.
+
+Nearest Neighbor Calculation
+
+For each haplotype, compute:
+	•	nearest_neighbor_id
+	•	nearest_neighbor_distance
+
+Rare/Suspect Flags
+
+Add:
+	•	is_singleton
+	•	is_singleton_far (if singleton & distance ≥ threshold)
+	•	is_suspect_haplotype
+(singleton_far OR ORF_fail OR suspect_COI)
+
+Outlier Detection
+	•	Using nearest-neighbor distances ≥ absolute + quantile thresholds.
+
+Simple Clustering
+	•	Optional hierarchical clustering at simple_clustering_threshold.
+
+⸻
+
+3.5 divergence_analysis.py – Barcoding Gap + Species Delimitation
+
+Barcoding-Gap Visualization
+	•	Compute:
+	•	within-cluster distances,
+	•	between-cluster distances.
+	•	Produce histograms + summary statistics.
+
+Delimitation Tools
+
+Implement wrappers for:
+	•	ABGD
+	•	ASAP
+	•	GMYC/PTP (tree-based)
+
+Output Columns
+
+Write the following to haplotype table:
+	•	species_cluster_abgd
+	•	species_cluster_asap
+	•	species_cluster_gmyc
+	•	species_cluster_ptp
+	•	species_cluster_consensus (optional)
+
+⸻
+
+3.6 genotype_assignment.py → rename to haplotype_assignment.py
+
+Assignment Logic
+	•	For each sample:
+	•	Map directly to exact haplotype ID.
+	•	Add species-cluster assignments.
+
+Metadata Flags
+
+For each sample:
+	•	haplotype_id
+	•	haplotype_cluster_id
+	•	species_cluster_*
+	•	QC & suspect flags
+
+Taxonomic Conflict Detection
+
+Flag haplotypes or clusters with multiple reported species names.
+
+⸻
+
+3.7 phylogenetics.py – Core-region Phylogeny with Outgroup Rooting
+
+Inputs
+	•	Trimmed + masked core-region alignment of haplotypes.
+
+Tree Construction
+	•	Use FastTree (GTR+Γ).
+	•	Produce:
+	•	tree_unrooted.nwk
+	•	tree_rooted.nwk
+
+Outgroup Rooting
+
+Root tree at MRCA of haplotypes containing ≥1 sample with phylo_role = "outgroup".
+If none present → midpoint root.
+
+Metadata Table
+
+Generate mapping table:
+	•	haplotype_id → all attributes (clusters, QC flags, sample_count, phylo_role, taxonomy, geography).
+
+Future-Proofing
+
+Document path to alignment for external IQ-TREE2 analysis.
+
+⸻
+
+3.8 cluster_diagnostics.py – Visualization Updates
+
+Replace genotype → haplotype terminology
+	•	Update variable names, plots, and labels.
+
+Parameter Sweep
+	•	Evaluate effects of multiple simple clustering thresholds.
+	•	Summaries:
+	•	clusters
+	•	within-cluster diversity
+	•	taxonomic conflicts
+
+⸻
+
+3.9 utils.py – Helper Updates
+
+Add helpers for:
+	•	Codon-aware translation,
+	•	Reverse complement,
+	•	Core-region coverage,
+	•	Gap-based masking,
+	•	Logging utilities.
+
+⸻
+
+4. New Output Columns (Master TSV)
+
+These must appear in the final sample-level TSV:
+
+QC & Orientation
+	•	orientation
+	•	frame
+	•	orf_aa_length
+	•	orf_coverage
+	•	n_internal_stops
+	•	fails_ORF_check
+	•	is_suspect_coi
+	•	fails_raw_length_qc
+	•	fails_N_content_qc
+	•	core_length
+	•	fails_core_length_qc
+
+Haplotype Assignment
+	•	haplotype_id
+	•	haplotype_sample_count
+	•	nearest_neighbor_id
+	•	nearest_neighbor_distance
+	•	is_singleton
+	•	is_singleton_far
+	•	is_suspect_haplotype
+	•	is_distance_outlier
+	•	haplotype_cluster_id
+
+Species Delimitation
+	•	species_cluster_abgd
+	•	species_cluster_asap
+	•	species_cluster_gmyc
+	•	species_cluster_ptp
+	•	species_cluster_consensus
+
+Phylogeny
+	•	phylo_role (ingroup or outgroup)
+
+⸻
+
+5. README & Documentation Requirements
+
+Required Additions
+	•	Updated conceptual description of BOLDGenotyper (haplotype-centric).
+	•	New pipeline diagram with phases.
+	•	Literature justification for major decisions:
+	•	ESV vs OTU (Porter & Hajibabaei, 2020)
+	•	Core-region trimming (Min & Hickey, 2007)
+	•	Species delimitation (ABGD, ASAP)
+	•	Complementarity with BOLD BINs
+	•	Detailed CLI flag documentation.
+	•	Example usage:
+	•	Standard run
+	•	With outgroups
+	•	With species-delimitation tools enabled
+	•	Description of all outputs (FASTA, TSVs, trees).
+
+⸻
+
+6. Deliverables Summary
+
+Developer must produce:
+	•	Updated config.py with new configuration schema.
+	•	Revised cli.py orchestrating the new pipeline.
+	•	Rewritten QC, dereplication, haplotype assignment, divergence analysis, and phylogenetics modules aligned with new logic.
+	•	New or updated utility functions.
+	•	Comprehensive master TSV and supporting summary outputs.
+	•	Updated README.md with diagrams, rationale, examples.
+	•	Updated terminal logging and help messages.
+	•	Maintained downstream modules (visualization, phylogeography) without modification yet.
+
+⸻
+
+7. Literature References Used in This Migration
+	•	Porter & Hajibabaei (2020) — ESV vs OTU performance in COI metabarcoding.
+	•	Min & Hickey (2007) — Impact of barcode sequence length on phylogenetic accuracy; justification for core-region trimming.
+	•	Hajibabaei et al. — Mini-barcode effectiveness (100–250 bp COI).
+	•	Puillandre et al. (2012, 2021) — ABGD and ASAP species delimitation methods.
+	•	Ratnasingham & Hebert (2013) — RESL/BIN system used by BOLD.
+
+⸻
+
+8. Final Notes
+	•	This migration intentionally breaks older versions to achieve correctness, clarity, and reproducibility.
+	•	All new logic is built on well-supported, widely used barcode analysis practices.
+	•	Once this foundation is stable, the next phase will update visualization, mapping, and phylogeography modules.
