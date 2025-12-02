@@ -1,8 +1,8 @@
 """
 Quality Control and Analysis Reports
 
-This module generates summary reports and QC metrics for the genotyping pipeline,
-including taxonomy conflict reports, assignment summaries, and consensus group
+This module generates summary reports and QC metrics for the haplotyping pipeline,
+including taxonomy conflict reports, assignment summaries, and haplotype
 characterizations.
 """
 
@@ -56,7 +56,7 @@ def generate_taxonomy_conflicts_report(
         logger.info("No taxonomy conflicts found with valid species assignments.")
         # Create empty output with expected columns
         empty_df = pd.DataFrame(columns=[
-            'processid', 'reported_species', 'assigned_sp', 'consensus_group',
+            'processid', 'reported_species', 'assigned_sp', 'haplotype_id',
             'identity_to_assigned_group', 'n_samples_in_assigned_group',
             'species_composition_of_assigned_group', 'runner_up_group',
             'runner_up_identity', 'delta_identity', 'assignment_status',
@@ -67,17 +67,17 @@ def generate_taxonomy_conflicts_report(
         return
 
     # Calculate n_samples_in_assigned_group
-    group_sizes = merged.groupby('consensus_group_x')['processid'].count().to_dict()
-    conflicts['n_samples_in_assigned_group'] = conflicts['consensus_group_x'].map(group_sizes)
+    group_sizes = merged.groupby('haplotype_id_x')['processid'].count().to_dict()
+    conflicts['n_samples_in_assigned_group'] = conflicts['haplotype_id_x'].map(group_sizes)
 
-    # Calculate species composition for each consensus group
-    species_comp = merged.groupby('consensus_group_x').apply(
+    # Calculate species composition for each haplotype
+    species_comp = merged.groupby('haplotype_id_x').apply(
         lambda g: ', '.join([
             f"{sp}: {cnt} ({cnt/len(g)*100:.1f}%)"
             for sp, cnt in g['species'].value_counts().items()
         ])
     ).to_dict()
-    conflicts['species_composition_of_assigned_group'] = conflicts['consensus_group_x'].map(species_comp)
+    conflicts['species_composition_of_assigned_group'] = conflicts['haplotype_id_x'].map(species_comp)
 
     # Calculate delta identity
     conflicts['delta_identity'] = conflicts['identity'] - conflicts['runner_up_identity']
@@ -107,7 +107,7 @@ def generate_taxonomy_conflicts_report(
         'processid',
         'species',  # reported species from BOLD
         'assigned_sp',
-        'consensus_group_x',
+        'haplotype_id_x',
         'identity',
         'n_samples_in_assigned_group',
         'species_composition_of_assigned_group',
@@ -122,7 +122,7 @@ def generate_taxonomy_conflicts_report(
         'processid',
         'reported_species',
         'assigned_sp',
-        'consensus_group',
+        'haplotype_id',
         'identity_to_assigned_group',
         'n_samples_in_assigned_group',
         'species_composition_of_assigned_group',
@@ -194,8 +194,8 @@ def generate_assignment_summary(
         summary['min_identity_assigned'] = np.nan
         summary['max_identity_assigned'] = np.nan
 
-    # Consensus groups and species
-    summary['n_consensus_groups'] = merged['consensus_group_x'].nunique()
+    # Haplotypes and species
+    summary['n_haplotypes'] = merged['haplotype_id_x'].nunique()
     summary['n_species_identified'] = merged['assigned_sp'].nunique()
 
     # Taxonomy conflicts
@@ -218,7 +218,7 @@ def generate_consensus_characterization(
     output_csv: str,
 ) -> None:
     """
-    Generate detailed characterization of each consensus group.
+    Generate detailed characterization of each haplotype.
 
     Parameters
     ----------
@@ -239,27 +239,27 @@ def generate_consensus_characterization(
     # Merge
     merged = df.merge(diag, on='processid', how='left')
 
-    # Filter to assigned samples with consensus groups
+    # Filter to assigned samples with haplotypes
     assigned = merged[
-        (merged['consensus_group_x'].notna()) &
+        (merged['haplotype_id_x'].notna()) &
         (merged['status'] == 'assigned')
     ].copy()
 
     if assigned.empty:
-        logger.warning("No assigned samples with consensus groups found.")
+        logger.warning("No assigned samples with haplotypes found.")
         empty_df = pd.DataFrame(columns=[
-            'consensus_group', 'assigned_sp', 'n_samples', 'mean_identity',
+            'haplotype_id', 'assigned_sp', 'n_samples', 'mean_identity',
             'min_identity', 'max_identity', 'reported_species_composition',
             'geographic_range', 'n_ocean_basins'
         ])
         empty_df.to_csv(out, index=False)
         return
 
-    # Group by consensus group
+    # Group by haplotype
     groups = []
-    for cg, group_df in assigned.groupby('consensus_group_x'):
+    for hap_id, group_df in assigned.groupby('haplotype_id_x'):
         char = {}
-        char['consensus_group'] = cg
+        char['haplotype_id'] = hap_id
 
         # Assigned species (should be consistent within group)
         assigned_species = group_df['assigned_sp'].mode()
@@ -2521,11 +2521,11 @@ def _build_executive_summary_section(
     html += f'  <div class="description">{_format_percentage(pct)} of total</div>\n'
     html += '</div>\n'
 
-    # Genotype metrics
+    # Haplotype metrics
     html += '<div class="metric-card">\n'
-    html += '  <div class="title">Consensus Groups</div>\n'
-    html += f'  <div class="value">{_format_number(summary.get("n_consensus_groups", 0), 0)}</div>\n'
-    html += '  <div class="description">Unique genotypes identified</div>\n'
+    html += '  <div class="title">Haplotypes</div>\n'
+    html += f'  <div class="value">{_format_number(summary.get("n_haplotypes", 0), 0)}</div>\n'
+    html += '  <div class="description">Unique haplotypes identified</div>\n'
     html += '</div>\n'
 
     html += '<div class="metric-card">\n'
@@ -2634,17 +2634,17 @@ def _build_taxonomy_section(
     html = '<div class="section" id="section-taxonomy">\n'
     html += '<h2>Taxonomy</h2>\n'
 
-    # Load consensus taxonomy
-    consensus_tax_file = taxonomy_dir / f"{organism}_consensus_taxonomy.csv"
-    species_by_cons_file = taxonomy_dir / f"{organism}_species_by_consensus.csv"
+    # Load haplotype taxonomy
+    consensus_tax_file = taxonomy_dir / f"{organism}_haplotype_taxonomy.csv"
+    species_by_cons_file = taxonomy_dir / f"{organism}_species_composition.csv"
 
     if consensus_tax_file.exists():
-        html += '<h3>Consensus Group Taxonomy</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>taxonomy/{organism}_consensus_taxonomy.csv</code></p>\n'
+        html += '<h3>Haplotype Taxonomy</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>taxonomy/{organism}_haplotype_taxonomy.csv</code></p>\n'
         try:
             tax_df = pd.read_csv(consensus_tax_file)
             # Select key columns
-            display_cols = [c for c in ['consensus_group', 'assigned_sp', 'assignment_level',
+            display_cols = [c for c in ['haplotype_id', 'assigned_sp', 'assignment_level',
                                         'assignment_notes', 'majority_fraction'] if c in tax_df.columns]
             if display_cols:
                 html += _dataframe_to_html(tax_df[display_cols], max_rows=50)
@@ -2656,8 +2656,8 @@ def _build_taxonomy_section(
         html += '<p class="alert alert-info">Consensus taxonomy file not found</p>\n'
 
     if species_by_cons_file.exists():
-        html += '<h3>Species Composition by Consensus Group</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>taxonomy/{organism}_species_by_consensus.csv</code></p>\n'
+        html += '<h3>Species Composition per Haplotype</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>haplotype_assignments/{organism}_species_composition.csv</code></p>\n'
         try:
             species_df = pd.read_csv(species_by_cons_file)
             html += _dataframe_to_html(species_df, max_rows=50)
@@ -2704,8 +2704,8 @@ def _build_species_composition_section(
 
     # Add explanation
     html += '<p style="margin-bottom: 20px;">'
-    html += 'This table shows which species names were reported for sequences within each consensus group. '
-    html += 'Multi-species groups may indicate taxonomic uncertainty, cryptic species, or potential misidentifications in the BOLD database.'
+    html += 'This table shows which species names were reported for sequences within each haplotype. '
+    html += 'Multi-species haplotypes may indicate taxonomic uncertainty, cryptic species, or potential misidentifications in the BOLD database.'
     html += '</p>\n'
 
     # Summary statistics
@@ -2714,16 +2714,16 @@ def _build_species_composition_section(
     ambiguous = comp_df['is_ambiguous'].sum()
 
     html += '<div class="stats-summary">\n'
-    html += f'<div class="stat-box"><strong>{total_groups}</strong><br>Total Consensus Groups</div>\n'
-    html += f'<div class="stat-box warning"><strong>{multi_species}</strong><br>Multi-Species Groups</div>\n'
-    html += f'<div class="stat-box alert"><strong>{ambiguous}</strong><br>Ambiguous Groups (&lt;70% primary)</div>\n'
+    html += f'<div class="stat-box"><strong>{total_groups}</strong><br>Total Haplotypes</div>\n'
+    html += f'<div class="stat-box warning"><strong>{multi_species}</strong><br>Multi-Species Haplotypes</div>\n'
+    html += f'<div class="stat-box alert"><strong>{ambiguous}</strong><br>Ambiguous Haplotypes (&lt;70% primary)</div>\n'
     html += '</div>\n'
 
     # Filter options
     html += '<div class="filter-container">\n'
     html += '<label for="comp-filter">Filter:</label>\n'
     html += '<select id="comp-filter" onchange="filterCompositionTable()">\n'
-    html += '<option value="all">All Groups</option>\n'
+    html += '<option value="all">All Haplotypes</option>\n'
     html += '<option value="multi">Multi-Species Only</option>\n'
     html += '<option value="ambiguous">Ambiguous Only</option>\n'
     html += '</select>\n'
@@ -2736,7 +2736,7 @@ def _build_species_composition_section(
     html += '<div class="table-container">\n'
     html += '<table id="composition-table" class="data-table">\n'
     html += '<thead><tr>\n'
-    html += '<th>Consensus Group</th>\n'
+    html += '<th>Haplotype</th>\n'
     html += '<th>Total Samples</th>\n'
     html += '<th># Species</th>\n'
     html += '<th>Primary Species</th>\n'
@@ -2762,7 +2762,7 @@ def _build_species_composition_section(
         flags_html = " ".join(flags) if flags else "—"
 
         html += f'<tr{row_class} data-multi="{row["is_multi_species"]}" data-ambiguous="{row["is_ambiguous"]}">\n'
-        html += f'<td><strong>{row["consensus_group"]}</strong></td>\n'
+        html += f'<td><strong>{row["haplotype_id"]}</strong></td>\n'
         html += f'<td>{row["n_total_samples"]}</td>\n'
         html += f'<td>{row["n_species"]}</td>\n'
         html += f'<td><em>{row["primary_species"]}</em></td>\n'
@@ -2929,9 +2929,9 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
     else:
         html += '<p class="alert alert-warning">No samples with defined ocean basin assignments</p>\n'
 
-    # Genotype × Basin distribution (excluding Unknown)
-    if 'consensus_group' in annotated_df.columns:
-        html += '<h3>Genotypes per Ocean Basin</h3>\n'
+    # Haplotype × Basin distribution (excluding Unknown)
+    if 'haplotype_id' in annotated_df.columns:
+        html += '<h3>Haplotypes per Ocean Basin</h3>\n'
 
         # Filter out Unknown geography before creating crosstab
         df_with_geography = annotated_df[annotated_df['ocean_basin'].fillna('Unknown') != 'Unknown'].copy()
@@ -2939,7 +2939,7 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
         if len(df_with_geography) > 0:
             # Create crosstab
             ct = pd.crosstab(
-                df_with_geography['consensus_group'].fillna('Unassigned'),
+                df_with_geography['haplotype_id'].fillna('Unassigned'),
                 df_with_geography['ocean_basin']
             )
 
@@ -3904,8 +3904,8 @@ def generate_html_report(
                 'Total Samples'
             )
             builder.add_quick_stat(
-                _format_number(summary.get('n_consensus_groups', 0), 0),
-                'Genotypes'
+                _format_number(summary.get('n_haplotypes', 0), 0),
+                'Haplotypes'
             )
             builder.add_quick_stat(
                 _format_percentage(summary.get('pct_assigned', 0)),

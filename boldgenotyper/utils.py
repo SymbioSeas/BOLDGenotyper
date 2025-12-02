@@ -52,7 +52,7 @@ Example Usage:
 Author: Steph Smith (steph.smith@unc.edu)
 """
 
-from typing import Optional, Dict, Any, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Tuple, Union, Iterable
 from pathlib import Path
 import logging
 import subprocess
@@ -1183,7 +1183,8 @@ def assign_consensus_taxonomy(
     group_col: str = "consensus_group",
     species_col: str = "species",
     genus_col: str = "genus",
-    majority_threshold: float = 0.5
+    majority_threshold: float = 0.5,
+    all_groups: Optional[Iterable[str]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     For each consensus group, tally 'species', pick a dominant species if any has
@@ -1192,6 +1193,14 @@ def assign_consensus_taxonomy(
     Returns:
       - assign_table: one row per consensus_group with chosen assigned_sp (+metadata)
       - species_counts: long table of counts per (consensus_group, species)
+
+    Parameters
+    ----------
+    all_groups : Optional[Iterable[str]]
+        Optional complete list of consensus/haplotype IDs that should appear in
+        the output even if no samples are assigned (e.g., orphan haplotypes used
+        only in phylogenetic trees). Missing groups are added with unassigned
+        taxonomy so downstream relabeling can still find a tip label.
     """
     df = df.copy()
 
@@ -1248,7 +1257,7 @@ def assign_consensus_taxonomy(
             notes = "tie or not majority; fell back to genus" if assigned_sp else "no genus available"
 
         return {
-            "consensus_group": gname,
+            group_col: gname,  # Use parameter instead of hardcoded name
             "assigned_sp": assigned_sp,
             "assignment_level": level,
             "assignment_notes": notes,
@@ -1260,17 +1269,44 @@ def assign_consensus_taxonomy(
         result = _choose(gname, group_df)
         assign_list.append(result)
 
+    # Include groups that had zero assigned samples (e.g., orphan haplotypes kept for phylogeny)
+    if all_groups is not None:
+        observed = set(counts[group_col].unique())
+        # Helper: consider variants with trailing _n\d+ as equivalent to base
+        def _is_observed_variant(name: str) -> bool:
+            if name in observed:
+                return True
+            return any(obs.startswith(f"{name}_n") for obs in observed)
+
+        for gname in all_groups:
+            if _is_observed_variant(gname):
+                continue
+            assign_list.append({
+                group_col: gname,
+                "assigned_sp": "",
+                "assignment_level": "unassigned",
+                "assignment_notes": "no samples assigned; added to retain label",
+                "majority_fraction": 0.0,
+            })
+
     assign = pd.DataFrame(assign_list)
-    
-    # Merge in majority_fraction
+
+    # Merge in majority_fraction (keep original column name), coalescing if it already exists
     assign = assign.merge(
-        maj.rename(columns={group_col: "consensus_group"}),
-        on="consensus_group",
-        how="left"
+        maj,
+        on=group_col,
+        how="left",
+        suffixes=("", "_maj")
     )
-    
+    if "majority_fraction_maj" in assign.columns:
+        if "majority_fraction" in assign.columns:
+            assign["majority_fraction"] = assign["majority_fraction"].fillna(assign["majority_fraction_maj"])
+        else:
+            assign["majority_fraction"] = assign["majority_fraction_maj"]
+        assign = assign.drop(columns=["majority_fraction_maj"])
+
     # Ensure column order and types
-    expected_cols = ["consensus_group", "assigned_sp", "assignment_level", "assignment_notes", "majority_fraction"]
+    expected_cols = [group_col, "assigned_sp", "assignment_level", "assignment_notes", "majority_fraction"]
     missing = [c for c in expected_cols if c not in assign.columns]
     if missing:
         raise RuntimeError(f"assign_consensus_taxonomy: missing columns in result: {missing}")
@@ -1318,5 +1354,583 @@ def pick_final_group_taxon(
         
     if (majority_level == "genus") and (majority_sp or "").strip():
         return majority_sp, "genus", "majority_genus"
-        
+
     return "", "unassigned", "none"
+
+
+# ============================================================================
+# COI Validation and Translation
+# ============================================================================
+
+def translate_dna(
+    sequence: str,
+    genetic_code: int = 2,
+    to_stop: bool = False
+) -> str:
+    """
+    Translate DNA sequence to protein using specified genetic code.
+
+    Parameters
+    ----------
+    sequence : str
+        DNA sequence to translate
+    genetic_code : int, optional
+        NCBI genetic code table number (default: 2 = vertebrate mitochondrial)
+        See: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+    to_stop : bool, optional
+        If True, stop translation at first stop codon (default: False)
+
+    Returns
+    -------
+    str
+        Translated protein sequence
+
+    Examples
+    --------
+    >>> translate_dna("ATGCGATAA", genetic_code=2)
+    'MR*'
+    >>> translate_dna("ATGCGATAA", genetic_code=2, to_stop=True)
+    'MR'
+
+    Notes
+    -----
+    Uses Bio.Seq if available for accurate genetic code support.
+    Falls back to standard genetic code if BioPython not installed.
+
+    References
+    ----------
+    NCBI Genetic Codes: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+    """
+    try:
+        from Bio.Seq import Seq
+        from Bio.Data import CodonTable
+
+        # Clean sequence to ensure no gaps or invalid characters
+        cleaned_seq = sequence.upper().replace('-', '').replace('.', '')
+        cleaned_seq = ''.join(c for c in cleaned_seq if c in 'ATGCN')
+
+        if not cleaned_seq:
+            return ""
+
+        seq_obj = Seq(cleaned_seq)
+        protein = seq_obj.translate(table=genetic_code, to_stop=to_stop)
+        return str(protein)
+
+    except ImportError:
+        logger.warning("BioPython not available. Using standard genetic code for translation.")
+        # Fallback: standard genetic code (not mitochondrial)
+        standard_code = {
+            'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L',
+            'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',
+            'TAT': 'Y', 'TAC': 'Y', 'TAA': '*', 'TAG': '*',
+            'TGT': 'C', 'TGC': 'C', 'TGA': '*', 'TGG': 'W',
+            'CTT': 'L', 'CTC': 'L', 'CTA': 'L', 'CTG': 'L',
+            'CCT': 'P', 'CCC': 'P', 'CCA': 'P', 'CCG': 'P',
+            'CAT': 'H', 'CAC': 'H', 'CAA': 'Q', 'CAG': 'Q',
+            'CGT': 'R', 'CGC': 'R', 'CGA': 'R', 'CGG': 'R',
+            'ATT': 'I', 'ATC': 'I', 'ATA': 'I', 'ATG': 'M',
+            'ACT': 'T', 'ACC': 'T', 'ACA': 'T', 'ACG': 'T',
+            'AAT': 'N', 'AAC': 'N', 'AAA': 'K', 'AAG': 'K',
+            'AGT': 'S', 'AGC': 'S', 'AGA': 'R', 'AGG': 'R',
+            'GTT': 'V', 'GTC': 'V', 'GTA': 'V', 'GTG': 'V',
+            'GCT': 'A', 'GCC': 'A', 'GCA': 'A', 'GCG': 'A',
+            'GAT': 'D', 'GAC': 'D', 'GAA': 'E', 'GAG': 'E',
+            'GGT': 'G', 'GGC': 'G', 'GGA': 'G', 'GGG': 'G'
+        }
+
+        sequence = sequence.upper()
+        protein = []
+
+        for i in range(0, len(sequence) - 2, 3):
+            codon = sequence[i:i+3]
+            if len(codon) == 3:
+                aa = standard_code.get(codon, 'X')
+                if to_stop and aa == '*':
+                    break
+                protein.append(aa)
+
+        return ''.join(protein)
+
+
+def reverse_complement(sequence: str) -> str:
+    """
+    Compute reverse complement of DNA sequence.
+
+    Parameters
+    ----------
+    sequence : str
+        DNA sequence
+
+    Returns
+    -------
+    str
+        Reverse complement sequence
+
+    Examples
+    --------
+    >>> reverse_complement("ATGC")
+    'GCAT'
+    """
+    complement = str.maketrans('ATGCN', 'TACGN')
+    return sequence.upper().translate(complement)[::-1]
+
+
+def find_best_orf(
+    sequence: str,
+    genetic_code: int = 2,
+    min_orf_length: int = 150
+) -> Dict[str, Any]:
+    """
+    Find best open reading frame in both orientations.
+
+    Tests both forward and reverse complement orientations, returning
+    the orientation with the longest ORF and fewest internal stops.
+
+    Parameters
+    ----------
+    sequence : str
+        DNA sequence to analyze
+    genetic_code : int, optional
+        NCBI genetic code table (default: 2 = vertebrate mitochondrial)
+    min_orf_length : int, optional
+        Minimum ORF length in nucleotides (default: 150)
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary with:
+        - 'orientation': 'forward' or 'reverse'
+        - 'orf_length_nt': ORF length in nucleotides
+        - 'orf_length_aa': ORF length in amino acids
+        - 'orf_coverage': Fraction of sequence covered by ORF
+        - 'internal_stops': Number of internal stop codons
+        - 'protein': Translated protein sequence
+        - 'corrected_sequence': Sequence in correct orientation
+
+    Examples
+    --------
+    >>> result = find_best_orf("ATGAAATAA", genetic_code=2)
+    >>> result['orientation']
+    'forward'
+    >>> result['internal_stops']
+    0
+
+    Notes
+    -----
+    Internal stops are stop codons before the final codon.
+    Mitochondrial genetic code (2) differs from standard code,
+    particularly in stop codon usage (TGA codes for Trp, not stop).
+    """
+    results = []
+
+    for orientation, seq in [('forward', sequence), ('reverse', reverse_complement(sequence))]:
+        # Trim to codon boundary to avoid partial codon warnings
+        trimmed_seq = seq[:len(seq) - (len(seq) % 3)]
+
+        if not trimmed_seq:
+            # Sequence too short to contain even one codon
+            results.append({
+                'orientation': orientation,
+                'orf_length_nt': 0,
+                'orf_length_aa': 0,
+                'orf_coverage': 0.0,
+                'internal_stops': 0,
+                'protein': '',
+                'corrected_sequence': seq
+            })
+            continue
+
+        # Translate without stopping at first stop
+        protein = translate_dna(trimmed_seq, genetic_code=genetic_code, to_stop=False)
+
+        # Find longest ORF (stretch without stops, or with minimal stops)
+        # Count internal stops (stops before the last codon)
+        internal_stops = protein[:-1].count('*') if len(protein) > 0 else 0
+
+        # Calculate ORF metrics based on trimmed sequence
+        orf_length_aa = len(protein)
+        orf_length_nt = len(trimmed_seq)  # Use actual trimmed length
+        orf_coverage = orf_length_nt / len(sequence) if len(sequence) > 0 else 0.0
+
+        results.append({
+            'orientation': orientation,
+            'orf_length_nt': orf_length_nt,
+            'orf_length_aa': orf_length_aa,
+            'orf_coverage': orf_coverage,
+            'internal_stops': internal_stops,
+            'protein': protein,
+            'corrected_sequence': seq
+        })
+
+    # Choose best orientation: fewest internal stops, then longest ORF
+    best = min(results, key=lambda x: (x['internal_stops'], -x['orf_length_nt']))
+
+    return best
+
+
+def check_orf_quality(
+    sequence: str,
+    genetic_code: int = 2,
+    min_coverage: float = 0.7,
+    max_internal_stops: int = 2
+) -> Dict[str, Any]:
+    """
+    Check ORF quality and orientation for COI sequence validation.
+
+    Determines if sequence is likely a valid COI barcode by checking:
+    - Open reading frame coverage
+    - Number of internal stop codons
+    - Correct orientation (forward vs reverse complement)
+
+    Parameters
+    ----------
+    sequence : str
+        DNA sequence to validate
+    genetic_code : int, optional
+        NCBI genetic code table (default: 2 = vertebrate mitochondrial)
+    min_coverage : float, optional
+        Minimum ORF coverage fraction (default: 0.7 = 70%)
+    max_internal_stops : int, optional
+        Maximum internal stop codons allowed (default: 2)
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary with:
+        - 'is_valid_orf': Boolean, True if passes quality checks
+        - 'orientation': 'forward' or 'reverse'
+        - 'needs_revcomp': Boolean, True if should be reverse complemented
+        - 'orf_coverage': Fraction of sequence in ORF
+        - 'internal_stops': Number of internal stop codons
+        - 'corrected_sequence': Sequence in correct orientation
+        - 'protein': Translated protein
+        - 'failure_reasons': List of reasons if validation failed
+
+    Examples
+    --------
+    >>> result = check_orf_quality("ATGAAAGCGTAA", genetic_code=2)
+    >>> result['is_valid_orf']
+    True
+    >>> result['needs_revcomp']
+    False
+
+    Notes
+    -----
+    This implements the COI validation approach from Porter & Hajibabaei (2020).
+    Sequences that fail validation may be:
+    - Non-COI contamination
+    - Pseudogenes (NUMTs)
+    - Sequencing errors
+    - Chimeric sequences
+
+    References
+    ----------
+    Porter & Hajibabaei (2020). Over 2.5 million COI sequences in GenBank
+    and growing. PLOS ONE 15(9): e0238765.
+    """
+    # Find best ORF
+    orf_result = find_best_orf(sequence, genetic_code=genetic_code)
+
+    # Check quality criteria
+    failure_reasons = []
+
+    if orf_result['orf_coverage'] < min_coverage:
+        failure_reasons.append(
+            f"Low ORF coverage: {orf_result['orf_coverage']:.2f} < {min_coverage}"
+        )
+
+    if orf_result['internal_stops'] > max_internal_stops:
+        failure_reasons.append(
+            f"Too many internal stops: {orf_result['internal_stops']} > {max_internal_stops}"
+        )
+
+    is_valid_orf = len(failure_reasons) == 0
+    needs_revcomp = orf_result['orientation'] == 'reverse'
+
+    return {
+        'is_valid_orf': is_valid_orf,
+        'orientation': orf_result['orientation'],
+        'needs_revcomp': needs_revcomp,
+        'orf_coverage': orf_result['orf_coverage'],
+        'internal_stops': orf_result['internal_stops'],
+        'corrected_sequence': orf_result['corrected_sequence'],
+        'protein': orf_result['protein'],
+        'failure_reasons': failure_reasons
+    }
+
+
+# ============================================================================
+# Core Region Extraction and Masking
+# ============================================================================
+
+def compute_core_region_coverage(
+    alignment: List[str],
+    min_coverage: float = 0.8
+) -> Dict[str, Any]:
+    """
+    Compute per-position coverage statistics for aligned sequences.
+
+    Identifies which alignment positions are covered by a sufficient
+    fraction of sequences, enabling extraction of a "core" region.
+
+    Parameters
+    ----------
+    alignment : List[str]
+        List of aligned sequences (all same length)
+    min_coverage : float, optional
+        Minimum fraction of sequences required (default: 0.8 = 80%)
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary with:
+        - 'coverage_per_position': List of coverage fractions [0.0-1.0]
+        - 'core_start': Start position of core region
+        - 'core_end': End position of core region (exclusive)
+        - 'core_length': Length of core region
+        - 'alignment_length': Total alignment length
+        - 'n_sequences': Number of sequences
+
+    Examples
+    --------
+    >>> alignment = ["ATGC--", "AT-CGA", "ATGCGA"]
+    >>> result = compute_core_region_coverage(alignment, min_coverage=0.67)
+    >>> result['core_length']
+    4
+
+    Notes
+    -----
+    Coverage is defined as the fraction of sequences with a non-gap
+    character at each position. Positions with coverage >= min_coverage
+    define the core region.
+
+    This addresses the variable-length COI sequence problem in BOLD,
+    where sequences range from 150-1550 bp.
+    """
+    if not alignment or len(alignment) == 0:
+        return {
+            'coverage_per_position': [],
+            'core_start': 0,
+            'core_end': 0,
+            'core_length': 0,
+            'alignment_length': 0,
+            'n_sequences': 0
+        }
+
+    n_sequences = len(alignment)
+    alignment_length = len(alignment[0])
+
+    # Compute coverage per position
+    coverage_per_position = []
+    for pos in range(alignment_length):
+        # Count non-gap characters at this position
+        non_gaps = sum(1 for seq in alignment if pos < len(seq) and seq[pos] != '-')
+        coverage = non_gaps / n_sequences if n_sequences > 0 else 0.0
+        coverage_per_position.append(coverage)
+
+    # Find core region (continuous stretch with >= min_coverage)
+    # Use the longest such stretch
+    core_start = 0
+    core_end = 0
+    current_start = None
+    longest_length = 0
+
+    for pos, cov in enumerate(coverage_per_position):
+        if cov >= min_coverage:
+            if current_start is None:
+                current_start = pos
+        else:
+            if current_start is not None:
+                # End of a core stretch
+                length = pos - current_start
+                if length > longest_length:
+                    longest_length = length
+                    core_start = current_start
+                    core_end = pos
+                current_start = None
+
+    # Check if core extends to end
+    if current_start is not None:
+        length = alignment_length - current_start
+        if length > longest_length:
+            core_start = current_start
+            core_end = alignment_length
+
+    return {
+        'coverage_per_position': coverage_per_position,
+        'core_start': core_start,
+        'core_end': core_end,
+        'core_length': core_end - core_start,
+        'alignment_length': alignment_length,
+        'n_sequences': n_sequences
+    }
+
+
+def mask_alignment_gaps(
+    alignment: List[str],
+    gap_threshold: float = 0.5
+) -> List[str]:
+    """
+    Mask alignment columns with excessive gaps.
+
+    Replaces columns with >gap_threshold gaps with all gaps,
+    removing low-information positions from the alignment.
+
+    Parameters
+    ----------
+    alignment : List[str]
+        List of aligned sequences (all same length)
+    gap_threshold : float, optional
+        Maximum gap fraction before masking (default: 0.5 = 50%)
+
+    Returns
+    -------
+    List[str]
+        Masked alignment with gappy columns replaced by all gaps
+
+    Examples
+    --------
+    >>> alignment = ["ATGC", "AT--", "ATGC"]
+    >>> masked = mask_alignment_gaps(alignment, gap_threshold=0.5)
+    >>> masked
+    ['ATG-', 'AT--', 'ATG-']
+
+    Notes
+    -----
+    This is a simple gap-based masking approach. Columns with >50% gaps
+    typically provide little phylogenetic information and may introduce noise.
+    """
+    if not alignment or len(alignment) == 0:
+        return alignment
+
+    n_sequences = len(alignment)
+    alignment_length = len(alignment[0])
+
+    # Identify columns to mask
+    columns_to_mask = []
+    for pos in range(alignment_length):
+        # Count gaps at this position
+        n_gaps = sum(1 for seq in alignment if pos < len(seq) and seq[pos] == '-')
+        gap_fraction = n_gaps / n_sequences if n_sequences > 0 else 0.0
+
+        if gap_fraction > gap_threshold:
+            columns_to_mask.append(pos)
+
+    # Mask columns
+    masked_alignment = []
+    for seq in alignment:
+        masked_seq = list(seq)
+        for pos in columns_to_mask:
+            if pos < len(masked_seq):
+                masked_seq[pos] = '-'
+        masked_alignment.append(''.join(masked_seq))
+
+    logger.debug(f"Masked {len(columns_to_mask)}/{alignment_length} columns with >{gap_threshold:.1%} gaps")
+
+    return masked_alignment
+
+
+def extract_core_region(
+    alignment: List[str],
+    headers: List[str],
+    min_coverage: float = 0.8,
+    gap_threshold: float = 0.5,
+    min_core_length: int = 200
+) -> Optional[Tuple[List[str], List[str]]]:
+    """
+    Extract core shared region from variable-length alignment.
+
+    Identifies and extracts the region covered by most sequences,
+    optionally masking gappy columns.
+
+    Parameters
+    ----------
+    alignment : List[str]
+        List of aligned sequences (all same length)
+    headers : List[str]
+        Sequence headers (same order as alignment)
+    min_coverage : float, optional
+        Minimum sequence coverage (default: 0.8 = 80%)
+    gap_threshold : float, optional
+        Gap threshold for masking (default: 0.5 = 50%)
+    min_core_length : int, optional
+        Minimum core region length (default: 200 bp)
+
+    Returns
+    -------
+    Optional[Tuple[List[str], List[str]]]
+        (core_sequences, headers) if core region found, None otherwise
+
+    Examples
+    --------
+    >>> alignment = ["ATGCATGC", "AT--ATGC", "ATGCATGC"]
+    >>> headers = ["seq1", "seq2", "seq3"]
+    >>> core_seqs, core_headers = extract_core_region(alignment, headers)
+
+    Notes
+    -----
+    Workflow:
+    1. Compute coverage per position
+    2. Identify longest core region with >= min_coverage
+    3. Extract core region from all sequences
+    4. Optionally mask gappy columns in core region
+    5. Remove all-gap sequences from core
+
+    This addresses the challenge of COI sequences with variable 5'/3' coverage
+    in BOLD datasets.
+    """
+    # Compute coverage
+    coverage_result = compute_core_region_coverage(alignment, min_coverage=min_coverage)
+
+    # Check if core region meets minimum length with fallback
+    core_length = coverage_result['core_length']
+    min_fallback_length = 100  # Absolute minimum
+
+    if core_length < min_fallback_length:
+        # Core region too short even for fallback
+        logger.error(
+            f"Core region too short: {core_length} bp < {min_fallback_length} bp "
+            f"absolute minimum. Cannot proceed with haplotype discovery."
+        )
+        return None
+    elif core_length < min_core_length:
+        # Between fallback and recommended: warn but proceed
+        logger.warning(
+            f"Core region shorter than recommended: {core_length} bp "
+            f"< {min_core_length} bp. Proceeding with fallback threshold. "
+            f"Results may have reduced phylogenetic resolution."
+        )
+
+    logger.info(
+        f"Identified core region: positions {coverage_result['core_start']}-"
+        f"{coverage_result['core_end']} ({core_length} bp)"
+    )
+
+    # Extract core region
+    core_start = coverage_result['core_start']
+    core_end = coverage_result['core_end']
+
+    core_sequences = [seq[core_start:core_end] for seq in alignment]
+
+    # Mask gappy columns in core region
+    if gap_threshold < 1.0:
+        core_sequences = mask_alignment_gaps(core_sequences, gap_threshold=gap_threshold)
+
+    # Remove sequences that are all gaps in core region
+    filtered_core = []
+    filtered_headers = []
+
+    for seq, header in zip(core_sequences, headers):
+        ungapped_seq = seq.replace('-', '')
+        if len(ungapped_seq) > 0:
+            filtered_core.append(seq)
+            filtered_headers.append(header)
+        else:
+            logger.debug(f"Removed all-gap sequence from core: {header}")
+
+    logger.info(
+        f"Core region extracted: {len(filtered_core)} sequences, "
+        f"{len(filtered_core[0])} positions"
+    )
+
+    return filtered_core, filtered_headers

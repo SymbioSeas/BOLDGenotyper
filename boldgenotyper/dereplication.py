@@ -1,47 +1,65 @@
 """
-Sequence Clustering and Consensus Generation
+Haplotype Discovery and Dereplication Module
 
-This module handles the dereplication of COI sequences from BOLD data through
-multiple sequence alignment, distance calculation, hierarchical clustering, and
-consensus sequence generation.
+This module implements a haplotype-first workflow for COI barcode analysis,
+identifying Exact Sequence Variants (ESVs) from aligned core regions and
+flagging potentially suspect haplotypes based on distance and ORF quality.
 
-The dereplication workflow:
+The haplotype-first workflow:
 1. Extract COI sequences from BOLD TSV file
-2. Create FASTA file with formatted headers
-3. Perform multiple sequence alignment using MAFFT
-4. Trim alignment using trimAl (--automated1)
-5. Calculate pairwise sequence distances (ignoring gaps and Ns)
-6. Perform hierarchical clustering based on distance threshold
-7. Generate consensus sequences for each cluster using majority rule
+2. Perform multiple sequence alignment using MAFFT
+3. Extract core shared region (positions covered by ≥80% of sequences)
+4. Apply gap masking to remove low-information columns
+5. Identify unique haplotypes (exact sequence variants) from core region
+6. Calculate pairwise distances between haplotypes
+7. Flag suspect haplotypes (singletons distant from nearest neighbor, ORF failures)
+8. Generate haplotype FASTA with diagnostic information
 
 Key Concepts:
-- Default clustering threshold: 0.02 (98% sequence identity)
-  Rationale: This is the standard threshold for COI-based species delimitation
-  and captures meaningful intraspecific genetic variation while distinguishing
-  genotypes that may represent distinct evolutionary lineages.
+- **Haplotype (ESV)**: Exact Sequence Variant - unique sequence in core region
+  Unlike clustering-based approaches, ESVs preserve all biological variation
+  without arbitrary distance thresholds.
 
-- Distance calculation: Pairwise comparisons ignore gaps and ambiguous (N) bases
-  to focus on actual sequence differences rather than missing data artifacts.
+- **Core Region**: The portion of alignment covered by most sequences (default: 80%)
+  This addresses variable COI sequence lengths in BOLD (150-1550 bp) by focusing
+  on the universally sequenced region.
 
-- Consensus generation: Uses majority rule voting at each position. Ambiguous
-  bases are assigned when no clear majority exists (e.g., 50/50 split).
+- **Suspect Haplotype Flagging**: Singletons are flagged as suspect if:
+  * Distance to nearest neighbor > threshold (default: 5%)
+  * OR ORF validation failed (low coverage, internal stops)
+  * OR suspect COI sequence (contamination indicator)
 
-- Output naming: consensus_c{cluster_id}_n{sample_count}
-  Example: consensus_c1_n45 represents cluster 1 with 45 samples
+- **Distance Calculation**: p-distance on ungapped core region alignment
+  Ignores gaps and N bases to focus on actual sequence differences.
+
+Workflow Comparison:
+- OLD (clustering-first): align → cluster → generate consensus
+- NEW (haplotype-first): align → extract core → identify ESVs → flag suspects
+
+This implements the ESV approach recommended by Porter & Hajibabaei (2020) for
+high-resolution COI barcoding while maintaining data quality through suspect flagging.
 
 Dependencies:
 - MAFFT v7+ for multiple sequence alignment
-- trimAl for alignment trimming
-- scipy for hierarchical clustering
+- trimAl for alignment trimming (optional)
+- scipy for distance calculations
 - Biopython for sequence handling
 
 Example Usage:
-    >>> from boldgenotyper.dereplication import dereplicate_sequences
-    >>> consensus_seqs = dereplicate_sequences(
+    >>> from boldgenotyper.dereplication import identify_haplotypes
+    >>> haplotypes = identify_haplotypes(
     ...     tsv_path="Sphyrna_lewini.tsv",
     ...     output_dir="results/",
-    ...     threshold=0.02
+    ...     min_core_coverage=0.8
     ... )
+
+Legacy Support:
+    The clustering-based workflow is still available via cluster_sequences()
+    and generate_consensus() for backward compatibility.
+
+References:
+    Porter & Hajibabaei (2020). Over 2.5 million COI sequences in GenBank
+    and growing. PLOS ONE 15(9): e0238765.
 
 Author: Steph Smith (steph.smith@unc.edu)
 """
@@ -1054,3 +1072,408 @@ def dereplicate_sequences(
     logger.info("=" * 70)
 
     return consensus_records
+
+
+# ============================================================================
+# Haplotype-First Workflow Functions
+# ============================================================================
+
+def identify_unique_haplotypes(
+    core_alignment: List[str],
+    headers: List[str],
+    orf_validation_results: Optional[pd.DataFrame] = None
+) -> Tuple[List[SeqRecord], pd.DataFrame]:
+    """
+    Identify unique haplotypes (exact sequence variants) from core region alignment.
+
+    Parameters
+    ----------
+    core_alignment : List[str]
+        Aligned core-region sequences (all same length)
+    headers : List[str]
+        Sequence headers (processids)
+    orf_validation_results : Optional[pd.DataFrame]
+        DataFrame with ORF validation results (processid, orf_valid, etc.)
+
+    Returns
+    -------
+    Tuple[List[SeqRecord], pd.DataFrame]
+        - haplotype_sequences: List of unique haplotype SeqRecords
+        - haplotype_table: DataFrame mapping samples to haplotypes
+
+    Notes
+    -----
+    Unlike clustering, this identifies exact sequence variants (ESVs) without
+    any distance threshold. Each unique sequence in the core region defines
+    a separate haplotype.
+    """
+    from collections import defaultdict
+
+    # Group sequences by unique core sequence
+    # Store both ungapped (for grouping) and aligned (for distance calculation)
+    haplotype_groups = defaultdict(list)
+    aligned_seqs = {}  # ungapped_seq -> aligned_seq
+
+    for header, seq in zip(headers, core_alignment):
+        # Ungapped sequence for haplotype ID
+        ungapped = seq.replace('-', '')
+        haplotype_groups[ungapped].append(header)
+        # Store aligned version (first occurrence)
+        if ungapped not in aligned_seqs:
+            aligned_seqs[ungapped] = seq
+
+    # Create haplotype records
+    haplotype_records = []
+    haplotype_mapping = []
+
+    haplotype_id = 1
+    for ungapped_seq, members in sorted(haplotype_groups.items(), key=lambda x: -len(x[1])):
+        n_members = len(members)
+
+        # Create haplotype ID
+        hap_id = f"haplotype_h{haplotype_id}_n{n_members}"
+
+        # Create SeqRecord with ALIGNED sequence (for distance calculation)
+        # The aligned version is needed for pairwise distance matrix
+        seq_record = SeqRecord(
+            Seq(aligned_seqs[ungapped_seq]),
+            id=hap_id,
+            description=f"Haplotype {haplotype_id} with {n_members} sequences"
+        )
+        haplotype_records.append(seq_record)
+
+        # Record mapping
+        for processid in members:
+            haplotype_mapping.append({
+                'processid': processid,
+                'haplotype_id': hap_id,
+                'haplotype_number': haplotype_id,
+                'n_members': n_members,
+                'is_singleton': n_members == 1
+            })
+
+        haplotype_id += 1
+
+    # Convert mapping to DataFrame
+    haplotype_df = pd.DataFrame(haplotype_mapping)
+
+    # Merge with ORF validation if provided
+    if orf_validation_results is not None:
+        haplotype_df = haplotype_df.merge(
+            orf_validation_results[['processid', 'orf_valid', 'orf_coverage', 'internal_stops']],
+            on='processid',
+            how='left'
+        )
+
+    logger.info(f"Identified {len(haplotype_records)} unique haplotypes from {len(headers)} sequences")
+    n_singletons = sum(1 for h in haplotype_records if h.description.endswith("1 sequences"))
+    logger.info(f"  Singletons: {n_singletons} ({n_singletons/len(haplotype_records)*100:.1f}%)")
+
+    return haplotype_records, haplotype_df
+
+
+def flag_suspect_haplotypes(
+    haplotype_records: List[SeqRecord],
+    haplotype_df: pd.DataFrame,
+    max_singleton_distance: float = 0.05,
+    distance_outlier_min_abs: float = 0.10,
+    distance_outlier_quantile: float = 0.95
+) -> pd.DataFrame:
+    """
+    Flag suspect haplotypes based on distance and ORF quality.
+
+    Suspect haplotypes are flagged if they are:
+    1. Singletons with distance to nearest neighbor > threshold
+    2. Any haplotype with distance > outlier threshold
+    3. Haplotypes with failed ORF validation (if available)
+
+    Parameters
+    ----------
+    haplotype_records : List[SeqRecord]
+        Unique haplotype sequences
+    haplotype_df : pd.DataFrame
+        DataFrame mapping samples to haplotypes (with ORF validation if available)
+    max_singleton_distance : float, optional
+        Distance threshold for flagging singleton haplotypes (default: 0.05 = 5%)
+    distance_outlier_min_abs : float, optional
+        Absolute minimum distance for outlier flagging (default: 0.10 = 10%)
+    distance_outlier_quantile : float, optional
+        Quantile threshold for outlier detection (default: 0.95)
+
+    Returns
+    -------
+    pd.DataFrame
+        Haplotype-level statistics with suspect flags
+
+    Notes
+    -----
+    This implements quality control recommended by Porter & Hajibabaei (2020)
+    to flag likely sequencing errors, contamination, or other artifacts while
+    preserving genuine biological variation.
+    """
+    # Calculate pairwise distances between haplotypes
+    distance_matrix_condensed = calculate_pairwise_distances(haplotype_records)
+
+    # Convert condensed distance matrix to square form for easier indexing
+    from scipy.spatial.distance import squareform
+    distance_matrix = squareform(distance_matrix_condensed)
+
+    # For each haplotype, find nearest neighbor distance
+    haplotype_stats = []
+
+    for i, record in enumerate(haplotype_records):
+        # Get distances to all other haplotypes (exclude self)
+        distances = distance_matrix[i, :]
+        distances_to_others = [d for j, d in enumerate(distances) if j != i]
+
+        if len(distances_to_others) > 0:
+            nearest_neighbor_dist = min(distances_to_others)
+        else:
+            nearest_neighbor_dist = np.nan
+
+        # Extract haplotype info from description
+        hap_id = record.id
+        n_members = int(re.search(r'_n(\d+)', hap_id).group(1))
+        is_singleton = n_members == 1
+
+        haplotype_stats.append({
+            'haplotype_id': hap_id,
+            'n_members': n_members,
+            'is_singleton': is_singleton,
+            'nearest_neighbor_distance': nearest_neighbor_dist
+        })
+
+    haplotype_stats_df = pd.DataFrame(haplotype_stats)
+
+    # Calculate outlier threshold
+    if len(haplotype_stats_df) > 0 and not haplotype_stats_df['nearest_neighbor_distance'].isna().all():
+        distance_outlier_threshold = haplotype_stats_df['nearest_neighbor_distance'].quantile(
+            distance_outlier_quantile
+        )
+    else:
+        distance_outlier_threshold = distance_outlier_min_abs
+
+    logger.info(f"Distance-based flagging thresholds:")
+    logger.info(f"  Singleton distance threshold: {max_singleton_distance:.3f}")
+    logger.info(f"  Outlier absolute threshold: {distance_outlier_min_abs:.3f}")
+    logger.info(f"  Outlier quantile threshold ({distance_outlier_quantile:.0%}): {distance_outlier_threshold:.3f}")
+
+    # Flag suspect haplotypes
+    def flag_haplotype(row):
+        reasons = []
+
+        # Singleton with high distance
+        if row['is_singleton'] and row['nearest_neighbor_distance'] > max_singleton_distance:
+            reasons.append(f"Singleton distant from nearest neighbor ({row['nearest_neighbor_distance']:.3f})")
+
+        # Outlier (any haplotype with very high distance)
+        if (row['nearest_neighbor_distance'] >= distance_outlier_min_abs and
+            row['nearest_neighbor_distance'] >= distance_outlier_threshold):
+            reasons.append(f"Distance outlier ({row['nearest_neighbor_distance']:.3f})")
+
+        return '; '.join(reasons) if reasons else ''
+
+    haplotype_stats_df['suspect_distance_reason'] = haplotype_stats_df.apply(flag_haplotype, axis=1)
+    haplotype_stats_df['suspect_distance'] = haplotype_stats_df['suspect_distance_reason'] != ''
+
+    # Check for ORF failures (if ORF validation data available)
+    if 'orf_valid' in haplotype_df.columns:
+        # For each haplotype, check if ANY member has ORF failure
+        orf_failures_by_haplotype = haplotype_df.groupby('haplotype_id').agg({
+            'orf_valid': lambda x: (x == False).any() if x.notna().any() else False,  # True if any member has ORF failure
+            'orf_coverage': 'min',  # Worst ORF coverage
+            'internal_stops': 'max'  # Worst internal stops
+        }).reset_index()
+        orf_failures_by_haplotype.columns = ['haplotype_id', 'has_orf_failure', 'min_orf_coverage', 'max_internal_stops']
+
+        haplotype_stats_df = haplotype_stats_df.merge(orf_failures_by_haplotype, on='haplotype_id', how='left')
+
+        # Add ORF failure to suspect flags
+        haplotype_stats_df['suspect_orf_reason'] = haplotype_stats_df.apply(
+            lambda row: f"ORF failure (coverage={row['min_orf_coverage']:.2f}, stops={row['max_internal_stops']})"
+            if row.get('has_orf_failure', False) else '',
+            axis=1
+        )
+    else:
+        haplotype_stats_df['has_orf_failure'] = False
+        haplotype_stats_df['suspect_orf_reason'] = ''
+
+    # Combined suspect flag
+    haplotype_stats_df['is_suspect'] = (
+        haplotype_stats_df['suspect_distance'] |
+        haplotype_stats_df.get('has_orf_failure', False)
+    )
+
+    # Combined reasons
+    def combine_reasons(row):
+        reasons = []
+        if row['suspect_distance_reason']:
+            reasons.append(row['suspect_distance_reason'])
+        if row.get('suspect_orf_reason', ''):
+            reasons.append(row['suspect_orf_reason'])
+        return '; '.join(reasons)
+
+    haplotype_stats_df['suspect_reasons'] = haplotype_stats_df.apply(combine_reasons, axis=1)
+
+    # Log summary
+    n_suspect = haplotype_stats_df['is_suspect'].sum()
+    n_suspect_distance = haplotype_stats_df['suspect_distance'].sum()
+    n_suspect_orf = haplotype_stats_df.get('has_orf_failure', pd.Series([False])).sum()
+
+    logger.info(f"Suspect haplotype flagging:")
+    logger.info(f"  Total haplotypes: {len(haplotype_stats_df)}")
+    logger.info(f"  Suspect haplotypes: {n_suspect} ({n_suspect/len(haplotype_stats_df)*100:.1f}%)")
+    logger.info(f"    - Distance-based: {n_suspect_distance}")
+    if 'orf_valid' in haplotype_df.columns:
+        logger.info(f"    - ORF-based: {n_suspect_orf}")
+
+    return haplotype_stats_df
+
+
+def identify_haplotypes(
+    tsv_path: Union[str, Path],
+    fasta_path: Union[str, Path],
+    output_dir: Union[str, Path],
+    min_core_coverage: float = 0.8,
+    gap_mask_threshold: float = 0.5,
+    min_core_length: int = 200,
+    max_singleton_distance: float = 0.05,
+    orf_validation_df: Optional[pd.DataFrame] = None,
+    cleanup_intermediates: bool = False
+) -> Tuple[List[SeqRecord], pd.DataFrame, pd.DataFrame]:
+    """
+    Main haplotype-first workflow: identify ESVs from core region.
+
+    This is the new recommended workflow replacing the clustering-based approach.
+
+    Parameters
+    ----------
+    tsv_path : Union[str, Path]
+        Path to BOLD TSV file
+    fasta_path : Union[str, Path]
+        Path to input FASTA file (orientation-normalized sequences)
+    output_dir : Union[str, Path]
+        Output directory for results
+    min_core_coverage : float, optional
+        Minimum sequence coverage for core region (default: 0.8 = 80%)
+    gap_mask_threshold : float, optional
+        Gap threshold for column masking (default: 0.5)
+    min_core_length : int, optional
+        Minimum core region length (default: 200 bp)
+    max_singleton_distance : float, optional
+        Distance threshold for flagging singletons (default: 0.05)
+    orf_validation_df : Optional[pd.DataFrame]
+        ORF validation results from quality control
+    cleanup_intermediates : bool, optional
+        Remove intermediate files (default: False)
+
+    Returns
+    -------
+    Tuple[List[SeqRecord], pd.DataFrame, pd.DataFrame]
+        - haplotype_records: Unique haplotype sequences
+        - haplotype_mapping: Sample-to-haplotype mapping
+        - haplotype_stats: Haplotype-level statistics with flags
+
+    Notes
+    -----
+    Workflow:
+    1. Align sequences with MAFFT
+    2. Extract core shared region (covered by ≥min_core_coverage of sequences)
+    3. Apply gap masking
+    4. Identify unique haplotypes (ESVs)
+    5. Calculate distances and flag suspects
+    """
+    from boldgenotyper.utils import extract_core_region
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    logger.info("=" * 70)
+    logger.info("Starting haplotype-first workflow")
+    logger.info("=" * 70)
+
+    # Step 1: Align sequences
+    logger.info("Step 1: Aligning sequences with MAFFT...")
+    aligned_fasta = output_path / f"{Path(fasta_path).stem}_aligned.fasta"
+    run_mafft_alignment(str(fasta_path), str(aligned_fasta))
+
+    # Step 2: Load alignment
+    logger.info("Step 2: Loading alignment...")
+    alignment = list(AlignIO.read(str(aligned_fasta), "fasta"))
+    aligned_seqs = [str(record.seq) for record in alignment]
+    headers = [record.id for record in alignment]
+
+    logger.info(f"Loaded alignment: {len(aligned_seqs)} sequences, {len(aligned_seqs[0])} positions")
+
+    # Step 3: Extract core region
+    logger.info("Step 3: Extracting core shared region...")
+    core_result = extract_core_region(
+        aligned_seqs,
+        headers,
+        min_coverage=min_core_coverage,
+        gap_threshold=gap_mask_threshold,
+        min_core_length=min_core_length
+    )
+
+    if core_result is None:
+        raise DereplicationError(
+            "Core region extraction failed - region < 100 bp absolute minimum. "
+            "This dataset may have insufficient overlap in sequenced regions. "
+            "Consider checking sequence quality and alignment coverage."
+        )
+
+    core_seqs, core_headers = core_result
+    logger.info(f"Core region: {len(core_seqs)} sequences, {len(core_seqs[0])} positions")
+
+    # Step 4: Identify unique haplotypes
+    logger.info("Step 4: Identifying unique haplotypes...")
+    haplotype_records, haplotype_mapping = identify_unique_haplotypes(
+        core_seqs,
+        core_headers,
+        orf_validation_results=orf_validation_df
+    )
+
+    # Step 5: Flag suspect haplotypes
+    logger.info("Step 5: Flagging suspect haplotypes...")
+    haplotype_stats = flag_suspect_haplotypes(
+        haplotype_records,
+        haplotype_mapping,
+        max_singleton_distance=max_singleton_distance
+    )
+
+    # Step 6: Write haplotype FASTA (ungapped for downstream use)
+    haplotype_fasta = output_path / f"{Path(tsv_path).stem}_haplotypes.fasta"
+
+    # Create ungapped versions for writing to FASTA
+    ungapped_records = []
+    for rec in haplotype_records:
+        ungapped_seq = str(rec.seq).replace('-', '')
+        ungapped_rec = SeqRecord(
+            Seq(ungapped_seq),
+            id=rec.id,
+            description=rec.description
+        )
+        ungapped_records.append(ungapped_rec)
+
+    SeqIO.write(ungapped_records, haplotype_fasta, "fasta")
+    logger.info(f"Wrote {len(ungapped_records)} haplotypes to {haplotype_fasta}")
+
+    # Step 7: Write haplotype tables
+    haplotype_mapping_file = output_path / f"{Path(tsv_path).stem}_haplotype_mapping.csv"
+    haplotype_mapping.to_csv(haplotype_mapping_file, index=False)
+    logger.info(f"Wrote haplotype mapping to {haplotype_mapping_file}")
+
+    haplotype_stats_file = output_path / f"{Path(tsv_path).stem}_haplotype_stats.csv"
+    haplotype_stats.to_csv(haplotype_stats_file, index=False)
+    logger.info(f"Wrote haplotype statistics to {haplotype_stats_file}")
+
+    # Cleanup
+    if cleanup_intermediates and aligned_fasta.exists():
+        aligned_fasta.unlink()
+        logger.debug(f"Removed intermediate file: {aligned_fasta}")
+
+    logger.info("=" * 70)
+    logger.info("Haplotype-first workflow completed successfully")
+    logger.info("=" * 70)
+
+    return haplotype_records, haplotype_mapping, haplotype_stats

@@ -6,7 +6,7 @@ data coverage, quality, and limitations. It helps users understand what geograph
 interpretations are well-supported by their data.
 
 Key Features:
-- Geographic coverage assessment per genotype
+- Geographic coverage assessment per haplotype
 - Basin assignment confidence levels
 - Missing data transparency reports
 - Coordinate quality evaluation
@@ -33,25 +33,25 @@ class GeographicEnhancementError(Exception):
 
 def assess_geographic_coverage(
     df: pd.DataFrame,
-    group_col: str = "consensus_group",
+    group_col: str = "haplotype_id",
     species_col: str = "species"
 ) -> pd.DataFrame:
     """
-    Assess geographic data coverage per genotype.
+    Assess geographic data coverage per haplotype.
 
     Parameters
     ----------
     df : pd.DataFrame
         Annotated dataframe with geographic data
     group_col : str
-        Column name for consensus groups
+        Column name for haplotype groups
     species_col : str
         Column name for species
 
     Returns
     -------
     pd.DataFrame
-        Coverage statistics per genotype
+        Coverage statistics per haplotype
     """
     logger.info("  Assessing geographic coverage...")
 
@@ -417,6 +417,7 @@ def enhance_geographic_analysis(
     df: pd.DataFrame,
     output_dir: Path,
     organism: str,
+    group_col: str = "haplotype_id",
     goas_data: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
@@ -430,6 +431,8 @@ def enhance_geographic_analysis(
         Output directory
     organism : str
         Organism name
+    group_col : str
+        Column name for haplotype groups
     goas_data : GeoDataFrame, optional
         GOaS data for basin confidence
 
@@ -446,7 +449,7 @@ def enhance_geographic_analysis(
     results = {}
 
     # 1. Assess coverage
-    coverage_df = assess_geographic_coverage(df)
+    coverage_df = assess_geographic_coverage(df, group_col=group_col)
     coverage_path = output_dir / "geographic_coverage.csv"
     coverage_df.to_csv(coverage_path, index=False)
     results['coverage'] = coverage_path
@@ -489,7 +492,7 @@ Enhanced geographic analysis with coverage assessment and quality metrics.
 
 ## Files
 
-- `geographic_coverage.csv` - Coverage statistics per genotype
+- `geographic_coverage.csv` - Coverage statistics per haplotype
 - `geographic_missing_data_report.txt` - Detailed coverage report
 - Enhanced annotated CSV includes `basin_confidence` column
 
@@ -508,7 +511,7 @@ Enhanced geographic analysis with coverage assessment and quality metrics.
 
 ## Representativeness Scores
 
-**Per-Genotype Geographic Coverage:**
+**Per-Haplotype Geographic Coverage:**
 - `excellent`: >50% with ocean basin
 - `good`: 25-50% with ocean basin
 - `moderate`: 10-25% with basin OR >50% with coords

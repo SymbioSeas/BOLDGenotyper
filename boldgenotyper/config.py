@@ -11,13 +11,20 @@ clean parameter management. The configuration system supports:
 5. Hierarchical configuration with component-specific settings
 
 Configuration Structure:
-- DereplicationConfig: Sequence clustering parameters
-- GenotypeAssignmentConfig: Sample-to-genotype matching parameters
+- COIValidationConfig: COI sequence orientation and ORF validation
+- QCConfig: Dynamic quality control filtering parameters
+- CoreRegionConfig: Core shared region extraction and masking
+- HaplotypeConfig: Haplotype (ESV) discovery and flagging
+- OutlierConfig: Distance-based outlier detection
+- DistanceConfig: Distance metric configuration
+- DelimitationConfig: Species delimitation tool parameters
+- DereplicationConfig: Sequence clustering parameters (legacy/compatibility)
+- GenotypeAssignmentConfig: Sample-to-haplotype matching parameters
 - GeographicConfig: Coordinate filtering and ocean basin assignment
 - VisualizationConfig: Plot styling and output parameters
 - PhylogeneticConfig: Phylogenetic tree construction parameters
-- PipelineConfig: Master configuration combining all components
 - TaxonomyConfig: Sequence-based species assignment thresholds and majority rules
+- PipelineConfig: Master configuration combining all components
 
 Key Design Principles:
 - Immutable configuration objects (frozen dataclasses)
@@ -61,6 +68,382 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
     logger.debug("PyYAML not available; YAML config files not supported")
+
+
+# ============================================================================
+# COI Validation Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class COIValidationConfig:
+    """
+    Configuration for COI sequence orientation normalization and ORF validation.
+
+    Controls how sequences are validated as proper COI barcodes through
+    translation and open reading frame (ORF) analysis.
+
+    Attributes
+    ----------
+    mitochondrial_code : int
+        Genetic code for translation (default: 2 = vertebrate mitochondrial code).
+        See: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+
+    enable_orientation_check : bool
+        Whether to check and correct sequence orientation (default: True).
+        Tries both forward and reverse complement, chooses best ORF.
+
+    orf_min_coverage : float
+        Minimum fraction of sequence that must be covered by ORF (default: 0.5).
+        Permissive threshold allows real-world COI data with partial sequences.
+        Sequences with very low coverage (<0.3) may be NUMTs or contamination.
+
+    orf_max_internal_stops : int
+        Maximum number of internal stop codons allowed (default: 2).
+        Used as evidence against valid COI, not a strict filter.
+        More stops suggest sequencing errors or non-COI sequence.
+
+    Notes
+    -----
+    Based on Porter & Hajibabaei (2020) and standard COI barcoding practices.
+    The mitochondrial code differs from standard genetic code, particularly
+    in stop codon usage. Thresholds are permissive to accommodate real-world
+    BOLD data quality while still flagging clear non-COI sequences.
+
+    References
+    ----------
+    Porter & Hajibabaei (2020). Over 2.5 million COI sequences in GenBank
+    and growing. PLOS ONE 15(9): e0238 765.
+    """
+    mitochondrial_code: int = 2
+    enable_orientation_check: bool = True
+    orf_min_coverage: float = 0.5  # Permissive for real-world data
+    orf_max_internal_stops: int = 2
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if self.mitochondrial_code not in [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25]:
+            raise ValueError(f"Invalid mitochondrial_code: {self.mitochondrial_code}")
+        if not 0 < self.orf_min_coverage <= 1:
+            raise ValueError("orf_min_coverage must be between 0 and 1")
+        if self.orf_max_internal_stops < 0:
+            raise ValueError("orf_max_internal_stops must be non-negative")
+
+
+# ============================================================================
+# Quality Control Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class QCConfig:
+    """
+    Configuration for dynamic quality control filtering.
+
+    Implements median-based and absolute thresholds for sequence quality filtering
+    at both raw and core-region levels.
+
+    Attributes
+    ----------
+    min_raw_length_abs : int
+        Absolute minimum raw sequence length in bp (default: 200).
+        Sequences shorter than this are rejected immediately.
+
+    min_raw_length_frac_of_median : float
+        Minimum raw length as fraction of dataset median (default: 0.7).
+        Adaptive threshold that adjusts to dataset characteristics.
+
+    max_raw_N_fraction : float
+        Maximum fraction of ambiguous bases (N) in raw sequence (default: 0.05).
+        Sequences with >5% Ns are low quality.
+
+    min_core_length_abs : int
+        Absolute minimum core-region length in bp (default: 150).
+        Based on mini-barcode literature (Min & Hickey 2007).
+
+    min_core_length_frac_of_median : float
+        Minimum core length as fraction of median (default: 0.7).
+        Filters fragments after core-region extraction.
+
+    Notes
+    -----
+    The two-tier approach (raw + core) ensures quality at both input and
+    post-alignment stages. Mini-barcodes of 150-250 bp retain substantial
+    discriminatory power (Hajibabaei et al.).
+
+    References
+    ----------
+    Min & Hickey (2007). Impact of sequence length on phylogenetic accuracy.
+    Hajibabaei et al. (2006). DNA barcoding: how it complements taxonomy,
+    molecular phylogenetics and population genetics. Trends in Genetics.
+    """
+    min_raw_length_abs: int = 200
+    min_raw_length_frac_of_median: float = 0.7
+    max_raw_N_fraction: float = 0.05
+    min_core_length_abs: int = 150
+    min_core_length_frac_of_median: float = 0.7
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if self.min_raw_length_abs < 50:
+            raise ValueError("min_raw_length_abs must be at least 50")
+        if not 0 < self.min_raw_length_frac_of_median <= 1:
+            raise ValueError("min_raw_length_frac_of_median must be between 0 and 1")
+        if not 0 <= self.max_raw_N_fraction <= 1:
+            raise ValueError("max_raw_N_fraction must be between 0 and 1")
+        if self.min_core_length_abs < 50:
+            raise ValueError("min_core_length_abs must be at least 50")
+        if not 0 < self.min_core_length_frac_of_median <= 1:
+            raise ValueError("min_core_length_frac_of_median must be between 0 and 1")
+
+
+# ============================================================================
+# Core Region Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class CoreRegionConfig:
+    """
+    Configuration for core shared region extraction and masking.
+
+    Handles variable-length COI sequences by identifying and extracting
+    a core shared region with appropriate gap masking.
+
+    Attributes
+    ----------
+    core_min_coverage : float
+        Minimum fraction of sequences that must cover a position (default: 0.8).
+        Positions covered by <80% of sequences are masked.
+
+    core_min_length : int
+        Minimum length of core region to retain (default: 150 bp).
+        Recommended minimum for phylogenetic signal. Falls back to 100 bp
+        with warning if necessary.
+
+    mask_gap_threshold : float
+        Maximum gap fraction per column before masking (default: 0.5).
+        Columns with >50% gaps are masked.
+
+    codon_aware_alignment : bool
+        Whether to use codon-aware alignment (default: True).
+        Maintains reading frame integrity for protein-coding sequences.
+
+    Notes
+    -----
+    This addresses the challenge of varying BOLD COI sequence lengths
+    (150-1550 bp) by extracting a universally sequenced core region.
+    Thresholds are permissive to work with real-world BOLD data while
+    maintaining phylogenetic utility.
+
+    References
+    ----------
+    Min & Hickey (2007). Assessing the effect of alignment...
+    """
+    core_min_coverage: float = 0.8
+    core_min_length: int = 150
+    mask_gap_threshold: float = 0.2
+    codon_aware_alignment: bool = False
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if not 0 < self.core_min_coverage <= 1:
+            raise ValueError("core_min_coverage must be between 0 and 1")
+        if self.core_min_length < 50:
+            raise ValueError("core_min_length must be at least 50")
+        if not 0 < self.mask_gap_threshold <= 1:
+            raise ValueError("mask_gap_threshold must be between 0 and 1")
+
+
+# ============================================================================
+# Haplotype Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class HaplotypeConfig:
+    """
+    Configuration for haplotype (ESV) discovery and quality flagging.
+
+    Controls how exact sequence variants are identified and which are
+    flagged as potentially suspect.
+
+    Attributes
+    ----------
+    max_singleton_distance : float
+        Maximum distance to nearest neighbor for singleton flagging (default: 0.05).
+        Singletons >5% divergent from nearest haplotype are flagged.
+
+    flag_suspect_haplotypes : bool
+        Whether to flag suspect haplotypes (default: True).
+        Flags singletons that are distant, have ORF issues, or suspect COI.
+
+    filter_suspect_haplotypes : bool
+        Whether to remove suspect haplotypes from analysis (default: False).
+        If True, flagged haplotypes are excluded; if False, only flagged.
+
+    Notes
+    -----
+    Suspect haplotype criteria:
+    - Singleton AND (distance > max_singleton_distance OR ORF failure OR suspect COI)
+
+    This implements the ESV approach recommended by Porter & Hajibabaei (2020),
+    preserving biologically meaningful variation while flagging artifacts.
+
+    References
+    ----------
+    Porter & Hajibabaei (2020). Scaling up: A guide to high-throughput genomic
+    approaches for biodiversity analysis. Molecular Ecology.
+    """
+    max_singleton_distance: float = 0.05
+    flag_suspect_haplotypes: bool = False
+    filter_suspect_haplotypes: bool = False
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if not 0 < self.max_singleton_distance <= 1:
+            raise ValueError("max_singleton_distance must be between 0 and 1")
+
+
+# ============================================================================
+# Outlier Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class OutlierConfig:
+    """
+    Configuration for distance-based outlier detection.
+
+    Identifies haplotypes that are unusually divergent from their
+    nearest neighbors, which may indicate contamination or misidentification.
+
+    Attributes
+    ----------
+    distance_outlier_min_abs : float
+        Absolute minimum nearest-neighbor distance for outlier flag (default: 0.10).
+        Haplotypes >10% divergent are candidates for outlier status.
+
+    distance_outlier_quantile : float
+        Quantile threshold for outlier detection (default: 0.95).
+        Haplotypes in top 5% of nearest-neighbor distances are outliers.
+
+    Notes
+    -----
+    A haplotype is flagged as an outlier if:
+    nearest_neighbor_distance >= min_abs AND
+    nearest_neighbor_distance >= quantile(all_distances, distance_outlier_quantile)
+
+    This catches both absolutely divergent sequences and relative outliers
+    within the dataset.
+    """
+    distance_outlier_min_abs: float = 0.10
+    distance_outlier_quantile: float = 0.95
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if not 0 < self.distance_outlier_min_abs <= 1:
+            raise ValueError("distance_outlier_min_abs must be between 0 and 1")
+        if not 0 < self.distance_outlier_quantile <= 1:
+            raise ValueError("distance_outlier_quantile must be between 0 and 1")
+
+
+# ============================================================================
+# Distance Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class DistanceConfig:
+    """
+    Configuration for genetic distance calculations.
+
+    Controls which distance metrics are computed for haplotype comparisons.
+
+    Attributes
+    ----------
+    distance_metric_primary : str
+        Primary distance metric to use (default: "p").
+        Options: "p" (p-distance), "k2p" (Kimura 2-parameter)
+
+    compute_k2p : bool
+        Whether to also compute K2P distances (default: False).
+        K2P corrects for multiple substitutions but is computationally slower.
+
+    Notes
+    -----
+    P-distance (uncorrected) is recommended for closely related sequences
+    and is faster to compute. K2P is more appropriate for deeper divergences
+    but may overcorrect for COI barcoding distances.
+
+    References
+    ----------
+    Collins et al. (2012). Barcoding's next top model: an evaluation of
+    nucleotide substitution models for specimen identification.
+    """
+    distance_metric_primary: str = "p"
+    compute_k2p: bool = False
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if self.distance_metric_primary not in ["p", "k2p"]:
+            raise ValueError("distance_metric_primary must be 'p' or 'k2p'")
+
+
+# ============================================================================
+# Species Delimitation Configuration
+# ============================================================================
+
+@dataclass(frozen=True)
+class DelimitationConfig:
+    """
+    Configuration for species delimitation methods.
+
+    Controls which automated species delimitation tools are run and
+    their parameters.
+
+    Attributes
+    ----------
+    enable_simple_clustering : bool
+        Enable simple distance-based clustering (default: True).
+        Fast hierarchical clustering at fixed threshold.
+
+    simple_clustering_threshold : float
+        Distance threshold for simple clustering (default: 0.03).
+        Commonly used 3% threshold for COI species delimitation.
+
+    run_abgd : bool
+        Run ABGD (Automatic Barcode Gap Discovery) (default: False).
+        Requires external ABGD installation.
+
+    run_asap : bool
+        Run ASAP (Assemble Species by Automatic Partitioning) (default: False).
+        Requires external ASAP installation.
+
+    run_gmyc : bool
+        Run GMYC (General Mixed Yule Coalescent) (default: False).
+        Requires R with splits package and ultrametric tree.
+
+    run_ptp : bool
+        Run PTP (Poisson Tree Processes) (default: False).
+        Requires external PTP installation.
+
+    Notes
+    -----
+    Simple clustering is always available and provides baseline delimitation.
+    Other methods require external tools and are currently placeholders for
+    future implementation.
+
+    References
+    ----------
+    Puillandre et al. (2012). ABGD, Automatic Barcode Gap Discovery...
+    Puillandre et al. (2021). ASAP: assemble species by automatic partitioning.
+    """
+    enable_simple_clustering: bool = True
+    simple_clustering_threshold: float = 0.03
+    run_abgd: bool = False
+    run_asap: bool = False
+    run_gmyc: bool = False
+    run_ptp: bool = False
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if not 0 < self.simple_clustering_threshold <= 1:
+            raise ValueError("simple_clustering_threshold must be between 0 and 1")
 
 
 # ============================================================================
@@ -133,9 +516,9 @@ class DereplicationConfig:
     mafft_algorithm: str = "auto"
     trim_alignment: bool = True
     trimal_method: str = "automated1"
-    min_sequence_length: int = 400
+    min_sequence_length: int = 200
     max_n_content: float = 0.1
-    min_post_trim_length: int = 300
+    min_post_trim_length: int = 100
     min_consensus_length_ratio: float = 0.75
 
     def __post_init__(self):
@@ -537,6 +920,14 @@ class PhylogeneticConfig:
     outgroup_fasta : Optional[Path]
         Path to outgroup sequences for rooting (default: None)
 
+    outgroup_label : Optional[str]
+        Name of an in-tree taxon/tip to use for rooting (default: None). Useful
+        when an outgroup sequence is already present in the alignment.
+
+    outgroup_taxon : Optional[str]
+        Species/genus name to use for rooting by collapsing all matching tips to
+        their least common ancestor (default: None).
+
     substitution_model : str
         Substitution model for tree building (default: "GTR")
 
@@ -551,14 +942,14 @@ class PhylogeneticConfig:
         Use midpoint rooting if no outgroup (default: True)
 
     min_consensus_length : int
-        Minimum consensus sequence length for phylogenetics (default: 600 bp).
-        Sequences shorter than this are excluded from tree building but
-        retained for genotype assignment.
+        Minimum haplotype sequence length for phylogenetics (default: 150 bp).
+        Raise this (e.g., 600 bp) for full-length barcode datasets; keep low for
+        short core regions so trees are still built.
 
     min_cluster_size : int
-        Minimum cluster size for phylogenetics (default: 5 sequences).
-        Clusters smaller than this produce incomplete consensus sequences
-        and are excluded from tree building.
+        Minimum number of samples per haplotype for inclusion (default: 5).
+        Small clusters tend to produce incomplete consensus sequences; requiring
+        ≥5 members yields longer, more reliable sequences for tree building.
 
     trim_alignment : bool
         Trim gappy alignment columns with trimAl (default: True).
@@ -570,31 +961,31 @@ class PhylogeneticConfig:
 
     Notes
     -----
-    Quality Filtering Rationale:
-    - Consensus sequences from small clusters (1-5 sequences) are 33-40% complete
-    - Short sequences create alignments with 60-70% gaps
-    - High gaps compromise phylogenetic inference
-    - Filtering ensures biologically meaningful trees
-    - ALL sequences still used for genotype assignment and geographic analysis
+    Quality filtering defaults now favor publication-ready phylogenies:
+    - Require ≥600 bp sequences to retain COI phylogenetic signal
+    - Require clusters of ≥5 samples to avoid fragmentary consensuses
+    - Trim gappy columns with trimAl by default
 
-    Phylogenetic analysis is optional because:
+    Phylogenetic analysis remains optional because:
     - Outgroup selection requires taxonomic expertise
     - Not all users need phylogenetic trees
     - Computational time can be significant
 
     Three modes of operation:
-    1. No phylogeny (build_tree=False): Fastest, genotype ID only
+    1. No phylogeny (build_tree=False): Fastest, haplotype ID only
     2. Midpoint rooting (build_tree=True, no outgroup): Visualize relationships
     3. Outgroup rooting (build_tree=True, with outgroup): Publication quality
     """
-    build_tree: bool = False
+    build_tree: bool = True
     outgroup_fasta: Optional[Path] = None
+    outgroup_label: Optional[str] = None
+    outgroup_taxon: Optional[str] = None
     substitution_model: str = "GTR"
     n_bootstrap: int = 1000
     tree_algorithm: str = "fasttree"
     midpoint_root: bool = True
-    min_consensus_length: int = 200
-    min_cluster_size: int = 5
+    min_consensus_length: int = 150  # Default tuned for short core regions; raise for full-length barcodes
+    min_cluster_size: int = 3  # Avoid fragmentary singletons in tree building
     trim_alignment: bool = True
     trim_method: str = "gappyout"
 
@@ -621,18 +1012,39 @@ class PipelineConfig:
 
     Attributes
     ----------
+    coi_validation : COIValidationConfig
+        COI sequence orientation and ORF validation configuration
+
+    qc : QCConfig
+        Dynamic quality control filtering configuration
+
+    core_region : CoreRegionConfig
+        Core shared region extraction and masking configuration
+
+    haplotype : HaplotypeConfig
+        Haplotype (ESV) discovery and flagging configuration
+
+    outlier : OutlierConfig
+        Distance-based outlier detection configuration
+
+    distance : DistanceConfig
+        Distance metric configuration
+
+    delimitation : DelimitationConfig
+        Species delimitation configuration
+
     dereplication : DereplicationConfig
-        Sequence clustering configuration
+        Sequence clustering configuration (legacy/compatibility)
 
     genotype_assignment : GenotypeAssignmentConfig
-        Sample-to-genotype matching configuration
+        Sample-to-haplotype matching configuration
 
     geographic : GeographicConfig
         Coordinate filtering and ocean basin configuration
 
     visualization : VisualizationConfig
         Figure generation configuration
-        
+
     taxonomy : TaxonomyConfig
         Taxonomy configuration
 
@@ -654,6 +1066,13 @@ class PipelineConfig:
     overwrite_existing : bool
         Overwrite existing output files (default: False)
     """
+    coi_validation: COIValidationConfig = field(default_factory=COIValidationConfig)
+    qc: QCConfig = field(default_factory=QCConfig)
+    core_region: CoreRegionConfig = field(default_factory=CoreRegionConfig)
+    haplotype: HaplotypeConfig = field(default_factory=HaplotypeConfig)
+    outlier: OutlierConfig = field(default_factory=OutlierConfig)
+    distance: DistanceConfig = field(default_factory=DistanceConfig)
+    delimitation: DelimitationConfig = field(default_factory=DelimitationConfig)
     dereplication: DereplicationConfig = field(default_factory=DereplicationConfig)
     genotype_assignment: GenotypeAssignmentConfig = field(default_factory=GenotypeAssignmentConfig)
     geographic: GeographicConfig = field(default_factory=GeographicConfig)
@@ -815,6 +1234,37 @@ def get_default_config() -> PipelineConfig:
     0.01
     """
     return PipelineConfig()
+
+
+def get_full_length_phylogeny_preset(output_dir: Union[str, Path] = "results") -> PipelineConfig:
+    """
+    Get a preset tuned for full-length, publication-ready phylogenies.
+
+    This preset:
+    - Enables tree building
+    - Requires longer consensus sequences (≥600 bp) and larger clusters (≥5)
+    - Keeps alignment trimming on
+
+    Parameters
+    ----------
+    output_dir : Union[str, Path], optional
+        Base output directory for the pipeline (default: "results")
+
+    Returns
+    -------
+    PipelineConfig
+        Configuration with stricter phylogenetic settings applied
+    """
+    base = get_default_config()
+    phylo_cfg = replace(
+        base.phylogenetic,
+        build_tree=True,
+        min_consensus_length=600,
+        min_cluster_size=5,
+        trim_alignment=True,
+    )
+    out_dir_path = Path(output_dir) if isinstance(output_dir, str) else output_dir
+    return replace(base, phylogenetic=phylo_cfg, output_dir=out_dir_path)
 
 
 def load_config_from_file(config_path: Union[str, Path]) -> PipelineConfig:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Cluster diagnostics for dereplication + genotype assignment.
+Cluster diagnostics for dereplication + haplotype assignment.
 
 This script summarizes, per consensus cluster:
 
@@ -18,9 +18,9 @@ This script summarizes, per consensus cluster:
 ASSUMPTIONS
 -----------
 - Consensus IDs follow the pattern: "consensus_c{cluster_id}_n{n_reference}"
-- The diagnostics file is the TSV written by genotype_assignment.assign_genotypes()
+- The diagnostics file is the TSV written by haplotype_assignment.assign_haplotypes()
   via the diagnostics_path argument, with columns:
-  ['processid', 'consensus_group', 'identity', 'target_identity',
+  ['processid', 'haplotype_id', 'identity', 'target_identity',
    'classic_identity', 'identity_method', 'matches', 'mismatches',
    'insertions', 'deletions', 'edit_distance', 'length_discrepancy',
    'runner_up_group', 'runner_up_identity', 'is_tie', 'is_low_confidence',
@@ -76,13 +76,13 @@ def parse_consensus_fasta(consensus_path: Path) -> pd.DataFrame:
     Parse consensus FASTA and metadata to extract cluster information.
 
     Reads:
-    - consensus FASTA: consensus_group and consensus_length
+    - consensus FASTA: haplotype_id and consensus_length
     - consensus metadata CSV: cluster_id and n_reference
 
     Expected ID pattern: "consensus_c{cluster_id}"
     e.g., "consensus_c24"
     """
-    # Read consensus sequences to get consensus_group and length
+    # Read consensus sequences to get haplotype_id and length
     records = list(SeqIO.parse(str(consensus_path), "fasta"))
     fasta_rows = []
 
@@ -94,7 +94,7 @@ def parse_consensus_fasta(consensus_path: Path) -> pd.DataFrame:
             continue
 
         fasta_rows.append({
-            "consensus_group": token,
+            "haplotype_id": token,
             "consensus_length": len(rec.seq),
         })
 
@@ -114,7 +114,7 @@ def parse_consensus_fasta(consensus_path: Path) -> pd.DataFrame:
         )
 
     metadata_df = pd.read_csv(metadata_path)
-    required_cols = ['consensus_group', 'cluster_id', 'n_reference']
+    required_cols = ['haplotype_id', 'cluster_id', 'n_reference']
     if not all(col in metadata_df.columns for col in required_cols):
         raise ValueError(
             f"Consensus metadata CSV missing required columns. "
@@ -122,7 +122,7 @@ def parse_consensus_fasta(consensus_path: Path) -> pd.DataFrame:
         )
 
     # Merge FASTA data with metadata
-    df = fasta_df.merge(metadata_df[required_cols], on='consensus_group', how='left')
+    df = fasta_df.merge(metadata_df[required_cols], on='haplotype_id', how='left')
 
     if df['cluster_id'].isna().any() or df['n_reference'].isna().any():
         raise ValueError(
@@ -135,7 +135,7 @@ def parse_consensus_fasta(consensus_path: Path) -> pd.DataFrame:
 
 def load_diagnostics(diagnostics_path: Path) -> pd.DataFrame:
     """
-    Load the genotype assignment diagnostics file.
+    Load the haplotype assignment diagnostics file.
 
     Supports both TSV and CSV:
     - If the extension is .tsv or .txt, uses tab as a separator.
@@ -149,8 +149,8 @@ def load_diagnostics(diagnostics_path: Path) -> pd.DataFrame:
         df = pd.read_csv(diagnostics_path)
 
     # Normalize types a bit
-    if "consensus_group" in df.columns:
-        df["consensus_group"] = df["consensus_group"].fillna("").astype(str)
+    if "haplotype_id" in df.columns:
+        df["haplotype_id"] = df["haplotype_id"].fillna("").astype(str)
     if "status" in df.columns:
         df["status"] = df["status"].astype(str)
     return df
@@ -161,7 +161,7 @@ def compute_cluster_assignment_stats(
     diag_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    For each consensus_group, compute:
+    For each haplotype_id, compute:
 
     - n_reference
     - n_assigned (status == 'assigned')
@@ -174,12 +174,12 @@ def compute_cluster_assignment_stats(
 
     Note: consensus_df has base names (consensus_cX) from dereplication,
     while diag_df may have names with sample count suffix (consensus_cX_nZ)
-    from genotype assignment. We extract the base name to match them.
+    from haplotype assignment. We extract the base name to match them.
     """
     # Ensure expected columns
     required_diag_cols = {
         "processid",
-        "consensus_group",
+        "haplotype_id",
         "identity",
         "status",
     }
@@ -204,15 +204,15 @@ def compute_cluster_assignment_stats(
         return name
 
     diag_df = diag_df.copy()
-    diag_df['base_consensus_group'] = diag_df['consensus_group'].apply(extract_base_name)
+    diag_df['base_haplotype_id'] = diag_df['haplotype_id'].apply(extract_base_name)
 
     # Pre-aggregate diagnostics per base consensus group
-    group = diag_df.groupby("base_consensus_group", dropna=False)
+    group = diag_df.groupby("base_haplotype_id", dropna=False)
 
     stats_rows = []
 
     for _, row in consensus_df.iterrows():
-        group_name = row["consensus_group"]  # This is the base name (consensus_cX)
+        group_name = row["haplotype_id"]  # This is the base name (consensus_cX)
         cluster_id = row["cluster_id"]
         n_reference = row["n_reference"]
         consensus_length = row["consensus_length"]
@@ -221,7 +221,7 @@ def compute_cluster_assignment_stats(
             sub = group.get_group(group_name)
             # Get the full consensus group name with _nZ suffix for the output
             # (use the most common one if there are multiple)
-            full_group_names = sub['consensus_group'].value_counts()
+            full_group_names = sub['haplotype_id'].value_counts()
             if len(full_group_names) > 0:
                 full_group_name = full_group_names.index[0]
             else:
@@ -253,7 +253,7 @@ def compute_cluster_assignment_stats(
 
         stats_rows.append(
             {
-                "consensus_group": full_group_name,  # Use full name with _nZ suffix
+                "haplotype_id": full_group_name,  # Use full name with _nZ suffix
                 "cluster_id": cluster_id,
                 "n_reference": n_reference,
                 "n_assigned": int(n_assigned),
@@ -391,7 +391,7 @@ def plot_global_dendrogram(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Diagnostics for dereplication clusters and genotype assignment"
+        description="Diagnostics for dereplication clusters and haplotype assignment"
     )
     parser.add_argument(
         "--consensus",
@@ -401,7 +401,7 @@ def main():
     parser.add_argument(
         "--diagnostics",
         required=True,
-        help="Path to genotype assignment diagnostics TSV",
+        help="Path to haplotype assignment diagnostics TSV",
     )
     parser.add_argument(
         "--output-dir",

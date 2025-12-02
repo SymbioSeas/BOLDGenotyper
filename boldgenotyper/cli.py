@@ -2,8 +2,21 @@
 """
 BOLDGenotyper Command-Line Interface
 
-Unified pipeline for BOLD barcode data: genotype assignment, geographic analysis,
+Unified pipeline for BOLD barcode data implementing haplotype-first workflow:
+COI validation, haplotype discovery, assignment, geographic analysis,
 phylogenetic reconstruction, and visualization.
+
+Workflow:
+1. Data Loading & Coordinate Quality
+2. Pre-processing QC (Orientation normalization, ORF validation, Dynamic filtering)
+3. Haplotype Discovery (Align, Extract core region, Identify ESVs, Flag suspects)
+4. Haplotype Assignment (Match samples to haplotypes)
+5. Taxonomy Assignment
+6. Post-assignment QC (Contamination detection)
+7. Geographic Enhancement
+8. Phylogenetic Analysis (Optional)
+9. Divergence Analysis
+10. Visualization & Reports
 
 Author: Steph Smith (steph.smith@unc.edu)
 """
@@ -16,11 +29,12 @@ import json
 from pathlib import Path
 from typing import Optional
 import pandas as pd
+from Bio import SeqIO
 
 # Local imports
 from . import (
     utils, config, metadata, geographic, dereplication,
-    genotype_assignment, phylogenetics, visualization, reports,
+    haplotype_assignment, phylogenetics, visualization, reports,
     cluster_diagnostics, quality_control, plot_export, comparative_analysis,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     metadata_enrichment, popgen_export,
@@ -97,22 +111,24 @@ def remove_empty_directories(base_path: Path) -> None:
 
 
 def setup_directories(base_output: Path) -> dict:
-    """Create organized output directory structure."""
+    """Create organized output directory structure for haplotype-first workflow."""
     dirs = {
         'base': base_output,
         'intermediate': base_output / 'intermediate',
-        'dereplication': base_output / 'intermediate' / 'dereplication',
+        'qc': base_output / 'intermediate' / 'quality_control',
+        'haplotype_discovery': base_output / 'intermediate' / 'haplotype_discovery',
         'intermediate_phylo': base_output / 'intermediate' / 'phylogenetic',
-        'intermediate_assignments': base_output / 'intermediate' / 'genotype_assignments',
+        'intermediate_assignments': base_output / 'intermediate' / 'haplotype_assignments',
         'intermediate_geographic': base_output / 'intermediate' / 'geographic',
-        'assignments': base_output / 'genotype_assignments',
+        'haplotypes': base_output / 'haplotypes',
+        'assignments': base_output / 'haplotype_assignments',
         'taxonomy': base_output / 'taxonomy',
         'quality_control': base_output / 'quality_control',
         'divergence_analysis': base_output / 'divergence_analysis',
         'geographic_analysis': base_output / 'geographic_analysis',
         'phylogenetic': base_output / 'phylogenetic',
         'visualization': base_output / 'visualization',
-        'genotype_plots': base_output / 'visualization' / 'genotype_plots',
+        'haplotype_plots': base_output / 'visualization' / 'haplotype_plots',
         'reports': base_output / 'reports',
     }
 
@@ -129,7 +145,7 @@ def run_pipeline(
     cfg: config.PipelineConfig,
     no_report: bool = False,
     skip_geo: bool = False,
-    export_plot_data: bool = False,
+    export_plot_data: bool = True,
     export_popgen_formats: Optional[list] = None,
 ) -> bool:
     """
@@ -150,7 +166,7 @@ def run_pipeline(
     skip_geo : bool, optional
         Skip geographic analysis (default: False)
     export_plot_data : bool, optional
-        Export raw plot data and R regeneration scripts (default: False)
+        Export raw plot data and R regeneration scripts (default: True)
     export_popgen_formats : list, optional
         List of population genetics formats to export (default: None)
 
@@ -172,10 +188,30 @@ def run_pipeline(
     # Save pipeline parameters for reference and HTML report
     import json
     params = {
-        'clustering_threshold': cfg.dereplication.clustering_threshold,
-        'similarity_threshold': cfg.genotype_assignment.min_identity,
-        'tie_margin': cfg.genotype_assignment.tie_margin,
-        'tie_threshold': cfg.genotype_assignment.tie_threshold,
+        'workflow': 'haplotype-first',
+        'coi_validation': {
+            'genetic_code': cfg.coi_validation.mitochondrial_code,
+            'orf_min_coverage': cfg.coi_validation.orf_min_coverage,
+            'orf_max_internal_stops': cfg.coi_validation.orf_max_internal_stops,
+        },
+        'qc': {
+            'min_raw_length_abs': cfg.qc.min_raw_length_abs,
+            'min_raw_length_frac_of_median': cfg.qc.min_raw_length_frac_of_median,
+            'max_raw_N_fraction': cfg.qc.max_raw_N_fraction,
+        },
+        'core_region': {
+            'min_coverage': cfg.core_region.core_min_coverage,
+            'mask_gap_threshold': cfg.core_region.mask_gap_threshold,
+            'min_length': cfg.core_region.core_min_length,
+        },
+        'haplotype': {
+            'max_singleton_distance': cfg.haplotype.max_singleton_distance,
+            'flag_suspect_haplotypes': cfg.haplotype.flag_suspect_haplotypes,
+        },
+        'assignment': {
+            'min_identity': cfg.genotype_assignment.min_identity,
+            'tie_margin': cfg.genotype_assignment.tie_margin,
+        },
         'threads': cfg.n_threads,
         'build_tree': cfg.phylogenetic.build_tree
     }
@@ -298,153 +334,257 @@ def run_pipeline(
         return False
 
     # ========================================================================
-    # PHASE 2: Sequence Dereplication and Consensus Generation
+    # PHASE 2: Pre-processing Quality Control
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 2: Sequence Dereplication and Consensus Generation")
+    logger.info("PHASE 2: Pre-processing Quality Control")
     logger.info("-" * 80)
 
     try:
-        # Generate FASTA from ALL samples (including those with centroid coordinates)
-        logger.info("2.1: Generating FASTA from sequences...")
-        logger.info(f"  Using all {len(df_with_basins)} samples (including those with centroid coordinates)")
-        logger.info(f"  Minimum sequence length: {cfg.dereplication.min_sequence_length} bp")
-        fasta_records = []
+        # Step 2.1: Generate initial FASTA from raw sequences
+        logger.info("2.1: Generating initial FASTA from raw sequences...")
+        logger.info(f"  Processing {len(df_with_basins)} samples")
+
+        # Create dictionary: processid -> sequence
+        sequences_dict = {}
         skipped_count = 0
-        skipped_reasons = {}
         for _, row in df_with_basins.iterrows():
-            header = f"{organism}_{row['processid']}.COI-5P"
+            processid = row['processid']
             sequence = row['nuc']
 
-            # Skip if sequence is missing or not a string
-            if not isinstance(sequence, str) or not sequence.strip():
-                skipped_count += 1
-                skipped_reasons['missing_or_empty'] = skipped_reasons.get('missing_or_empty', 0) + 1
-                continue
-
-            is_valid, reason = utils.validate_sequence(
-                sequence,
-                min_length=cfg.dereplication.min_sequence_length
-            )
-            if is_valid:
-                fasta_records.append((header, sequence))
+            if isinstance(sequence, str) and sequence.strip():
+                sequences_dict[processid] = sequence.strip().upper()
             else:
                 skipped_count += 1
-                skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
 
+        logger.info(f"  Loaded {len(sequences_dict)} sequences")
         if skipped_count > 0:
-            logger.warning(f"  ⚠ Skipped {skipped_count} samples with missing or invalid sequences")
-            for reason, count in skipped_reasons.items():
-                logger.debug(f"    - {reason}: {count}")
+            logger.warning(f"  Skipped {skipped_count} samples with missing/empty sequences")
 
-        fasta_path = dirs['intermediate'] / f"{organism}.fasta"
-        utils.write_fasta(fasta_records, fasta_path)
-        logger.info(f"  ✓ Created {len(fasta_records)} FASTA records")
+        # Step 2.2: Orientation normalization and ORF validation
+        logger.info("2.2: Normalizing sequence orientation and validating ORF...")
+        logger.info(f"  Using genetic code: {cfg.coi_validation.mitochondrial_code} (vertebrate mitochondrial)")
+        logger.info(f"  Minimum ORF coverage: {cfg.coi_validation.orf_min_coverage:.0%}")
+        logger.info(f"  Maximum internal stops: {cfg.coi_validation.orf_max_internal_stops}")
 
-        # Dereplicate sequences
-        logger.info("2.2: Dereplicating sequences (clustering at 99% identity)...")
-        consensus_records = dereplication.dereplicate_from_fasta(
-            input_fasta=str(fasta_path),
-            output_dir=str(dirs['dereplication']),
-            threshold=cfg.dereplication.clustering_threshold,
-            frequency_cutoff=cfg.dereplication.consensus_frequency_cutoff,
-            min_post_trim_length=cfg.dereplication.min_post_trim_length,
-            min_consensus_length_ratio=cfg.dereplication.min_consensus_length_ratio
+        corrected_sequences, orf_stats_df = quality_control.apply_orientation_normalization(
+            sequences_dict=sequences_dict,
+            genetic_code=cfg.coi_validation.mitochondrial_code,
+            min_orf_coverage=cfg.coi_validation.orf_min_coverage,
+            max_internal_stops=cfg.coi_validation.orf_max_internal_stops
         )
-        logger.info(f"  ✓ Identified {len(consensus_records)} unique genotypes")
 
-        # Consensus sequences are saved in intermediate/dereplication/
-        consensus_path = dirs['dereplication'] / f"{organism}_consensus.fasta"
+        # Save ORF validation results
+        orf_stats_file = dirs['qc'] / f"{organism}_orf_validation.csv"
+        orf_stats_df.to_csv(orf_stats_file, index=False)
+        logger.info(f"  Saved ORF validation results: {orf_stats_file}")
+
+        # Save oriented sequences
+        oriented_fasta_records = [(pid, seq) for pid, seq in corrected_sequences.items()]
+        oriented_fasta = dirs['qc'] / f"{organism}_oriented.fasta"
+        utils.write_fasta(oriented_fasta_records, oriented_fasta)
+        logger.info(f"  Saved oriented sequences: {oriented_fasta}")
+
+        # Step 2.3: Dynamic QC filtering
+        logger.info("2.3: Applying dynamic quality control filters...")
+        logger.info(f"  Absolute minimum length: {cfg.qc.min_raw_length_abs} bp")
+        logger.info(f"  Median-based minimum: {cfg.qc.min_raw_length_frac_of_median:.0%} of median")
+        logger.info(f"  Maximum N fraction: {cfg.qc.max_raw_N_fraction:.1%}")
+
+        df_qc_passed, qc_stats = quality_control.apply_dynamic_qc_filters(
+            df=df_with_basins,
+            sequences_dict=corrected_sequences,
+            min_raw_length_abs=cfg.qc.min_raw_length_abs,
+            min_raw_length_frac_of_median=cfg.qc.min_raw_length_frac_of_median,
+            max_raw_N_fraction=cfg.qc.max_raw_N_fraction,
+            processid_col='processid'
+        )
+
+        # Save QC-passed data
+        qc_passed_tsv = dirs['qc'] / f"{organism}_qc_passed.tsv"
+        df_qc_passed.to_csv(qc_passed_tsv, sep='\t', index=False)
+        logger.info(f"  Saved QC-passed metadata: {qc_passed_tsv}")
+
+        # Generate FASTA from QC-passed samples with corrected sequences
+        logger.info("2.4: Generating FASTA from QC-passed samples...")
+        qc_passed_fasta_records = []
+        for _, row in df_qc_passed.iterrows():
+            processid = row['processid']
+            if processid in corrected_sequences:
+                header = f"{organism}_{processid}.COI-5P"
+                sequence = corrected_sequences[processid]
+                qc_passed_fasta_records.append((header, sequence))
+
+        qc_passed_fasta = dirs['qc'] / f"{organism}_qc_passed.fasta"
+        utils.write_fasta(qc_passed_fasta_records, qc_passed_fasta)
+        logger.info(f"  Created {len(qc_passed_fasta_records)} QC-passed FASTA records")
+        logger.info(f"  Saved: {qc_passed_fasta}")
+
+        # Log QC summary
+        logger.info("QC Summary:")
+        logger.info(f"  Total input sequences: {qc_stats['n_total']}")
+        logger.info(f"  Passed all QC filters: {qc_stats['n_pass']} ({qc_stats['pass_rate']*100:.1f}%)")
+        logger.info(f"  Failed QC filters: {qc_stats['n_fail']} ({(1-qc_stats['pass_rate'])*100:.1f}%)")
 
     except Exception as e:
         logger.error(f"Phase 2 failed: {e}", exc_info=True)
         return False
 
     # ========================================================================
-    # PHASE 3: Genotype Assignment
+    # PHASE 3: Haplotype Discovery
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 3: Genotype Assignment")
+    logger.info("PHASE 3: Haplotype Discovery")
     logger.info("-" * 80)
 
     try:
-        logger.info("3.1: Assigning samples to genotypes...")
-        logger.info(f"  Using all {len(df_with_basins)} samples (including those with centroid coordinates)")
-        annotated_tsv = dirs['intermediate_assignments'] / f"{organism}_with_genotypes.tsv"
-        diagnostics_csv = dirs['assignments'] / f"{organism}_diagnostics.csv"
+        logger.info("3.1: Identifying haplotypes using ESV approach...")
+        logger.info(f"  Core region minimum coverage: {cfg.core_region.core_min_coverage:.0%}")
+        logger.info(f"  Gap masking threshold: {cfg.core_region.mask_gap_threshold:.0%}")
+        logger.info(f"  Minimum core length: {cfg.core_region.core_min_length} bp")
 
-        stats = genotype_assignment.assign_genotypes(
-            metadata_path=str(basins_tsv),  # Use full dataset with ocean basins
-            fasta_path=str(fasta_path),
-            consensus_path=str(consensus_path),
-            output_path=str(annotated_tsv),
-            min_identity=cfg.genotype_assignment.min_identity,
-            n_processes=cfg.n_threads,
-            diagnostics_path=str(diagnostics_csv)
+        # Run haplotype discovery
+        haplotype_records, haplotype_mapping, haplotype_stats = dereplication.identify_haplotypes(
+            tsv_path=tsv_path,
+            fasta_path=qc_passed_fasta,
+            output_dir=dirs['haplotype_discovery'],
+            min_core_coverage=cfg.core_region.core_min_coverage,
+            gap_mask_threshold=cfg.core_region.mask_gap_threshold,
+            min_core_length=cfg.core_region.core_min_length,
+            max_singleton_distance=cfg.haplotype.max_singleton_distance,
+            orf_validation_df=orf_stats_df,
+            cleanup_intermediates=False
         )
 
-        logger.info(f"  ✓ Assigned {stats['assigned']}/{stats['total']} samples to genotypes")
-        logger.info(f"  ✓ Assignment rate: {stats['assigned']/stats['total']*100:.1f}%")
+        logger.info(f"  Identified {len(haplotype_records)} unique haplotypes")
 
-        # Load annotated data
-        df_with_genotypes = pd.read_csv(annotated_tsv, sep="\t")
+        # Copy haplotype outputs to main haplotypes directory
+        import shutil
+
+        # Move/copy haplotype FASTA
+        source_haplotype_fasta = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotypes.fasta"
+        haplotype_fasta = dirs['haplotypes'] / f"{organism}_haplotypes.fasta"
+        if source_haplotype_fasta.exists():
+            shutil.copy(source_haplotype_fasta, haplotype_fasta)
+            logger.info(f"  Saved haplotypes: {haplotype_fasta}")
+
+        # Move/copy mapping
+        source_mapping = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotype_mapping.csv"
+        haplotype_mapping_file = dirs['haplotypes'] / f"{organism}_haplotype_mapping.csv"
+        if source_mapping.exists():
+            shutil.copy(source_mapping, haplotype_mapping_file)
+            logger.info(f"  Saved haplotype mapping: {haplotype_mapping_file}")
+
+        # Move/copy stats
+        source_stats = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotype_stats.csv"
+        haplotype_stats_file = dirs['haplotypes'] / f"{organism}_haplotype_stats.csv"
+        if source_stats.exists():
+            shutil.copy(source_stats, haplotype_stats_file)
+            logger.info(f"  Saved haplotype statistics: {haplotype_stats_file}")
+
+        # Log haplotype summary
+        n_suspect = haplotype_stats['is_suspect'].sum() if 'is_suspect' in haplotype_stats.columns else 0
+        n_singletons = haplotype_stats['is_singleton'].sum() if 'is_singleton' in haplotype_stats.columns else 0
+
+        logger.info("Haplotype Summary:")
+        logger.info(f"  Total haplotypes: {len(haplotype_records)}")
+        logger.info(f"  Singletons: {n_singletons}")
+        logger.info(f"  Suspect haplotypes: {n_suspect}")
 
     except Exception as e:
         logger.error(f"Phase 3 failed: {e}", exc_info=True)
         return False
 
     # ========================================================================
-    # PHASE 4: Taxonomy Assignment
+    # PHASE 4: Haplotype Assignment
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 4: Taxonomy Assignment to Consensus Groups")
+    logger.info("PHASE 4: Haplotype Assignment")
     logger.info("-" * 80)
 
     try:
-        logger.info("4.1: Assigning taxonomy to consensus groups...")
-        assign_table, species_counts = utils.assign_consensus_taxonomy(
-            df_with_genotypes,
-            group_col="consensus_group",
-            species_col="species",
-            genus_col="genus",
-            majority_threshold=cfg.taxonomy.majority_species_threshold
+        logger.info("4.1: Assigning samples to haplotypes...")
+        logger.info(f"  Using {len(df_qc_passed)} QC-passed samples")
+        annotated_tsv = dirs['intermediate_assignments'] / f"{organism}_with_haplotypes.tsv"
+        diagnostics_csv = dirs['assignments'] / f"{organism}_diagnostics.csv"
+
+        stats = haplotype_assignment.assign_haplotypes(
+            metadata_path=str(qc_passed_tsv),  # Use QC-passed dataset
+            fasta_path=str(qc_passed_fasta),
+            consensus_path=str(haplotype_fasta),  # Use haplotypes from Phase 3
+            output_path=str(annotated_tsv),
+            min_identity=cfg.genotype_assignment.min_identity,
+            n_processes=cfg.n_threads,
+            diagnostics_path=str(diagnostics_csv)
         )
 
-        # Build consensus_group_sp labels
+        logger.info(f"  ✓ Assigned {stats['assigned']}/{stats['total']} samples to haplotypes")
+        logger.info(f"  ✓ Assignment rate: {stats['assigned']/stats['total']*100:.1f}%")
+
+        # Load annotated data
+        df_with_haplotypes = pd.read_csv(annotated_tsv, sep="\t")
+
+    except Exception as e:
+        logger.error(f"Phase 4 failed: {e}", exc_info=True)
+        return False
+
+    # ========================================================================
+    # PHASE 5: Taxonomy Assignment
+    # ========================================================================
+    logger.info("")
+    logger.info("PHASE 5: Taxonomy Assignment to Haplotypes")
+    logger.info("-" * 80)
+
+    try:
+        logger.info("5.1: Assigning taxonomy to haplotypes...")
+        all_haplotype_ids = []
+        if haplotype_fasta.exists():
+            all_haplotype_ids = [rec.id for rec in SeqIO.parse(haplotype_fasta, "fasta")]
+
+        assign_table, species_counts = utils.assign_consensus_taxonomy(
+            df_with_haplotypes,
+            group_col="haplotype_id",
+            species_col="species",
+            genus_col="genus",
+            majority_threshold=cfg.taxonomy.majority_species_threshold,
+            all_groups=all_haplotype_ids or None
+        )
+
+        # Build haplotype_sp labels
         def _strip_prefix(s: str) -> str:
             return s.replace("consensus_", "") if isinstance(s, str) else s
 
-        assign_table["consensus_group_short"] = assign_table["consensus_group"].map(_strip_prefix)
+        assign_table["haplotype_short"] = assign_table["haplotype_id"].map(_strip_prefix)
 
         def _join_label(row):
             sp = row["assigned_sp"]
-            short = row["consensus_group_short"]
+            short = row["haplotype_short"]
             if not sp:
                 return short
             return f"{sp} {short}"
 
-        assign_table["consensus_group_sp"] = assign_table.apply(_join_label, axis=1)
+        assign_table["haplotype_sp"] = assign_table.apply(_join_label, axis=1)
 
         # Save taxonomy files
-        species_counts_out = dirs['taxonomy'] / f"{organism}_species_by_consensus.csv"
-        assign_table_out = dirs['taxonomy'] / f"{organism}_consensus_taxonomy.csv"
+        species_counts_out = dirs['taxonomy'] / f"{organism}_species_by_haplotype.csv"
+        assign_table_out = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"
         species_counts.to_csv(species_counts_out, index=False)
         assign_table.to_csv(assign_table_out, index=False)
 
         # Merge taxonomy back into main dataframe
-        df_with_genotypes = df_with_genotypes.merge(
-            assign_table[["consensus_group", "assigned_sp", "consensus_group_sp", "assignment_level", "assignment_notes", "majority_fraction"]],
-            on="consensus_group",
+        df_with_haplotypes = df_with_haplotypes.merge(
+            assign_table[["haplotype_id", "assigned_sp", "haplotype_sp", "assignment_level", "assignment_notes", "majority_fraction"]],
+            on="haplotype_id",
             how="left",
             validate="many_to_one"
         )
 
         # Handle cluster sequence taxonomy if available
-        cluster_seq_path = dirs['taxonomy'] / f"{organism}_consensus_taxonomy_seq.csv"
+        cluster_seq_path = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy_seq.csv"
         if cluster_seq_path.exists():
             cluster_seq_df = pd.read_csv(cluster_seq_path)
-            df_with_genotypes = df_with_genotypes.merge(
-                cluster_seq_df, on="consensus_group", how="left", validate="many_to_one"
+            df_with_haplotypes = df_with_haplotypes.merge(
+                cluster_seq_df, on="haplotype_id", how="left", validate="many_to_one"
             )
 
             # Apply final taxonomy decision
@@ -459,35 +599,35 @@ def run_pipeline(
                     majority_frac=row.get("majority_fraction", 0.0),
                     cfg_taxonomy=cfg.taxonomy,
                 )
-                short = row["consensus_group"].replace("consensus_", "") if isinstance(row.get("consensus_group"), str) else ""
+                short = row["haplotype_id"].replace("consensus_", "") if isinstance(row.get("haplotype_id"), str) else ""
                 label = f"{final_sp} {short}".strip() if final_sp else short
                 return pd.Series({
                     "final_group_sp": final_sp,
                     "final_group_level": final_level,
                     "tax_provenance": prov,
-                    "consensus_group_sp": label
+                    "haplotype_sp": label
                 })
 
-            final_cols = df_with_genotypes.apply(_final_label, axis=1)
+            final_cols = df_with_haplotypes.apply(_final_label, axis=1)
             for c in final_cols.columns:
-                df_with_genotypes[c] = final_cols[c]
+                df_with_haplotypes[c] = final_cols[c]
 
-        logger.info(f"  ✓ Assigned taxonomy to {len(assign_table)} consensus groups")
+        logger.info(f"  ✓ Assigned taxonomy to {len(assign_table)} haplotypes")
 
-        # Merge with geographic data (only if not already present in df_with_genotypes)
-        # df_with_genotypes may already have lat/lon/ocean_basin from the TSV file
+        # Merge with geographic data (only if not already present in df_with_haplotypes)
+        # df_with_haplotypes may already have lat/lon/ocean_basin from the TSV file
         geo_cols_to_merge = []
         for col in ['lat', 'lon', 'ocean_basin']:
-            if col in df_with_basins.columns and col not in df_with_genotypes.columns:
+            if col in df_qc_passed.columns and col not in df_with_haplotypes.columns:
                 geo_cols_to_merge.append(col)
 
         if geo_cols_to_merge:
             # Only merge if there are columns to add
             geo_keep = ['processid'] + geo_cols_to_merge
-            df_final = df_with_genotypes.merge(df_with_basins[geo_keep], on='processid', how='left', validate='one_to_one')
+            df_final = df_with_haplotypes.merge(df_qc_passed[geo_keep], on='processid', how='left', validate='one_to_one')
         else:
-            # df_with_genotypes already has all geographic data
-            df_final = df_with_genotypes.copy()
+            # df_with_haplotypes already has all geographic data
+            df_final = df_with_haplotypes.copy()
 
         # Save final annotated file with proper CSV quoting to handle fields with commas
         annotated_csv = dirs['base'] / f"{organism}_annotated.csv"
@@ -500,23 +640,23 @@ def run_pipeline(
             logger.warning(f"  ⚠ Failed to save annotated dataset: {annotated_csv}")
 
     except Exception as e:
-        logger.error(f"Phase 4 failed: {e}", exc_info=True)
+        logger.error(f"Phase 5 failed: {e}", exc_info=True)
         return False
 
     # ========================================================================
-    # PHASE 4.5: Quality Control and Contamination Detection
+    # PHASE 6: Post-assignment Quality Control
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 4.5: Quality Control and Contamination Detection")
+    logger.info("PHASE 6: Post-assignment Quality Control")
     logger.info("-" * 80)
 
     try:
-        logger.info("4.5.1: Adding contamination analysis columns to main output...")
+        logger.info("6.1: Adding contamination analysis columns to main output...")
 
         # Add contamination columns to the dataframe
         df_final_enhanced = quality_control.add_contamination_columns(
             df_final,
-            group_col="consensus_group",
+            group_col="haplotype_id",
             species_col="species",
             notes_col="notes" if "notes" in df_final.columns else None,
             majority_threshold=cfg.taxonomy.majority_species_threshold
@@ -530,14 +670,14 @@ def run_pipeline(
         # Update df_final to use the enhanced version
         df_final = df_final_enhanced
 
-        logger.info("4.5.2: Generating quality control reports...")
+        logger.info("6.2: Generating quality control reports...")
 
         # Generate comprehensive QC report
         qc_results = quality_control.generate_quality_control_report(
             df_final,
             output_dir=dirs['quality_control'],
             organism=organism,
-            group_col="consensus_group",
+            group_col="haplotype_id",
             species_col="species"
         )
 
@@ -551,21 +691,22 @@ def run_pipeline(
         logger.debug("QC error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 4.7: Geographic Analysis Enhancement
+    # PHASE 7: Geographic Analysis Enhancement
     # ========================================================================
     if geo_analysis_performed:
         logger.info("")
-        logger.info("PHASE 4.7: Geographic Analysis Enhancement")
+        logger.info("PHASE 7: Geographic Analysis Enhancement")
         logger.info("-" * 80)
 
         try:
-            logger.info("4.7.1: Assessing geographic data coverage and quality...")
+            logger.info("7.1: Assessing geographic data coverage and quality...")
 
             # Run geographic enhancement
             geo_enhancement_results = geographic_enhancement.enhance_geographic_analysis(
                 df=df_final,
                 output_dir=dirs['geographic_analysis'],
                 organism=organism,
+                group_col="haplotype_id",
                 goas_data=goas_data if 'goas_data' in locals() else None
             )
 
@@ -585,16 +726,16 @@ def run_pipeline(
             logger.debug("Geographic enhancement error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 5: Phylogenetic Analysis (Optional)
+    # PHASE 8: Phylogenetic Analysis (Optional)
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 5: Phylogenetic Analysis")
+    logger.info("PHASE 8: Phylogenetic Analysis")
     logger.info("-" * 80)
 
     tree_path = None
     if cfg.phylogenetic.build_tree:
         try:
-            logger.info("5.1: Building phylogenetic tree...")
+            logger.info("8.1: Building phylogenetic tree from haplotypes...")
 
             # Check for required tools
             if not utils.check_external_tool("mafft"):
@@ -602,17 +743,18 @@ def run_pipeline(
             elif not utils.check_external_tool("fasttree"):
                 logger.warning("  ⚠ FastTree not found, skipping tree building")
             else:
-                # Build phylogenetic tree
+                # Build phylogenetic tree using haplotypes
                 # Save alignment files to intermediate, tree files to final phylogenetic directory
                 intermediate_prefix = dirs['intermediate_phylo'] / organism
                 output_prefix = dirs['phylogenetic'] / organism
 
                 tree = phylogenetics.build_phylogeny(
-                    consensus_fasta=str(consensus_path),
+                    consensus_fasta=str(haplotype_fasta),
                     output_prefix=str(intermediate_prefix),
                     threads=cfg.n_threads,
                     min_consensus_length=cfg.phylogenetic.min_consensus_length,
                     min_cluster_size=cfg.phylogenetic.min_cluster_size,
+                    outgroup_fasta=str(cfg.phylogenetic.outgroup_fasta) if cfg.phylogenetic.outgroup_fasta else None,
                     trim_alignment=cfg.phylogenetic.trim_alignment,
                     trim_method=cfg.phylogenetic.trim_method
                 )
@@ -625,13 +767,28 @@ def run_pipeline(
 
                 # Verify tree file was actually created
                 if tree is not None and Path(tree_path).exists():
+                    # Optional rerooting using in-tree outgroup label or taxon
+                    if cfg.phylogenetic.outgroup_label:
+                        phylogenetics.reroot_tree_by_label(
+                            tree_file=tree_path,
+                            outgroup_label=cfg.phylogenetic.outgroup_label,
+                            output_file=tree_path
+                        )
+                    elif cfg.phylogenetic.outgroup_taxon:
+                        phylogenetics.reroot_tree_by_taxon(
+                            tree_file=tree_path,
+                            taxonomy_csv=str(dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"),
+                            taxon_query=cfg.phylogenetic.outgroup_taxon,
+                            output_file=tree_path
+                        )
+
                     logger.info(f"  ✓ Built phylogenetic tree: {tree_path}")
 
-                    # Create relabeled versions with consensus_group_sp labels
-                    logger.info("5.2: Creating relabeled tree and alignment files...")
+                    # Create relabeled versions with haplotype_sp labels
+                    logger.info("8.2: Creating relabeled tree and alignment files...")
                     try:
                         alignment_path = f"{intermediate_prefix}_aligned.fasta"
-                        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_consensus_taxonomy.csv"
+                        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"
 
                         if Path(alignment_path).exists() and taxonomy_csv_path.exists():
                             relabeled_tree_path = f"{output_prefix}_tree_relabeled.nwk"
@@ -643,8 +800,8 @@ def run_pipeline(
                                 taxonomy_csv=str(taxonomy_csv_path),
                                 output_tree=relabeled_tree_path,
                                 output_alignment=relabeled_alignment_path,
-                                label_column="consensus_group_sp",
-                                id_column="consensus_group",
+                                label_column="haplotype_sp",
+                                id_column="haplotype_id",
                             )
                             logger.info(f"  ✓ Created relabeled tree: {relabeled_tree_path}")
                             logger.info(f"  ✓ Created relabeled alignment (intermediate): {relabeled_alignment_path}")
@@ -662,23 +819,23 @@ def run_pipeline(
         logger.info("  ⊘ Phylogenetic tree building disabled in config")
 
     # ========================================================================
-    # PHASE 5.5: Divergence Analysis
+    # PHASE 9: Divergence Analysis
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 5.5: Divergence Analysis")
+    logger.info("PHASE 9: Divergence Analysis")
     logger.info("-" * 80)
 
     try:
-        logger.info("5.5.1: Calculating pairwise divergence between consensus groups...")
+        logger.info("9.1: Calculating pairwise divergence between haplotypes...")
 
         # Check if we have the required files
-        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_consensus_taxonomy.csv"
+        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"
 
-        if consensus_path.exists() and taxonomy_csv_path.exists():
+        if haplotype_fasta.exists() and taxonomy_csv_path.exists():
             # Run divergence analysis
             divergence_results = divergence_analysis.generate_divergence_analysis(
-                consensus_fasta=consensus_path,
-                taxonomy_csv=taxonomy_csv_path,
+                consensus_fasta=str(haplotype_fasta),
+                taxonomy_csv=str(taxonomy_csv_path),
                 output_dir=dirs['divergence_analysis'],
                 organism=organism
             )
@@ -689,21 +846,21 @@ def run_pipeline(
             divergence_analysis.print_divergence_summary(divergence_results)
 
         else:
-            logger.warning("  ⊘ Skipping divergence analysis (consensus or taxonomy files not found)")
+            logger.warning("  ⊘ Skipping divergence analysis (haplotype or taxonomy files not found)")
 
     except Exception as e:
         logger.warning(f"Divergence analysis failed (non-critical): {e}")
         logger.debug("Divergence analysis error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 6: Visualization
+    # PHASE 10: Visualization
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 6: Visualization")
+    logger.info("PHASE 10: Visualization")
     logger.info("-" * 80)
 
     try:
-        logger.info("6.1: Generating plots...")
+        logger.info("10.1: Generating plots...")
 
         # Generate visualizations for each format
         for fmt in cfg.visualization.figure_format:
@@ -715,7 +872,7 @@ def run_pipeline(
                         map_path, map_data = visualization.plot_distribution_map(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
-                            genotype_column='consensus_group_sp',
+                            genotype_column='haplotype_sp',
                             latitude_col='lat',
                             longitude_col='lon'
                         )
@@ -729,12 +886,12 @@ def run_pipeline(
                         logger.debug(f"Distribution map skipped: {e}")
 
                 # Ocean basin abundance bar plot (relative)
-                if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                if 'ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns:
                     try:
                         bar_path, bar_data = visualization.plot_ocean_basin_abundance(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
-                            genotype_column='consensus_group_sp',
+                            genotype_column='haplotype_sp',
                             basin_column='ocean_basin'
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
@@ -747,12 +904,12 @@ def run_pipeline(
                         logger.debug(f"Ocean basin bar plot skipped: {e}")
 
                 # Ocean basin abundance bar plot (total counts)
-                if 'ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns:
+                if 'ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns:
                     try:
                         total_bar_path, total_bar_data = visualization.plot_ocean_basin_abundance_total(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_totaldistribution_bar.{fmt}"),
-                            genotype_column='consensus_group_sp',
+                            genotype_column='haplotype_sp',
                             basin_column='ocean_basin'
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
@@ -764,39 +921,39 @@ def run_pipeline(
                     except Exception as e:
                         logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
 
-                # Faceted distribution map by consensus_group_sp
+                # Faceted distribution map by haplotype_sp
                 if ('lat' in df_final.columns and 'lon' in df_final.columns and
-                    'consensus_group_sp' in df_final.columns and 'consensus_group' in df_final.columns):
+                    'haplotype_sp' in df_final.columns and 'haplotype_id' in df_final.columns):
                     try:
                         visualization.plot_distribution_map_faceted(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
-                            genotype_column='consensus_group',
-                            species_column='consensus_group_sp',
+                            genotype_column='haplotype_id',
+                            species_column='haplotype_sp',
                             latitude_col='lat',
                             longitude_col='lon',
                             facet_by=cfg.visualization.facet_by,
                             map_buffer_degrees=cfg.visualization.map_buffer_degrees,
                             show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
                             show_scale_bar=cfg.visualization.show_scale_bar,
-                            genotype_plots_dir=dirs['genotype_plots'],
+                            genotype_plots_dir=dirs['haplotype_plots'],
                             formats=cfg.visualization.figure_format
                         )
                     except Exception as e:
                         logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
 
-                # Faceted ocean basin bar plot by consensus_group_sp
-                if ('ocean_basin' in df_final.columns and 'consensus_group_sp' in df_final.columns and
-                    'consensus_group' in df_final.columns):
+                # Faceted ocean basin bar plot by haplotype_sp
+                if ('ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns and
+                    'haplotype_id' in df_final.columns):
                     try:
                         faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
-                            genotype_column='consensus_group',
-                            species_column='consensus_group_sp',
+                            genotype_column='haplotype_id',
+                            species_column='haplotype_sp',
                             basin_column='ocean_basin',
                             facet_by=cfg.visualization.facet_by,
-                            genotype_plots_dir=dirs['genotype_plots'],
+                            genotype_plots_dir=dirs['haplotype_plots'],
                             formats=cfg.visualization.figure_format
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
@@ -821,7 +978,7 @@ def run_pipeline(
 
             # Phylogenetic tree
             if tree_path and Path(tree_path).exists():
-                # Use relabeled tree if it exists (so tips show consensus_group_sp labels)
+                # Use relabeled tree if it exists (so tips show haplotype_sp labels)
                 relabeled_tree_path = tree_path.replace("_tree.nwk", "_tree_relabeled.nwk")
                 if Path(relabeled_tree_path).exists():
                     tree_to_plot = relabeled_tree_path
@@ -830,16 +987,16 @@ def run_pipeline(
                     tree_to_plot = tree_path
 
                 # Load color map if it exists
-                color_map_path = dirs['assignments'] / f"{organism}_genotype_color_map.csv"
-                genotype_colors = None
+                color_map_path = dirs['assignments'] / f"{organism}_haplotype_color_map.csv"
+                haplotype_colors = None
                 if color_map_path.exists():
                     color_df = pd.read_csv(color_map_path)
-                    genotype_colors = dict(zip(color_df['consensus_group_sp'], color_df['color']))
+                    haplotype_colors = dict(zip(color_df['haplotype_sp'], color_df['color']))
 
                 visualization.plot_phylogenetic_tree(
                     tree_file=str(tree_to_plot),
                     output_path=str(dirs['phylogenetic'] / f"{organism}_tree.{fmt}"),
-                    genotype_colors=genotype_colors,
+                    genotype_colors=haplotype_colors,
                     show_bootstrap=True,
                     bootstrap_threshold=cfg.visualization.show_bootstrap_threshold,
                     figsize=None,  # Auto-scale based on tree size
@@ -861,21 +1018,21 @@ def run_pipeline(
 
         try:
             # Get color map if it exists
-            color_map_path = dirs['assignments'] / f"{organism}_genotype_color_map.csv"
-            genotype_colors = None
+            color_map_path = dirs['assignments'] / f"{organism}_haplotype_color_map.csv"
+            haplotype_colors = None
             if color_map_path.exists():
                 color_df = pd.read_csv(color_map_path)
-                genotype_colors = dict(zip(color_df['consensus_group_sp'], color_df['color']))
+                haplotype_colors = dict(zip(color_df['haplotype_sp'], color_df['color']))
 
             # Export plot data and regeneration kit
             plot_export_results = plot_export.export_plots_complete(
                 df=df_final,
                 output_dir=output_dir,
                 organism=organism,
-                consensus_path=consensus_path if consensus_path.exists() else None,
+                consensus_path=haplotype_fasta if haplotype_fasta.exists() else None,
                 tree_path=Path(tree_path) if tree_path and Path(tree_path).exists() else None,
                 diagnostics_path=diagnostics_csv if diagnostics_csv.exists() else None,
-                color_map=genotype_colors
+                color_map=haplotype_colors
             )
 
             logger.info(f"  ✓ Plot regeneration kit exported to {output_dir / 'plots'}")
@@ -885,22 +1042,22 @@ def run_pipeline(
             logger.debug("Plot export error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 6.6: Population Genetics Export (Optional)
+    # PHASE 11: Population Genetics Export (Optional)
     # ========================================================================
     if export_popgen_formats:
         logger.info("")
-        logger.info("PHASE 6.6: Population Genetics Export")
+        logger.info("PHASE 11: Population Genetics Export")
         logger.info("-" * 80)
 
         try:
             # Export to population genetics software formats
             popgen_results = popgen_export.export_population_genetics_formats(
                 df=df_final,
-                consensus_fasta_path=consensus_path,
+                consensus_fasta_path=str(haplotype_fasta),
                 output_dir=output_dir,
                 organism=organism,
                 formats=export_popgen_formats,
-                group_by='consensus_group'
+                group_by='haplotype_id'
             )
 
             logger.info(f"  ✓ Population genetics formats exported to {output_dir / 'exports'}")
@@ -910,10 +1067,10 @@ def run_pipeline(
             logger.debug("Popgen export error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 7: Reports
+    # PHASE 12: Reports
     # ========================================================================
     logger.info("")
-    logger.info("PHASE 7: Generating Reports")
+    logger.info("PHASE 12: Generating Reports")
     logger.info("-" * 80)
 
     try:
@@ -981,7 +1138,7 @@ def run_pipeline(
     logger.info(f"  Output directory: {output_dir}")
     logger.info(f"  Key files:")
     logger.info(f"    - Annotated data: {annotated_csv}")
-    logger.info(f"    - Consensus sequences: {consensus_path}")
+    logger.info(f"    - Haplotype sequences: {haplotype_fasta}")
     if tree_path:
         logger.info(f"    - Phylogenetic tree: {tree_path}")
     if html_report_path:
@@ -1561,41 +1718,35 @@ def main():
         return main_cluster_diagnostics(sys.argv[2:])
 
     parser = argparse.ArgumentParser(
-        description='BOLDGenotyper: Automated genotyping pipeline for BOLD barcode data',
+        description='BOLDGenotyper: haplotype-first COI genotyping with optional phylogeny, divergence, and mapping outputs.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage (organism and output inferred from filename)
+  # Basic usage (organism inferred from TSV filename)
   boldgenotyper data/Euprymna_scolopes.tsv
 
-  # Specify organism name
-  boldgenotyper data/samples.tsv --organism Euprymna
+  # Specify organism name and output directory
+  boldgenotyper data/Carcharhinus.tsv --organism Carcharhinus --output results/Carcharhinus_analysis
 
-  # Specify output directory
-  boldgenotyper data/Carcharhinus.tsv --output results/Carcharhinus_analysis
+  # Tune assignment thresholds for diverse taxa
+  boldgenotyper data/Carcharhinus.tsv --similarity-threshold 0.80 --tie-margin 0.005 --tie-threshold 0.97
 
-  # Adjust similarity threshold for highly diverse taxa
-  boldgenotyper data/Carcharhinus.tsv --similarity-threshold 0.80
+  # Enable phylogeny and root on an in-tree outgroup label or taxon
+  boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-label "Eusphyra blochii haplotype_h10_n21_n19"
+  boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-taxon "Eusphyra blochii"
 
-  # Use stricter clustering for fine-scale genotyping
-  boldgenotyper data/Population_study.tsv --clustering-threshold 0.005
+  # Include an external outgroup FASTA for rooting
+  boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-fasta data/outgroup.fasta
 
-  # Adjust tie detection parameters for ambiguous assignments
-  boldgenotyper data/Complex_group.tsv --tie-margin 0.005 --tie-threshold 0.97
-
-  # Enable phylogenetic tree building
-  boldgenotyper data/Euprymna.tsv --build-tree
-
-  # Skip HTML report generation
-  boldgenotyper data/Euprymna.tsv --no-report
+  # Skip geographic plots or the HTML report
+  boldgenotyper data/Euprymna.tsv --no-geo --no-report
 
 Notes:
-  - An HTML summary report is generated by default in the reports/ directory
-  - Use --no-report to skip HTML report generation
-  - HTML reports require jinja2 (included in default installation)
-
-For more information: https://github.com/your-repo/boldgenotyper
-        """
+  - Phylogeny requires MAFFT and FastTree in PATH; trimAl is used if available.
+  - Trees are built from haplotypes and relabeled with haplotype_sp by default.
+  - Plot regeneration kits are exported by default; use --no-export-plot-data to skip.
+  - Reports go to the output folder (reports/, visualization/, phylogenetic/).
+"""
     )
 
     # Required arguments
@@ -1631,9 +1782,7 @@ For more information: https://github.com/your-repo/boldgenotyper
         '--clustering-threshold',
         type=float,
         default=0.03,
-        help='Maximum genetic distance for clustering sequences into consensus groups. '
-             'Lower values create more groups with tighter genetic similarity. '
-             'Default: 0.03 (97%% identity)'
+        help=argparse.SUPPRESS  # legacy option retained for compatibility
     )
 
     parser.add_argument(
@@ -1670,9 +1819,30 @@ For more information: https://github.com/your-repo/boldgenotyper
     )
 
     parser.add_argument(
-        '--export-plot-data',
+        '--phylo-outgroup-fasta',
+        type=Path,
+        default=None,
+        help='Optional FASTA of outgroup sequences to include for rooting the phylogeny'
+    )
+
+    parser.add_argument(
+        '--phylo-outgroup-label',
+        type=str,
+        default=None,
+        help='Optional tip label to reroot the tree on (when an outgroup sequence is already in the alignment)'
+    )
+
+    parser.add_argument(
+        '--phylo-outgroup-taxon',
+        type=str,
+        default=None,
+        help='Species/genus name to reroot by LCA of matching tips (uses haplotype taxonomy)'
+    )
+
+    parser.add_argument(
+        '--no-export-plot-data',
         action='store_true',
-        help='Export raw plot data and R regeneration scripts for custom publication figures'
+        help='Skip exporting raw plot data and regeneration scripts'
     )
 
     parser.add_argument(
@@ -1744,6 +1914,9 @@ For more information: https://github.com/your-repo/boldgenotyper
         output_dir=output_dir,
         log_level=args.log_level,
         phylogenetic__build_tree=args.build_tree,
+        phylogenetic__outgroup_fasta=args.phylo_outgroup_fasta,
+        phylogenetic__outgroup_label=args.phylo_outgroup_label,
+        phylogenetic__outgroup_taxon=args.phylo_outgroup_taxon,
         keep_intermediates=True
     )
 
@@ -1762,6 +1935,9 @@ For more information: https://github.com/your-repo/boldgenotyper
     print(f"  Tie threshold: {args.tie_threshold} ({args.tie_threshold*100:.0f}% identity)")
     print(f"  Threads: {args.threads}")
     print(f"  Build tree: {args.build_tree}")
+    print(f"  Phylo outgroup FASTA: {args.phylo_outgroup_fasta or 'None'}")
+    print(f"  Phylo outgroup label: {args.phylo_outgroup_label or 'None'}")
+    print(f"  Phylo outgroup taxon: {args.phylo_outgroup_taxon or 'None'}")
     print("=" * 80)
     print()
 
@@ -1774,7 +1950,7 @@ For more information: https://github.com/your-repo/boldgenotyper
             cfg=cfg,
             no_report=args.no_report,
             skip_geo=args.no_geo,
-            export_plot_data=args.export_plot_data,
+        export_plot_data=not args.no_export_plot_data,
             export_popgen_formats=args.export_format
         )
 

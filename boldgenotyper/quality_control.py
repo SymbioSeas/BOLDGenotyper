@@ -1,16 +1,25 @@
 """
 Quality Control Module for BOLDGenotyper
 
-This module provides automated contamination detection and quality control reporting
-for genotype assignments. It identifies mixed-species consensus groups, potential
-misidentifications, and data quality issues.
+This module provides comprehensive quality control for COI barcode sequences, including
+sequence orientation normalization, ORF validation, dynamic filtering, and contamination
+detection.
 
 Key Features:
+- COI orientation normalization (forward/reverse complement detection)
+- Open reading frame (ORF) validation and quality checking
+- Dynamic QC filtering with median-based thresholds
 - Mixed-species group detection
 - Potential misidentification flagging
 - Depositor uncertainty note extraction
 - Contamination heatmaps and reports
 - Purity distribution analysis
+
+Workflow:
+1. Orientation Normalization: Check ORF in both orientations, correct if needed
+2. ORF Validation: Check coverage and internal stop codons
+3. Dynamic QC: Apply absolute and median-based length/quality filters
+4. Contamination Detection: Identify mixed-species groups
 
 Author: Steph Smith (steph.smith@unc.edu)
 """
@@ -44,6 +53,283 @@ UNCERTAINTY_KEYWORDS = {
     'mixed_sample': ['mixed', 'contamination', 'multiple']
 }
 
+
+# ============================================================================
+# COI Orientation Normalization and ORF Validation
+# ============================================================================
+
+def apply_orientation_normalization(
+    sequences_dict: Dict[str, str],
+    genetic_code: int = 2,
+    min_orf_coverage: float = 0.7,
+    max_internal_stops: int = 2
+) -> Tuple[Dict[str, str], pd.DataFrame]:
+    """
+    Normalize sequence orientation and validate ORF quality.
+
+    Checks each sequence for proper COI orientation by analyzing ORF in both
+    forward and reverse complement orientations. Sequences are automatically
+    corrected to forward orientation if needed.
+
+    Parameters
+    ----------
+    sequences_dict : Dict[str, str]
+        Dictionary mapping processid -> sequence
+    genetic_code : int, optional
+        NCBI genetic code table (default: 2 = vertebrate mitochondrial)
+    min_orf_coverage : float, optional
+        Minimum ORF coverage required (default: 0.7 = 70%)
+    max_internal_stops : int, optional
+        Maximum internal stop codons allowed (default: 2)
+
+    Returns
+    -------
+    Tuple[Dict[str, str], pd.DataFrame]
+        - corrected_sequences: Dictionary with orientation-corrected sequences
+        - orf_stats: DataFrame with ORF validation results per sequence
+
+    Examples
+    --------
+    >>> sequences = {"sample1": "ATGCCC...", "sample2": "GGGCAT..."}
+    >>> corrected, stats = apply_orientation_normalization(sequences)
+    >>> stats[['processid', 'orientation', 'orf_valid', 'orf_coverage']]
+    """
+    from boldgenotyper.utils import check_orf_quality
+
+    corrected_sequences = {}
+    orf_results = []
+
+    for processid, sequence in sequences_dict.items():
+        if not sequence or pd.isna(sequence):
+            # Handle missing sequences
+            orf_results.append({
+                'processid': processid,
+                'orientation': 'unknown',
+                'needs_revcomp': False,
+                'orf_valid': False,
+                'orf_coverage': 0.0,
+                'internal_stops': 0,
+                'failure_reasons': 'No sequence data'
+            })
+            corrected_sequences[processid] = sequence
+            continue
+
+        # Clean sequence: remove gaps and non-ATGCN characters
+        cleaned_sequence = sequence.replace('-', '').replace('.', '').upper()
+        # Keep only valid nucleotides
+        cleaned_sequence = ''.join(c for c in cleaned_sequence if c in 'ATGCN')
+
+        if not cleaned_sequence:
+            # Sequence was all gaps or invalid characters
+            orf_results.append({
+                'processid': processid,
+                'orientation': 'unknown',
+                'needs_revcomp': False,
+                'orf_valid': False,
+                'orf_coverage': 0.0,
+                'internal_stops': 0,
+                'failure_reasons': 'Sequence contains only gaps or invalid characters'
+            })
+            corrected_sequences[processid] = cleaned_sequence
+            continue
+
+        # Check ORF quality and orientation on cleaned sequence
+        orf_check = check_orf_quality(
+            cleaned_sequence,
+            genetic_code=genetic_code,
+            min_coverage=min_orf_coverage,
+            max_internal_stops=max_internal_stops
+        )
+
+        # Store results
+        orf_results.append({
+            'processid': processid,
+            'orientation': orf_check['orientation'],
+            'needs_revcomp': orf_check['needs_revcomp'],
+            'orf_valid': orf_check['is_valid_orf'],
+            'orf_coverage': orf_check['orf_coverage'],
+            'internal_stops': orf_check['internal_stops'],
+            'failure_reasons': '; '.join(orf_check['failure_reasons']) if orf_check['failure_reasons'] else ''
+        })
+
+        # Store corrected sequence
+        corrected_sequences[processid] = orf_check['corrected_sequence']
+
+    # Convert to DataFrame
+    orf_stats_df = pd.DataFrame(orf_results)
+
+    # Log summary
+    n_total = len(orf_results)
+    n_reversed = orf_stats_df['needs_revcomp'].sum()
+    n_invalid = (~orf_stats_df['orf_valid']).sum()
+
+    logger.info(f"Orientation normalization complete:")
+    logger.info(f"  Total sequences: {n_total}")
+    logger.info(f"  Reverse complemented: {n_reversed} ({n_reversed/n_total*100:.1f}%)")
+    logger.info(f"  Invalid ORF: {n_invalid} ({n_invalid/n_total*100:.1f}%)")
+
+    if n_invalid > 0:
+        logger.warning(
+            f"  {n_invalid} sequences failed ORF validation. "
+            f"These may be contamination, NUMTs, or sequencing errors."
+        )
+
+    return corrected_sequences, orf_stats_df
+
+
+# ============================================================================
+# Dynamic Quality Control Filtering
+# ============================================================================
+
+def apply_dynamic_qc_filters(
+    df: pd.DataFrame,
+    sequences_dict: Dict[str, str],
+    min_raw_length_abs: int = 200,
+    min_raw_length_frac_of_median: float = 0.7,
+    max_raw_N_fraction: float = 0.05,
+    processid_col: str = 'processid'
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Apply dynamic quality control filters with median-based thresholds.
+
+    Implements two-tier filtering:
+    1. Absolute thresholds (minimum length, max N content)
+    2. Median-based relative thresholds (adaptive to dataset)
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Metadata dataframe with processid column
+    sequences_dict : Dict[str, str]
+        Dictionary mapping processid -> sequence
+    min_raw_length_abs : int, optional
+        Absolute minimum sequence length (default: 200 bp)
+    min_raw_length_frac_of_median : float, optional
+        Minimum length as fraction of median (default: 0.7 = 70%)
+    max_raw_N_fraction : float, optional
+        Maximum fraction of N bases (default: 0.05 = 5%)
+    processid_col : str, optional
+        Name of processid column (default: 'processid')
+
+    Returns
+    -------
+    Tuple[pd.DataFrame, Dict[str, Any]]
+        - filtered_df: DataFrame with QC columns and failed samples removed
+        - qc_stats: Dictionary with QC statistics
+
+    Notes
+    -----
+    QC columns added to DataFrame:
+    - raw_length: Sequence length in bp
+    - raw_N_count: Number of N bases
+    - raw_N_fraction: Fraction of N bases
+    - qc_pass_abs: Passes absolute thresholds
+    - qc_pass_median: Passes median-based thresholds
+    - qc_pass: Passes all QC filters
+    - qc_fail_reason: Reason for failure (if failed)
+    """
+    # Calculate sequence metrics
+    qc_data = []
+
+    for processid in df[processid_col]:
+        sequence = sequences_dict.get(processid, '')
+
+        if not sequence or pd.isna(sequence):
+            qc_data.append({
+                'processid': processid,
+                'raw_length': 0,
+                'raw_N_count': 0,
+                'raw_N_fraction': 0.0
+            })
+        else:
+            sequence = str(sequence).upper()
+            seq_length = len(sequence)
+            n_count = sequence.count('N')
+            n_fraction = n_count / seq_length if seq_length > 0 else 0.0
+
+            qc_data.append({
+                'processid': processid,
+                'raw_length': seq_length,
+                'raw_N_count': n_count,
+                'raw_N_fraction': n_fraction
+            })
+
+    qc_df = pd.DataFrame(qc_data)
+
+    # Calculate median length for adaptive threshold
+    median_length = qc_df['raw_length'].median()
+    min_length_adaptive = median_length * min_raw_length_frac_of_median
+
+    logger.info(f"Dynamic QC thresholds:")
+    logger.info(f"  Median sequence length: {median_length:.0f} bp")
+    logger.info(f"  Absolute minimum: {min_raw_length_abs} bp")
+    logger.info(f"  Adaptive minimum: {min_length_adaptive:.0f} bp ({min_raw_length_frac_of_median:.0%} of median)")
+    logger.info(f"  Max N fraction: {max_raw_N_fraction:.1%}")
+
+    # Apply absolute thresholds
+    qc_df['qc_pass_abs'] = (
+        (qc_df['raw_length'] >= min_raw_length_abs) &
+        (qc_df['raw_N_fraction'] <= max_raw_N_fraction)
+    )
+
+    # Apply median-based thresholds
+    qc_df['qc_pass_median'] = (qc_df['raw_length'] >= min_length_adaptive)
+
+    # Combined QC pass
+    qc_df['qc_pass'] = qc_df['qc_pass_abs'] & qc_df['qc_pass_median']
+
+    # Determine failure reasons
+    def get_fail_reason(row):
+        reasons = []
+        if row['raw_length'] < min_raw_length_abs:
+            reasons.append(f"Length {row['raw_length']}bp < {min_raw_length_abs}bp")
+        if row['raw_length'] < min_length_adaptive:
+            reasons.append(f"Length {row['raw_length']}bp < {min_length_adaptive:.0f}bp (adaptive)")
+        if row['raw_N_fraction'] > max_raw_N_fraction:
+            reasons.append(f"N content {row['raw_N_fraction']:.1%} > {max_raw_N_fraction:.1%}")
+        return '; '.join(reasons) if reasons else ''
+
+    qc_df['qc_fail_reason'] = qc_df.apply(get_fail_reason, axis=1)
+
+    # Merge QC columns with input dataframe
+    df_with_qc = df.merge(qc_df, on=processid_col, how='left')
+
+    # Calculate statistics
+    n_total = len(qc_df)
+    n_pass = qc_df['qc_pass'].sum()
+    n_fail_abs = (~qc_df['qc_pass_abs']).sum()
+    n_fail_median = (~qc_df['qc_pass_median']).sum()
+    n_fail_total = n_total - n_pass
+
+    qc_stats = {
+        'n_total': n_total,
+        'n_pass': n_pass,
+        'n_fail': n_fail_total,
+        'n_fail_abs': n_fail_abs,
+        'n_fail_median': n_fail_median,
+        'pass_rate': n_pass / n_total if n_total > 0 else 0.0,
+        'median_length': median_length,
+        'min_length_adaptive': min_length_adaptive
+    }
+
+    logger.info(f"QC filtering results:")
+    logger.info(f"  Total samples: {n_total}")
+    logger.info(f"  Passed QC: {n_pass} ({qc_stats['pass_rate']*100:.1f}%)")
+    logger.info(f"  Failed QC: {n_fail_total} ({(1-qc_stats['pass_rate'])*100:.1f}%)")
+    logger.info(f"    - Failed absolute thresholds: {n_fail_abs}")
+    logger.info(f"    - Failed median-based thresholds: {n_fail_median}")
+
+    # Filter to only passing samples
+    filtered_df = df_with_qc[df_with_qc['qc_pass']].copy()
+
+    logger.info(f"Retained {len(filtered_df)} samples after QC filtering")
+
+    return filtered_df, qc_stats
+
+
+# ============================================================================
+# Depositor Uncertainty and Contamination Detection
+# ============================================================================
 
 def detect_depositor_uncertainty(
     note: str
@@ -81,14 +367,14 @@ def analyze_group_contamination(
     min_samples: int = 3
 ) -> pd.DataFrame:
     """
-    Analyze contamination levels in each consensus group.
+    Analyze contamination levels in each haplotype.
 
     Parameters
     ----------
     df : pd.DataFrame
         Annotated dataframe with genotype assignments
     group_col : str
-        Column name for consensus groups
+        Column name for haplotypes
     species_col : str
         Column name for species labels
     min_samples : int
@@ -195,7 +481,7 @@ def add_contamination_columns(
     df : pd.DataFrame
         Annotated dataframe with genotype assignments
     group_col : str
-        Column name for consensus groups
+        Column name for haplotypes
     species_col : str
         Column name for species labels
     notes_col : str
@@ -298,7 +584,7 @@ def generate_depositor_flags_summary(
     df : pd.DataFrame
         Annotated dataframe with contamination columns
     group_col : str
-        Column name for consensus groups
+        Column name for haplotypes
     species_col : str
         Column name for species labels
     processid_col : str
@@ -338,7 +624,7 @@ def create_contamination_heatmap(
     min_samples: int = 3
 ) -> None:
     """
-    Create a heatmap showing species composition of consensus groups.
+    Create a heatmap showing species composition of haplotypes.
 
     Parameters
     ----------
@@ -347,7 +633,7 @@ def create_contamination_heatmap(
     output_path : Path
         Output path for PDF
     group_col : str
-        Column name for consensus groups
+        Column name for haplotypes
     species_col : str
         Column name for species labels
     min_samples : int
@@ -483,7 +769,7 @@ def generate_quality_control_report(
     organism : str
         Organism name
     group_col : str
-        Column name for consensus groups
+        Column name for haplotypes
     species_col : str
         Column name for species labels
 
@@ -566,7 +852,7 @@ contamination and misidentifications in the genotype assignments.
 
 ## Files
 
-- **mixed_species_summary.csv**: Summary of contamination in each consensus group
+- **mixed_species_summary.csv**: Summary of contamination in each haplotype
 - **contamination_heatmap.pdf**: Visual overview of species × groups
 - **depositor_flags_summary.csv**: Samples with uncertainty notes
 - **potential_misidentifications.csv**: Flagged samples likely mislabeled
@@ -574,7 +860,7 @@ contamination and misidentifications in the genotype assignments.
 
 ## Summary Statistics
 
-- **Total consensus groups analyzed**: {n_groups}
+- **Total haplotypes analyzed**: {n_groups}
 - **Pure groups (single species)**: {n_pure} ({n_pure/n_groups*100:.1f}%)
 - **Mixed groups (multiple species)**: {n_mixed} ({pct_contaminated:.1f}%)
 - **Samples with depositor uncertainty flags**: {n_flagged_samples}
@@ -641,7 +927,7 @@ def print_quality_alert(qc_summary: Dict[str, Any]) -> None:
 
         if n_mixed > 0:
             pct = (n_mixed / total_groups * 100) if total_groups > 0 else 0
-            print(f"\n🔬 {n_mixed} of {total_groups} consensus groups contain multiple species ({pct:.1f}%)")
+            print(f"\n🔬 {n_mixed} of {total_groups} haplotypes contain multiple species ({pct:.1f}%)")
             print("   → See: quality_control/mixed_species_summary.csv")
 
         if n_misid > 0:

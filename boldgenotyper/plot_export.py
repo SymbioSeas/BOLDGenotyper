@@ -340,39 +340,42 @@ def create_plot_config(
         }
     }
 
-    # Write config file
-    if YAML_AVAILABLE:
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    else:
-        # Fallback: write manual YAML format
-        with open(config_path, 'w') as f:
-            f.write("# Plot Configuration for BOLDGenotyper\n")
-            f.write("# Edit values to customize plots, then run regenerate_all.sh\n\n")
+    # Write config file (and compatibility alias)
+    def _write_yaml(path: Path):
+        if YAML_AVAILABLE:
+            with open(path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        else:
+            # Fallback: write manual YAML format
+            with open(path, 'w') as f:
+                f.write("# Plot Configuration for BOLDGenotyper\n")
+                f.write("# Edit values to customize plots, then run regenerate_all.sh\n\n")
 
-            def write_dict(d, indent=0):
-                """Recursively write dictionary in YAML format."""
-                for key, value in d.items():
-                    if isinstance(value, dict):
-                        f.write('  ' * indent + f"{key}:\n")
-                        write_dict(value, indent + 1)
-                    elif isinstance(value, list):
-                        f.write('  ' * indent + f"{key}:\n")
-                        for item in value:
-                            if isinstance(item, str):
+                def write_dict(d, indent=0):
+                    """Recursively write dictionary in YAML format."""
+                    for key, value in d.items():
+                        if isinstance(value, dict):
+                            f.write('  ' * indent + f"{key}:\n")
+                            write_dict(value, indent + 1)
+                        elif isinstance(value, list):
+                            f.write('  ' * indent + f"{key}:\n")
+                            for item in value:
                                 f.write('  ' * (indent + 1) + f"- {item}\n")
-                            else:
-                                f.write('  ' * (indent + 1) + f"- {item}\n")
-                    elif isinstance(value, str):
-                        f.write('  ' * indent + f"{key}: \"{value}\"\n")
-                    elif isinstance(value, bool):
-                        f.write('  ' * indent + f"{key}: {str(value).lower()}\n")
-                    else:
-                        f.write('  ' * indent + f"{key}: {value}\n")
+                        elif isinstance(value, str):
+                            f.write('  ' * indent + f"{key}: \"{value}\"\n")
+                        elif isinstance(value, bool):
+                            f.write('  ' * indent + f"{key}: {str(value).lower()}\n")
+                        else:
+                            f.write('  ' * indent + f"{key}: {value}\n")
 
-            write_dict(config)
+                write_dict(config)
+
+    _write_yaml(config_path)
+    legacy_path = plots_dir / "plot_customization_config.yaml"
+    _write_yaml(legacy_path)
 
     logger.info(f"  ✓ Created plot configuration: {config_path}")
+    logger.info(f"  ✓ Created plot customization config: {legacy_path}")
 
     return config_path
 

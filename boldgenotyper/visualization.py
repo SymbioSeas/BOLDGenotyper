@@ -8,14 +8,14 @@ formatting.
 
 Figure Types:
 1. Global Distribution Map
-   - Points colored by genotype
+   - Points colored by haplotype
    - Point size proportional to sample count at location
    - World map background with country boundaries
-   - Legend with genotype colors
+   - Legend with haplotype colors
    - Scale bar and coordinates
 
 2. Ocean Basin Abundance Plot
-   - Stacked bar chart showing genotype proportions per basin
+   - Stacked bar chart showing haplotype proportions per basin
    - Bars arranged by ocean basin
    - Colors consistent with distribution map
    - Y-axis shows relative abundance (0-100%)
@@ -23,7 +23,7 @@ Figure Types:
 
 3. Phylogenetic Tree (optional)
    - Maximum likelihood tree with bootstrap support
-   - Branch tips colored by genotype
+   - Branch tips colored by haplotype
    - Bootstrap values shown for key nodes
    - Scale bar for genetic distance
 
