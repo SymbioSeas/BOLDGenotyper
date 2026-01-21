@@ -84,6 +84,7 @@ setup(
             'boldgenotyper-compare=boldgenotyper.cli:main_compare',
             'boldgenotyper-sweep=boldgenotyper.cli:main_sweep',
             'boldgenotyper-enrich=boldgenotyper.cli:main_enrich',
+            'boldgenotyper-query=boldgenotyper.cli:main_query',
         ],
     },
 

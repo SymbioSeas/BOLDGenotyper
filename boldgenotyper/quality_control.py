@@ -141,10 +141,11 @@ def apply_orientation_normalization(
             max_internal_stops=max_internal_stops
         )
 
-        # Store results
+        # Store results (including reading frame)
         orf_results.append({
             'processid': processid,
             'orientation': orf_check['orientation'],
+            'frame': orf_check.get('frame', 0),  # Reading frame offset
             'needs_revcomp': orf_check['needs_revcomp'],
             'orf_valid': orf_check['is_valid_orf'],
             'orf_coverage': orf_check['orf_coverage'],
@@ -163,9 +164,15 @@ def apply_orientation_normalization(
     n_reversed = orf_stats_df['needs_revcomp'].sum()
     n_invalid = (~orf_stats_df['orf_valid']).sum()
 
+    # Count frame distribution
+    frame_counts = orf_stats_df['frame'].value_counts().sort_index()
+
     logger.info(f"Orientation normalization complete:")
     logger.info(f"  Total sequences: {n_total}")
     logger.info(f"  Reverse complemented: {n_reversed} ({n_reversed/n_total*100:.1f}%)")
+    logger.info(f"  Reading frame distribution:")
+    for frame, count in frame_counts.items():
+        logger.info(f"    Frame +{frame}: {count} ({count/n_total*100:.1f}%)")
     logger.info(f"  Invalid ORF: {n_invalid} ({n_invalid/n_total*100:.1f}%)")
 
     if n_invalid > 0:
@@ -184,17 +191,20 @@ def apply_orientation_normalization(
 def apply_dynamic_qc_filters(
     df: pd.DataFrame,
     sequences_dict: Dict[str, str],
+    orf_stats_df: pd.DataFrame = None,
     min_raw_length_abs: int = 200,
     min_raw_length_frac_of_median: float = 0.7,
     max_raw_N_fraction: float = 0.05,
+    require_valid_orf: bool = True,
     processid_col: str = 'processid'
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Apply dynamic quality control filters with median-based thresholds.
 
-    Implements two-tier filtering:
+    Implements three-tier filtering:
     1. Absolute thresholds (minimum length, max N content)
     2. Median-based relative thresholds (adaptive to dataset)
+    3. ORF validation (excludes NUMTs, contamination, pseudogenes)
 
     Parameters
     ----------
@@ -202,12 +212,17 @@ def apply_dynamic_qc_filters(
         Metadata dataframe with processid column
     sequences_dict : Dict[str, str]
         Dictionary mapping processid -> sequence
+    orf_stats_df : pd.DataFrame, optional
+        ORF validation results from apply_orientation_normalization
     min_raw_length_abs : int, optional
         Absolute minimum sequence length (default: 200 bp)
     min_raw_length_frac_of_median : float, optional
         Minimum length as fraction of median (default: 0.7 = 70%)
     max_raw_N_fraction : float, optional
         Maximum fraction of N bases (default: 0.05 = 5%)
+    require_valid_orf : bool, optional
+        Require valid ORF to pass QC (default: True). Excludes NUMTs,
+        contamination, and pseudogenes.
     processid_col : str, optional
         Name of processid column (default: 'processid')
 
@@ -225,6 +240,7 @@ def apply_dynamic_qc_filters(
     - raw_N_fraction: Fraction of N bases
     - qc_pass_abs: Passes absolute thresholds
     - qc_pass_median: Passes median-based thresholds
+    - qc_pass_orf: Passes ORF validation (if required)
     - qc_pass: Passes all QC filters
     - qc_fail_reason: Reason for failure (if failed)
     """
@@ -275,8 +291,27 @@ def apply_dynamic_qc_filters(
     # Apply median-based thresholds
     qc_df['qc_pass_median'] = (qc_df['raw_length'] >= min_length_adaptive)
 
+    # Apply ORF validation filter if provided
+    if orf_stats_df is not None and require_valid_orf:
+        # Merge ORF validation results
+        qc_df = qc_df.merge(
+            orf_stats_df[['processid', 'orf_valid']],
+            on='processid',
+            how='left'
+        )
+        # Default to False if ORF validation missing
+        qc_df['orf_valid'] = qc_df['orf_valid'].fillna(False)
+        qc_df['qc_pass_orf'] = qc_df['orf_valid']
+    else:
+        # If ORF validation not required, all pass this criterion
+        qc_df['qc_pass_orf'] = True
+
     # Combined QC pass
-    qc_df['qc_pass'] = qc_df['qc_pass_abs'] & qc_df['qc_pass_median']
+    qc_df['qc_pass'] = (
+        qc_df['qc_pass_abs'] &
+        qc_df['qc_pass_median'] &
+        qc_df['qc_pass_orf']
+    )
 
     # Determine failure reasons
     def get_fail_reason(row):
@@ -287,6 +322,8 @@ def apply_dynamic_qc_filters(
             reasons.append(f"Length {row['raw_length']}bp < {min_length_adaptive:.0f}bp (adaptive)")
         if row['raw_N_fraction'] > max_raw_N_fraction:
             reasons.append(f"N content {row['raw_N_fraction']:.1%} > {max_raw_N_fraction:.1%}")
+        if require_valid_orf and orf_stats_df is not None and not row['qc_pass_orf']:
+            reasons.append("Invalid ORF (likely NUMT/contamination/pseudogene)")
         return '; '.join(reasons) if reasons else ''
 
     qc_df['qc_fail_reason'] = qc_df.apply(get_fail_reason, axis=1)
@@ -299,6 +336,7 @@ def apply_dynamic_qc_filters(
     n_pass = qc_df['qc_pass'].sum()
     n_fail_abs = (~qc_df['qc_pass_abs']).sum()
     n_fail_median = (~qc_df['qc_pass_median']).sum()
+    n_fail_orf = (~qc_df['qc_pass_orf']).sum() if require_valid_orf and orf_stats_df is not None else 0
     n_fail_total = n_total - n_pass
 
     qc_stats = {
@@ -307,6 +345,7 @@ def apply_dynamic_qc_filters(
         'n_fail': n_fail_total,
         'n_fail_abs': n_fail_abs,
         'n_fail_median': n_fail_median,
+        'n_fail_orf': n_fail_orf,
         'pass_rate': n_pass / n_total if n_total > 0 else 0.0,
         'median_length': median_length,
         'min_length_adaptive': min_length_adaptive
@@ -318,6 +357,12 @@ def apply_dynamic_qc_filters(
     logger.info(f"  Failed QC: {n_fail_total} ({(1-qc_stats['pass_rate'])*100:.1f}%)")
     logger.info(f"    - Failed absolute thresholds: {n_fail_abs}")
     logger.info(f"    - Failed median-based thresholds: {n_fail_median}")
+    if require_valid_orf and orf_stats_df is not None:
+        logger.info(f"    - Failed ORF validation: {n_fail_orf}")
+        if n_fail_orf > 0:
+            logger.warning(
+                f"  {n_fail_orf} sequences excluded as likely NUMTs, contamination, or pseudogenes"
+            )
 
     # Filter to only passing samples
     filtered_df = df_with_qc[df_with_qc['qc_pass']].copy()
@@ -626,6 +671,10 @@ def create_contamination_heatmap(
     """
     Create a heatmap showing species composition of haplotypes.
 
+    Uses mako_r colormap with custom annotations: zeros shown as "×" on white
+    background, non-zero values shown with adaptive text color for readability.
+    Species names are italicized on x-axis.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -648,34 +697,100 @@ def create_contamination_heatmap(
         logger.warning("No groups with sufficient samples for heatmap")
         return
 
+    # Ensure species values exist so groups with missing species are retained
+    df_filtered[species_col] = df_filtered[species_col].fillna("Unknown")
+
     # Create contingency table
     ct = pd.crosstab(df_filtered[group_col], df_filtered[species_col])
 
     # Sort by group size
     group_order = df_filtered[group_col].value_counts().index
-    ct = ct.loc[group_order]
+    # Reindex to preserve group order even if some groups had only missing species
+    ct = ct.reindex(group_order, fill_value=0)
 
-    # Create figure
-    fig, ax = plt.subplots(figsize=(12, max(6, len(ct) * 0.4)))
+    # Mask for zero values
+    zero_mask = ct.eq(0)
 
-    # Create heatmap
+    # Colormap
+    cmap = sns.color_palette("mako_r", as_cmap=True)
+    vmin, vmax = 0, ct.to_numpy().max()
+
+    # Create figure with adaptive sizing
+    fig, ax = plt.subplots(figsize=(max(8, len(ct.columns) * 0.6), max(6, len(ct) * 0.4)))
+
+    # Set background for masked cells (zeros) to white
+    ax.set_facecolor("white")
+
+    # Create heatmap with masked zeros
     sns.heatmap(
         ct,
-        annot=True,
-        fmt='d',
-        cmap='YlOrRd',
-        cbar_kws={'label': 'Sample Count'},
+        cmap=cmap,
         ax=ax,
+        mask=zero_mask,
+        vmin=vmin,
+        vmax=vmax,
         linewidths=0.5,
-        linecolor='gray'
+        linecolor="lightgray",
+        cbar_kws={'label': 'Sample Count'},
     )
 
-    ax.set_xlabel('Species', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Consensus Group', fontsize=12, fontweight='bold')
-    ax.set_title('Species Contamination Heatmap', fontsize=14, fontweight='bold', pad=20)
+    # Add custom cell annotations with adaptive text color
+    def get_text_color(value):
+        """Determine text color based on cell background."""
+        if vmax > vmin:
+            norm = (value - vmin) / (vmax - vmin)
+        else:
+            norm = 0
+        r, g, b, _ = cmap(norm)
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return "white" if luminance < 0.5 else "black"
 
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
+    n_rows, n_cols = ct.shape
+    for i in range(n_rows):
+        for j in range(n_cols):
+            val = ct.iat[i, j]
+
+            if val == 0:
+                # Zero cells: white background + × (always black)
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    "×",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                )
+            else:
+                # Non-zero cells: show value with adaptive color
+                text_color = get_text_color(val)
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    f"{int(val)}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color=text_color,
+                )
+
+    # Axis labels and title
+    ax.set_xlabel("BOLD Reported Species")
+    ax.set_ylabel("BOLDGenotyper Haplotype")
+    ax.set_title(
+        "BOLDGenotyper Haplotype vs. BOLD Reported Species",
+        fontsize=12,
+        pad=12
+    )
+
+    # X-axis tick labels: italicized species names
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+    for label in ax.get_xticklabels():
+        label.set_fontstyle("italic")
+
+    # Y-axis tick labels: haplotype IDs
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+
     plt.tight_layout()
 
     plt.savefig(output_path, dpi=300, bbox_inches='tight')

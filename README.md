@@ -609,6 +609,63 @@ boldgenotyper data/my_species.tsv \
   --output /mnt/storage/results/my_analysis_2024
 ```
 
+### Querying New Sequences
+
+After completing a BOLD analysis, you can query new COI sequences against the identified haplotypes without re-running the full pipeline. This is useful for:
+- Assigning new specimens to existing haplotypes
+- Validating reference genomes against field samples
+- Cross-study comparison and longitudinal monitoring
+
+**Basic Query (Single or Multi-FASTA)**:
+```bash
+# Query new sequence(s) against identified haplotypes
+boldgenotyper-query \
+  --query new_samples.fasta \
+  --haplotypes results/Sphyrna_analysis/haplotypes/Sphyrna_haplotypes.fasta \
+  --output query_results/
+```
+
+**Query with Metadata Enrichment**:
+```bash
+# Include species composition and haplotype metadata
+boldgenotyper-query \
+  --query new_sample.fasta \
+  --haplotypes results/Sphyrna_analysis/haplotypes/Sphyrna_haplotypes.fasta \
+  --analysis-dir results/Sphyrna_analysis/ \
+  --output query_results/
+```
+
+**Customize Top Matches and Length Filters**:
+```bash
+# Report top 20 matches, filter by sequence length
+boldgenotyper-query \
+  --query samples.fasta \
+  --haplotypes haplotypes.fasta \
+  --top-n 20 \
+  --min-length 150 \
+  --max-length 1500 \
+  --output results/
+```
+
+**Query Output Files**:
+All three formats are generated automatically:
+- `query_results.csv`: Machine-readable table with identity metrics
+- `query_results.json`: Structured data for programmatic access
+- `query_results_detailed.txt`: Human-readable report with alignments
+
+**Match Quality Classification**:
+- **perfect** (100%): Exact haplotype match
+- **high** (≥99.5%): Likely same haplotype, minor sequencing variation
+- **good** (≥97%): Same species, possibly different haplotype
+- **moderate** (≥95%): Same genus, divergent haplotype
+- **low** (<95%): Different species or contamination
+
+**Important Notes**:
+- Query sequences must be **pre-extracted COI regions** (not multi-gene genomes)
+- Multi-FASTA files are supported for batch processing
+- No identity threshold - all matches are reported and ranked by quality
+- Local alignment handles length differences between query and consensus
+
 ### Input File Requirements
 
 **Filename Convention**: Your input TSV should follow this pattern for automatic organism detection:

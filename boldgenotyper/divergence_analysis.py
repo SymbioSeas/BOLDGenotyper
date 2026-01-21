@@ -445,45 +445,115 @@ def create_divergence_heatmap(
     output_path: Path
 ) -> None:
     """
-    Create heatmap of pairwise divergence matrix.
+    Create clustered heatmap of pairwise divergence matrix with dendrograms.
+
+    Generates a hierarchical clustered heatmap with dendrograms showing
+    relationships between haplotypes. Uses complete linkage clustering
+    and annotates cells with divergence values (0 shown as "×").
 
     Parameters
     ----------
     divergence_matrix : pd.DataFrame
-        Pairwise divergence matrix
+        Pairwise divergence matrix (will be symmetrized)
     output_path : Path
         Output path for PDF
     """
-    logger.info("  Creating divergence heatmap...")
+    from scipy.cluster.hierarchy import linkage
+    from scipy.spatial.distance import squareform
+
+    logger.info("  Creating divergence heatmap with dendrograms...")
+
+    # Symmetrize matrix (handle any asymmetry from rounding)
+    mat = (divergence_matrix + divergence_matrix.T) / 2
+
+    # Build distance array for hierarchical clustering
+    dist_array = squareform(mat.values)
+    row_linkage = linkage(dist_array, method="complete")
+    col_linkage = linkage(dist_array, method="complete")
 
     # Determine figure size based on matrix size
-    n = len(divergence_matrix)
-    figsize = (max(8, n * 0.5), max(6, n * 0.5))
+    n = len(mat)
+    figsize = (max(9, n * 0.4), max(9, n * 0.4))
 
-    fig, ax = plt.subplots(figsize=figsize)
+    # Color map settings
+    cmap = sns.color_palette("mako_r", as_cmap=True)
+    vmin, vmax = 0, mat.values.max()
 
-    # Create heatmap
-    sns.heatmap(
-        divergence_matrix,
-        annot=True,
-        fmt='.3f',
-        cmap='YlOrRd',
-        cbar_kws={'label': 'Divergence (p-distance)'},
-        ax=ax,
-        square=True,
+    # Create clustermap with dendrograms
+    cg = sns.clustermap(
+        mat,
+        row_linkage=row_linkage,
+        col_linkage=col_linkage,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
         linewidths=0.5,
-        linecolor='gray',
-        annot_kws={'fontsize': 8}
+        linecolor="lightgray",
+        figsize=figsize,
+        cbar_kws={"label": "Pairwise divergence"}
     )
 
-    ax.set_xlabel('Consensus Group', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Consensus Group', fontsize=12, fontweight='bold')
-    ax.set_title('Pairwise Divergence Heatmap', fontsize=14, fontweight='bold', pad=20)
+    # Style the heatmap
+    ax = cg.ax_heatmap
+    ax.set_facecolor("white")
+    cg.cax.set_visible(False)  # Hide colorbar for cleaner look
 
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
-    plt.tight_layout()
+    # Add custom cell annotations with adaptive text color
+    def get_text_color(value):
+        """Determine text color based on cell background."""
+        if vmax > vmin:
+            norm = (value - vmin) / (vmax - vmin)
+        else:
+            norm = 0
+        r, g, b, _ = cmap(norm)
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return "white" if luminance < 0.5 else "black"
 
+    # Get the clustered data
+    data = cg.data2d
+    n_rows, n_cols = data.shape
+
+    for i in range(n_rows):
+        for j in range(n_cols):
+            val = data.iloc[i, j]
+            if val == 0:
+                # Diagonal or identical sequences - show ×
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    "×",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                )
+            else:
+                # Show divergence value with adaptive color
+                txt_color = get_text_color(val)
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    f"{val:.3f}",
+                    ha="center",
+                    va="center",
+                    fontsize=7.5,
+                    color=txt_color,
+                )
+
+    # Rotate tick labels for readability
+    for tick in ax.get_xticklabels():
+        tick.set_fontsize(9)
+        tick.set_rotation(45)
+        tick.set_ha("right")
+
+    for tick in ax.get_yticklabels():
+        tick.set_fontsize(9)
+
+    # Add title
+    plt.subplots_adjust(top=0.96)
+    cg.fig.suptitle("Haplotype Divergence (Uncorrected P-Distance)", fontsize=11)
+
+    # Save figure
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -785,3 +855,152 @@ def print_divergence_summary(results: Dict[str, Any]) -> None:
                 print(f"  ✗ Barcoding gap absent (overlap: {overlap:.3f})")
 
     print("="*70 + "\n")
+
+
+# ============================================================================
+# Species-Level Divergence Analysis
+# ============================================================================
+
+
+def generate_species_divergence_analysis(
+    divergence_matrix: pd.DataFrame,
+    species_summary_csv: Path,
+    haplotype_taxonomy_csv: Path,
+    output_dir: Path
+) -> Dict[str, Any]:
+    """
+    Analyze genetic divergence at the species level.
+
+    Uses existing haplotype-level divergence matrix and species assignments
+    to calculate within-species and between-species divergence.
+
+    Parameters
+    ----------
+    divergence_matrix : pd.DataFrame
+        Pairwise divergence matrix from haplotype-level analysis
+    species_summary_csv : Path
+        Species summary CSV from species_analysis module
+    haplotype_taxonomy_csv : Path
+        Haplotype taxonomy CSV with species assignments
+    output_dir : Path
+        Output directory for species-level divergence analysis
+
+    Returns
+    -------
+    dict
+        Results and file paths
+
+    Notes
+    -----
+    Calculates:
+    - Mean/max/min divergence within each species (across all haplotypes)
+    - Mean/max/min divergence between species pairs
+    - Barcoding gap assessment for each species
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Generating species-level divergence analysis...")
+
+    results = {}
+
+    # Load species summary and haplotype taxonomy
+    species_summary = pd.read_csv(species_summary_csv)
+    haplotype_taxonomy = pd.read_csv(haplotype_taxonomy_csv)
+
+    # Create a mapping from haplotype_id to species
+    haplotype_to_species = dict(zip(
+        haplotype_taxonomy['haplotype_id'],
+        haplotype_taxonomy['assigned_sp']
+    ))
+
+    # Filter divergence matrix to only include haplotypes with species assignments
+    valid_haplotypes = [h for h in divergence_matrix.index if h in haplotype_to_species]
+    div_matrix_filtered = divergence_matrix.loc[valid_haplotypes, valid_haplotypes].copy()
+
+    # Calculate species-level statistics
+    species_divergence = []
+
+    for species in species_summary['species']:
+        # Get all haplotypes for this species
+        species_haplotypes = [
+            h for h in div_matrix_filtered.index
+            if haplotype_to_species.get(h) == species
+        ]
+
+        if len(species_haplotypes) < 2:
+            # Skip species with only one haplotype
+            continue
+
+        # Within-species divergence (all pairwise comparisons within species)
+        within_values = []
+        for i, h1 in enumerate(species_haplotypes):
+            for h2 in species_haplotypes[i+1:]:
+                div_val = div_matrix_filtered.loc[h1, h2]
+                if not pd.isna(div_val):
+                    within_values.append(div_val)
+
+        # Between-species divergence (comparisons to all other species)
+        between_values = []
+        other_haplotypes = [
+            h for h in div_matrix_filtered.index
+            if h not in species_haplotypes
+        ]
+
+        for h1 in species_haplotypes:
+            for h2 in other_haplotypes:
+                div_val = div_matrix_filtered.loc[h1, h2]
+                if not pd.isna(div_val):
+                    between_values.append(div_val)
+
+        # Calculate statistics
+        if within_values:
+            mean_within = np.mean(within_values)
+            max_within = np.max(within_values)
+            min_within = np.min(within_values)
+        else:
+            mean_within = max_within = min_within = np.nan
+
+        if between_values:
+            mean_between = np.mean(between_values)
+            max_between = np.max(between_values)
+            min_between = np.min(between_values)
+        else:
+            mean_between = max_between = min_between = np.nan
+
+        # Barcoding gap
+        has_gap = False
+        gap_size = np.nan
+        if not pd.isna(max_within) and not pd.isna(min_between):
+            has_gap = min_between > max_within
+            gap_size = min_between - max_within if has_gap else np.nan
+
+        species_divergence.append({
+            'species': species,
+            'n_haplotypes': len(species_haplotypes),
+            'mean_within_species': mean_within,
+            'max_within_species': max_within,
+            'min_within_species': min_within,
+            'mean_between_species': mean_between,
+            'max_between_species': max_between,
+            'min_between_species': min_between,
+            'barcoding_gap_present': has_gap,
+            'gap_size': gap_size
+        })
+
+    # Create dataframe and save
+    if species_divergence:
+        species_div_df = pd.DataFrame(species_divergence)
+        species_div_df = species_div_df.sort_values('species')
+
+        div_summary_path = output_dir / "species_divergence_summary.csv"
+        species_div_df.to_csv(div_summary_path, index=False)
+        results['species_divergence_summary'] = div_summary_path
+        logger.info(f"  ✓ Saved species divergence summary: {div_summary_path}")
+
+        # Store for console output
+        results['species_div_stats'] = species_div_df.to_dict('records')
+    else:
+        logger.warning("  ⚠ No species with multiple haplotypes found for divergence analysis")
+
+    return results

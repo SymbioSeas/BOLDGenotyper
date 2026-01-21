@@ -142,6 +142,7 @@ def filter_consensus_sequences(
     output_fasta: str,
     min_length: int = 600,
     min_cluster_size: int = 5,
+    max_sequences: Optional[int] = None,
 ) -> tuple[int, int, List[str]]:
     """
     Filter consensus sequences for phylogenetic analysis.
@@ -171,6 +172,8 @@ def filter_consensus_sequences(
     min_cluster_size : int, optional
         Minimum number of sequences in cluster (default: 5)
         Rationale: Larger clusters produce more complete consensus sequences
+    max_sequences : int, optional
+        Optional hard cap on number of sequences to keep (None = no cap)
 
     Returns
     -------
@@ -248,6 +251,15 @@ def filter_consensus_sequences(
             logger.debug(f"Filtered {seq.id}: {', '.join(reason)}")
 
     n_kept = len(filtered_seqs)
+
+    # Optional downsampling guard (off by default). If set, keep first N.
+    if max_sequences is not None and n_kept > max_sequences:
+        logger.info(
+            f"Consensus filtering: applying max_sequences cap "
+            f"({max_sequences}); downsampling from {n_kept}."
+        )
+        filtered_seqs = filtered_seqs[:max_sequences]
+        n_kept = len(filtered_seqs)
 
     # Write filtered sequences
     if n_kept > 0:
@@ -490,7 +502,8 @@ def build_phylogeny(
             consensus_fasta,
             filtered_fasta,
             min_length=min_consensus_length,
-            min_cluster_size=min_cluster_size
+            min_cluster_size=min_cluster_size,
+            max_sequences=None  # Do not downsample by default; keep all passing haplotypes
         )
 
         # Check if enough sequences passed filtering

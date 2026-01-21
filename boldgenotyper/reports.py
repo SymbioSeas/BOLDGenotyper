@@ -165,38 +165,83 @@ def generate_assignment_summary(
     df = pd.read_csv(annotated_csv, quoting=1, on_bad_lines='skip')  # quoting=1 is csv.QUOTE_MINIMAL
     diag = pd.read_csv(diagnostics_csv)
 
-    # Merge
-    merged = df.merge(diag, on='processid', how='left')
+    # Merge (suffix diagnostics columns to avoid collisions)
+    merged = df.merge(diag, on='processid', how='left', suffixes=('', '_diag'))
+
+    # Identify haplotype column (ESV workflow stores in annotated CSV only)
+    haplotype_cols = [c for c in ['haplotype_id', 'haplotype_id_x', 'haplotype_id_diag'] if c in merged.columns]
+    haplotype_col = haplotype_cols[0] if haplotype_cols else None
 
     # Calculate summary metrics
     summary = {}
 
     # Basic counts
-    summary['total_samples'] = len(diag)
-    summary['samples_with_sequence'] = len(diag[diag['status'] != 'no_sequence'])
+    summary['total_samples'] = len(diag) if len(diag) > 0 else len(df)
 
-    # Assignment status breakdown
-    status_counts = diag['status'].value_counts()
-    for status in ['assigned', 'tie', 'low_confidence', 'below_threshold', 'no_sequence']:
-        summary[f'n_{status}'] = status_counts.get(status, 0)
-        summary[f'pct_{status}'] = (status_counts.get(status, 0) / len(diag) * 100)
+    # Check if 'status' column exists (old format) or need to derive from flags (new format)
+    if 'status' in diag.columns:
+        summary['samples_with_sequence'] = len(diag[diag['status'] != 'no_sequence'])
 
-    # Identity score statistics (for assigned samples only)
-    assigned = diag[diag['status'] == 'assigned']
-    if len(assigned) > 0:
-        summary['mean_identity_assigned'] = assigned['identity'].mean()
-        summary['median_identity_assigned'] = assigned['identity'].median()
-        summary['min_identity_assigned'] = assigned['identity'].min()
-        summary['max_identity_assigned'] = assigned['identity'].max()
+        # Assignment status breakdown
+        status_counts = diag['status'].value_counts()
+        for status in ['assigned', 'tie', 'low_confidence', 'below_threshold', 'no_sequence']:
+            summary[f'n_{status}'] = status_counts.get(status, 0)
+            summary[f'pct_{status}'] = (status_counts.get(status, 0) / len(diag) * 100)
+
+        # Identity score statistics (for assigned samples only)
+        if 'identity' in diag.columns:
+            assigned = diag[diag['status'] == 'assigned']
+            if len(assigned) > 0:
+                summary['mean_identity_assigned'] = assigned['identity'].mean()
+                summary['median_identity_assigned'] = assigned['identity'].median()
+                summary['min_identity_assigned'] = assigned['identity'].min()
+                summary['max_identity_assigned'] = assigned['identity'].max()
+            else:
+                summary['mean_identity_assigned'] = np.nan
+                summary['median_identity_assigned'] = np.nan
+                summary['min_identity_assigned'] = np.nan
+                summary['max_identity_assigned'] = np.nan
+        else:
+            summary['mean_identity_assigned'] = np.nan
+            summary['median_identity_assigned'] = np.nan
+            summary['min_identity_assigned'] = np.nan
+            summary['max_identity_assigned'] = np.nan
     else:
+        # New format: derive status from flags
+        # Prefer diagnostics file, but fall back to annotated CSV if diagnostics missing
+        diag_source = diag if len(diag) > 0 else df
+        total_records = len(diag_source)
+
+        has_assignment = diag_source['assigned_haplotype'].notna() if 'assigned_haplotype' in diag_source.columns else pd.Series([False] * total_records)
+        is_tie_flags = diag_source['is_tie'].fillna(False) if 'is_tie' in diag_source.columns else pd.Series([False] * total_records)
+        low_conf_flags = diag_source['is_low_confidence'].fillna(False) if 'is_low_confidence' in diag_source.columns else pd.Series([False] * total_records)
+
+        summary['samples_with_sequence'] = int(has_assignment.sum())
+
+        # Calculate status counts from flags
+        summary['n_assigned'] = int(has_assignment.sum() - is_tie_flags.sum() - low_conf_flags.sum())
+        summary['n_tie'] = int(is_tie_flags.sum())
+        summary['n_low_confidence'] = int(low_conf_flags.sum())
+        summary['n_below_threshold'] = 0  # Not applicable in ESV workflow
+        summary['n_no_sequence'] = int(total_records - has_assignment.sum())
+
+        # Calculate percentages
+        for status in ['assigned', 'tie', 'low_confidence', 'below_threshold', 'no_sequence']:
+            denom = total_records if total_records > 0 else 1
+            summary[f'pct_{status}'] = (summary.get(f'n_{status}', 0) / denom * 100)
+
+        # No identity scores in ESV workflow
         summary['mean_identity_assigned'] = np.nan
         summary['median_identity_assigned'] = np.nan
         summary['min_identity_assigned'] = np.nan
         summary['max_identity_assigned'] = np.nan
 
     # Haplotypes and species
-    summary['n_haplotypes'] = merged['haplotype_id_x'].nunique()
-    summary['n_species_identified'] = merged['assigned_sp'].nunique()
+    if haplotype_col:
+        summary['n_haplotypes'] = merged[haplotype_col].nunique()
+    else:
+        summary['n_haplotypes'] = 0
+    summary['n_species_identified'] = merged['assigned_sp'].nunique() if 'assigned_sp' in merged.columns else 0
 
     # Taxonomy conflicts
     conflicts = merged['taxonomy_conflict'].sum() if 'taxonomy_conflict' in merged.columns else 0
@@ -1438,6 +1483,9 @@ HTML_REPORT_TEMPLATE = """
                         <a href="#section-assignment" class="sidebar-nav-link">Assignment</a>
                     </li>
                     <li class="sidebar-nav-item">
+                        <a href="#section-quality-control" class="sidebar-nav-link">Quality Control</a>
+                    </li>
+                    <li class="sidebar-nav-item">
                         <a href="#section-taxonomy" class="sidebar-nav-link">Taxonomy</a>
                     </li>
                     <li class="sidebar-nav-item">
@@ -2488,6 +2536,56 @@ def _dataframe_to_html(df: pd.DataFrame, max_rows: int = 100) -> str:
     return html
 
 
+def _compute_species_composition_from_df(
+    df: pd.DataFrame,
+    species_col: str = 'species',
+    min_abundance_pct: float = 1.0
+) -> pd.DataFrame:
+    """Compute species composition per haplotype directly from annotated metadata."""
+    required_cols = {'haplotype_id', species_col}
+    if not required_cols.issubset(df.columns):
+        return pd.DataFrame()
+
+    assigned = df[df['haplotype_id'].notna()].copy()
+    if assigned.empty:
+        return pd.DataFrame()
+
+    records = []
+    for haplotype, group in assigned.groupby('haplotype_id'):
+        species_series = group[species_col].fillna('Unknown')
+        species_counts = species_series.value_counts()
+        total = len(group)
+        species_pcts = species_counts / total * 100
+        significant = species_pcts[species_pcts >= min_abundance_pct]
+
+        if significant.empty:
+            continue
+
+        comp_parts = [
+            f"{sp}: {species_counts[sp]} ({species_pcts[sp]:.1f}%)"
+            for sp in significant.index
+        ]
+        primary_species = species_counts.index[0]
+        primary_pct = species_pcts.iloc[0]
+
+        records.append({
+            'haplotype_id': haplotype,
+            'n_total_samples': total,
+            'n_species': len(significant),
+            'primary_species': primary_species,
+            'primary_species_pct': f"{primary_pct:.1f}%",
+            'species_composition': "; ".join(comp_parts),
+            'is_multi_species': len(significant) > 1,
+            'is_ambiguous': primary_pct < 70.0,
+            'species_list': ", ".join(significant.index)
+        })
+
+    if not records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(records).sort_values('n_total_samples', ascending=False)
+
+
 def _build_executive_summary_section(
     assignment_summary: pd.DataFrame,
     annotated_df: pd.DataFrame
@@ -2672,33 +2770,40 @@ def _build_taxonomy_section(
 
 def _build_species_composition_section(
     results_dir: Path,
-    organism: str
+    organism: str,
+    annotated_df: Optional[pd.DataFrame] = None
 ) -> str:
     """Build HTML section showing species composition of consensus groups."""
     html = '<div class="section" id="section-species-composition">\n'
     html += '<h2>Species Composition of Consensus Groups</h2>\n'
 
-    # Load species composition file
+    # Load species composition file, or compute it if missing and data available
     comp_file = results_dir / f"{organism}_species_composition.csv"
+    comp_df = pd.DataFrame()
 
-    if not comp_file.exists():
+    if comp_file.exists():
+        try:
+            comp_df = pd.read_csv(comp_file)
+        except Exception as e:
+            html += f'<p class="alert alert-warning">Could not load species composition file: {e}</p>\n'
+            html += '</div>\n'
+            return html
+    elif annotated_df is not None and not annotated_df.empty:
+        # Attempt to compute composition on the fly
+        species_col = 'species' if 'species' in annotated_df.columns else 'species_name' if 'species_name' in annotated_df.columns else None
+        if species_col:
+            comp_df = _compute_species_composition_from_df(annotated_df, species_col=species_col)
+            if not comp_df.empty:
+                comp_file.parent.mkdir(parents=True, exist_ok=True)
+                comp_df.to_csv(comp_file, index=False)
+                html += '<p class="alert alert-info">Computed species composition from annotated data (file was missing in outputs).</p>\n'
+
+    if comp_df.empty:
         html += '<p class="alert alert-info">Species composition analysis not available. This may be because:</p>\n'
         html += '<ul>\n'
         html += '<li>No species information was present in the input metadata</li>\n'
         html += '<li>The pipeline was run before this feature was added</li>\n'
         html += '</ul>\n'
-        html += '</div>\n'
-        return html
-
-    try:
-        comp_df = pd.read_csv(comp_file)
-    except Exception as e:
-        html += f'<p class="alert alert-warning">Could not load species composition file: {e}</p>\n'
-        html += '</div>\n'
-        return html
-
-    if len(comp_df) == 0:
-        html += '<p class="alert alert-info">No species composition data available.</p>\n'
         html += '</div>\n'
         return html
 
@@ -2790,6 +2895,100 @@ def _build_species_composition_section(
     html += '</div>\n'
 
     html += '</div>\n'  # Close section
+    return html
+
+
+def _build_quality_control_section(quality_dir: Path) -> str:
+    """Build quality control summary section."""
+    html = '<div class="section" id="section-quality-control">\n'
+    html += '<h2>Quality Control</h2>\n'
+
+    if not quality_dir.exists():
+        html += '<p class="alert alert-info">Quality control outputs not found.</p>\n'
+        html += '</div>\n'
+        return html
+
+    mixed_df = pd.DataFrame()
+    misid_df = pd.DataFrame()
+    depositor_df = pd.DataFrame()
+
+    mixed_file = quality_dir / "mixed_species_summary.csv"
+    misid_file = quality_dir / "potential_misidentifications.csv"
+    depositor_file = quality_dir / "depositor_flags_summary.csv"
+
+    try:
+        if mixed_file.exists():
+            mixed_df = pd.read_csv(mixed_file)
+        if misid_file.exists():
+            misid_df = pd.read_csv(misid_file)
+        if depositor_file.exists():
+            depositor_df = pd.read_csv(depositor_file)
+    except Exception as e:
+        html += f'<p class="alert alert-warning">Could not load QC outputs: {e}</p>\n'
+        html += '</div>\n'
+        return html
+
+    total_groups = len(mixed_df)
+    clean = (mixed_df['flags'].str.upper() == 'CLEAN').sum() if 'flags' in mixed_df.columns else 0
+    contaminated = (mixed_df['flags'].str.upper() == 'CONTAMINATED').sum() if 'flags' in mixed_df.columns else 0
+    ambiguous = (mixed_df['flags'].str.upper() == 'AMBIGUOUS').sum() if 'flags' in mixed_df.columns else 0
+
+    html += '<div class="metric-grid">\n'
+    html += '  <div class="metric-card"><div class="title">Haplotypes QC\u2019d</div>'
+    html += f'  <div class="value">{_format_number(total_groups, 0)}</div>'
+    html += '  <div class="description">Groups evaluated for purity</div></div>\n'
+
+    html += '  <div class="metric-card"><div class="title">Pure Groups</div>'
+    html += f'  <div class="value">{_format_number(clean, 0)}</div>'
+    pct_clean = (clean / total_groups * 100) if total_groups else 0
+    html += f'  <div class="description">{_format_percentage(pct_clean)} of total</div></div>\n'
+
+    html += '  <div class="metric-card"><div class="title">Mixed / Ambiguous</div>'
+    mixed_total = contaminated + ambiguous
+    html += f'  <div class="value">{_format_number(mixed_total, 0)}</div>'
+    pct_mixed = (mixed_total / total_groups * 100) if total_groups else 0
+    html += f'  <div class="description">{_format_percentage(pct_mixed)} flagged groups</div></div>\n'
+
+    html += '  <div class="metric-card"><div class="title">Potential MisIDs</div>'
+    html += f'  <div class="value">{_format_number(len(misid_df), 0)}</div>'
+    html += '  <div class="description">See potential_misidentifications.csv</div></div>\n'
+
+    html += '  <div class="metric-card"><div class="title">Depositor Flags</div>'
+    html += f'  <div class="value">{_format_number(len(depositor_df), 0)}</div>'
+    html += '  <div class="description">Samples with uncertainty notes</div></div>\n'
+    html += '</div>\n'
+
+    # Flagged haplotypes table
+    if not mixed_df.empty:
+        html += '<h3>Flagged Consensus Groups</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table: <code>quality_control/mixed_species_summary.csv</code></p>\n'
+        if 'flags' in mixed_df.columns:
+            flagged = mixed_df[mixed_df['flags'].str.upper() != 'CLEAN'].copy()
+        else:
+            flagged = mixed_df.copy()
+        keep_cols = [c for c in ['consensus_group', 'n_samples', 'primary_species', 'contaminating_species', 'contamination_pct', 'flags'] if c in flagged.columns]
+        if not flagged.empty and keep_cols:
+            html += _dataframe_to_html(flagged[keep_cols], max_rows=20)
+        elif flagged.empty:
+            html += '<p class="alert alert-success">All consensus groups are pure (single-species).</p>\n'
+
+    # Potential misidentifications
+    if not misid_df.empty:
+        html += '<h3>Potential Misidentifications</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/potential_misidentifications.csv</code></p>\n'
+        keep_cols = [c for c in ['processid', 'species', 'haplotype_id', 'group_majority_species', 'group_majority_pct', 'misidentification_confidence'] if c in misid_df.columns]
+        if keep_cols:
+            html += _dataframe_to_html(misid_df[keep_cols], max_rows=15)
+
+    # Depositor notes table
+    if not depositor_df.empty:
+        html += '<h3>Depositor-flagged Samples</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/depositor_flags_summary.csv</code></p>\n'
+        keep_cols = [c for c in ['processid', 'genotype', 'species_label', 'flag_category', 'pattern_matched'] if c in depositor_df.columns]
+        if keep_cols:
+            html += _dataframe_to_html(depositor_df[keep_cols], max_rows=15)
+
+    html += '</div>\n'
     return html
 
 
@@ -3077,10 +3276,21 @@ def _build_visualizations_section(
             'description': 'Total sample counts faceted by species or genotype'
         },
         {
+            'title': 'Total Abundance by Ocean Basin (Species-Faceted)',
+            'pattern': f'{organism}_distribution_bar_species_faceted.png',
+            'json_pattern': f'{organism}_distribution_bar_species_faceted_data.json',
+            'description': 'Total sample counts faceted by assigned species with haplotypes stacked'
+        },
+        {
             'title': 'Distribution Map',
             'pattern': f'{organism}_distribution_map.png',
             'json_pattern': f'{organism}_distribution_map_data.json',
             'description': 'Geographic distribution of samples'
+        },
+        {
+            'title': 'Distribution Map (Species-Faceted)',
+            'pattern': f'{organism}_distribution_map_species_faceted.png',
+            'description': 'Geographic distribution faceted by assigned species'
         },
         {
             'title': 'Distribution Map (Faceted)',
@@ -3093,16 +3303,21 @@ def _build_visualizations_section(
     available_viz = []
     for viz in viz_categories:
         # Determine which directory to look in
-        if 'directory' in viz:
-            search_dir = output_dir / viz['directory']
-        else:
-            search_dir = viz_dir
+        search_dir = output_dir / viz.get('directory', 'visualization')
 
-        image_path = search_dir / viz['pattern']
-        if image_path.exists():
+        # Allow SVG/PNG fallbacks (ESV workflow exports SVG)
+        base_pattern = viz['pattern']
+        candidate_paths = [
+            search_dir / base_pattern,
+            search_dir / Path(base_pattern).with_suffix('.svg'),
+            search_dir / Path(base_pattern).with_suffix('.png'),
+        ]
+        image_path = next((p for p in candidate_paths if p.exists()), None)
+
+        if image_path:
             encoded_image = _encode_image_to_base64(image_path)
             if encoded_image:
-                viz_data = {**viz, 'encoded_image': encoded_image}
+                viz_data = {**viz, 'encoded_image': encoded_image, 'resolved_image': image_path.name}
 
                 # Load JSON data if available (for interactive plots)
                 if 'json_pattern' in viz:
@@ -3141,7 +3356,9 @@ def _build_visualizations_section(
         html += f'<p class="viz-description">{viz["description"]}</p>\n'
         # Determine directory for file paths
         file_dir = viz.get('directory', 'visualization')
-        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">📁 Files: <code>{file_dir}/{viz["pattern"]}</code>, <code>{viz["pattern"].replace(".png", ".pdf")}</code>'
+        image_name = viz.get('resolved_image', viz["pattern"])
+        pdf_name = Path(image_name).with_suffix('.pdf').name
+        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">📁 Files: <code>{file_dir}/{image_name}</code>, <code>{pdf_name}</code>'
         if 'json_pattern' in viz:
             html += f', <code>{viz["json_pattern"]}</code>'
         html += '</p>\n'
@@ -3875,10 +4092,20 @@ def generate_html_report(
         # Define paths
         reports_dir = output_dir / 'reports'
         taxonomy_dir = output_dir / 'taxonomy'
+        quality_dir = output_dir / 'quality_control'
 
         assignment_summary_file = reports_dir / f"{organism}_assignment_summary.csv"
         annotated_file = output_dir / f"{organism}_annotated.csv"
-        diagnostics_file = output_dir / 'genotype_assignments' / f"{organism}_diagnostics.csv"
+        # Note: diagnostics may be in 'haplotype_assignments' or 'genotype_assignments' (legacy)
+        diagnostics_file = output_dir / 'haplotype_assignments' / f"{organism}_diagnostics.csv"
+        if not diagnostics_file.exists():
+            # Try legacy path
+            diagnostics_file = output_dir / 'genotype_assignments' / f"{organism}_diagnostics.csv"
+
+        # Species composition directory (haplotype_assignments for current workflow)
+        species_comp_dir = output_dir / 'haplotype_assignments'
+        if not species_comp_dir.exists():
+            species_comp_dir = output_dir / 'genotype_assignments'
 
         # Load data
         assignment_summary = pd.DataFrame()
@@ -3918,8 +4145,9 @@ def generate_html_report(
         builder.add_section(_build_visualizations_section(output_dir, organism))
         builder.add_section(_build_methods_section(output_dir, organism, version))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
+        builder.add_section(_build_quality_control_section(quality_dir))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
-        builder.add_section(_build_species_composition_section(output_dir / 'genotype_assignments', organism))
+        builder.add_section(_build_species_composition_section(species_comp_dir, organism, annotated_df))
         builder.add_section(_build_geographic_section(annotated_df))
 
         # Render HTML

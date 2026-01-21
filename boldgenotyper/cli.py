@@ -13,10 +13,16 @@ Workflow:
 4. Haplotype Assignment (Match samples to haplotypes)
 5. Taxonomy Assignment
 6. Post-assignment QC (Contamination detection)
+6.5. Species-Level Aggregation (Group by species, diversity metrics, species-faceted haplotype subsets)
 7. Geographic Enhancement
 8. Phylogenetic Analysis (Optional)
-9. Divergence Analysis
-10. Visualization & Reports
+9. Divergence Analysis (Haplotype-level, species-level, within-species divergence matrices)
+10. Visualization & Reports (Haplotype, species-level, and species-faceted visualizations)
+
+Species-Faceted Analysis:
+- Phase 6.5.4: Generate per-species haplotype subsets
+- Phase 9.3: Calculate within-species divergence matrices
+- Phase 10: Create species-specific haplotype distribution maps and basin charts
 
 Author: Steph Smith (steph.smith@unc.edu)
 """
@@ -37,7 +43,7 @@ from . import (
     haplotype_assignment, phylogenetics, visualization, reports,
     cluster_diagnostics, quality_control, plot_export, comparative_analysis,
     divergence_analysis, parameter_sweep, geographic_enhancement,
-    metadata_enrichment, popgen_export,
+    metadata_enrichment, popgen_export, species_analysis, msa_visualization,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,6 +129,7 @@ def setup_directories(base_output: Path) -> dict:
         'haplotypes': base_output / 'haplotypes',
         'assignments': base_output / 'haplotype_assignments',
         'taxonomy': base_output / 'taxonomy',
+        'species_analysis': base_output / 'species_analysis',
         'quality_control': base_output / 'quality_control',
         'divergence_analysis': base_output / 'divergence_analysis',
         'geographic_analysis': base_output / 'geographic_analysis',
@@ -390,13 +397,16 @@ def run_pipeline(
         logger.info(f"  Absolute minimum length: {cfg.qc.min_raw_length_abs} bp")
         logger.info(f"  Median-based minimum: {cfg.qc.min_raw_length_frac_of_median:.0%} of median")
         logger.info(f"  Maximum N fraction: {cfg.qc.max_raw_N_fraction:.1%}")
+        logger.info(f"  Require valid ORF: {cfg.qc.require_valid_orf}")
 
         df_qc_passed, qc_stats = quality_control.apply_dynamic_qc_filters(
             df=df_with_basins,
             sequences_dict=corrected_sequences,
+            orf_stats_df=orf_stats_df,
             min_raw_length_abs=cfg.qc.min_raw_length_abs,
             min_raw_length_frac_of_median=cfg.qc.min_raw_length_frac_of_median,
             max_raw_N_fraction=cfg.qc.max_raw_N_fraction,
+            require_valid_orf=cfg.qc.require_valid_orf,
             processid_col='processid'
         )
 
@@ -442,6 +452,8 @@ def run_pipeline(
         logger.info(f"  Core region minimum coverage: {cfg.core_region.core_min_coverage:.0%}")
         logger.info(f"  Gap masking threshold: {cfg.core_region.mask_gap_threshold:.0%}")
         logger.info(f"  Minimum core length: {cfg.core_region.core_min_length} bp")
+        logger.info(f"  Singleton error filter threshold: >{cfg.haplotype.min_singleton_distance*100:.1f}% divergence")
+        logger.info(f"  Singleton suspect flag threshold: >{cfg.haplotype.max_singleton_distance*100:.1f}% divergence")
 
         # Run haplotype discovery
         haplotype_records, haplotype_mapping, haplotype_stats = dereplication.identify_haplotypes(
@@ -451,12 +463,13 @@ def run_pipeline(
             min_core_coverage=cfg.core_region.core_min_coverage,
             gap_mask_threshold=cfg.core_region.mask_gap_threshold,
             min_core_length=cfg.core_region.core_min_length,
+            min_singleton_distance=cfg.haplotype.min_singleton_distance,
             max_singleton_distance=cfg.haplotype.max_singleton_distance,
             orf_validation_df=orf_stats_df,
             cleanup_intermediates=False
         )
 
-        logger.info(f"  Identified {len(haplotype_records)} unique haplotypes")
+        logger.info(f"  Identified {len(haplotype_records)} high-confidence haplotypes (after error filtering)")
 
         # Copy haplotype outputs to main haplotypes directory
         import shutil
@@ -505,24 +518,62 @@ def run_pipeline(
     try:
         logger.info("4.1: Assigning samples to haplotypes...")
         logger.info(f"  Using {len(df_qc_passed)} QC-passed samples")
+        logger.info("  Method: Direct mapping from ESV haplotype discovery (no tie detection)")
+
         annotated_tsv = dirs['intermediate_assignments'] / f"{organism}_with_haplotypes.tsv"
         diagnostics_csv = dirs['assignments'] / f"{organism}_diagnostics.csv"
 
-        stats = haplotype_assignment.assign_haplotypes(
-            metadata_path=str(qc_passed_tsv),  # Use QC-passed dataset
-            fasta_path=str(qc_passed_fasta),
-            consensus_path=str(haplotype_fasta),  # Use haplotypes from Phase 3
-            output_path=str(annotated_tsv),
-            min_identity=cfg.genotype_assignment.min_identity,
-            n_processes=cfg.n_threads,
-            diagnostics_path=str(diagnostics_csv)
-        )
+        # For ESV approach, use the direct mapping from Phase 3 (haplotype_mapping)
+        # This avoids false ties from identity-based re-assignment
 
-        logger.info(f"  ✓ Assigned {stats['assigned']}/{stats['total']} samples to haplotypes")
-        logger.info(f"  ✓ Assignment rate: {stats['assigned']/stats['total']*100:.1f}%")
+        # The haplotype_mapping has full FASTA headers (organism_processid.marker)
+        # Need to extract base processid to match metadata
+        # Format: "Rhizoprionodon_ANGBF12411-15.COI-5P" → "ANGBF12411-15"
+        haplotype_mapping_clean = haplotype_mapping.copy()
+        haplotype_mapping_clean['processid_base'] = haplotype_mapping_clean['processid'].str.replace(
+            f'^{organism}_', '', regex=True
+        ).str.replace(r'\.COI-5P$', '', regex=True)
 
-        # Load annotated data
-        df_with_haplotypes = pd.read_csv(annotated_tsv, sep="\t")
+        # Merge haplotype assignments with QC-passed metadata
+        df_with_haplotypes = df_qc_passed.merge(
+            haplotype_mapping_clean[['processid_base', 'haplotype_id', 'haplotype_number', 'n_members', 'is_singleton']],
+            left_on='processid',
+            right_on='processid_base',
+            how='left'
+        ).drop(columns=['processid_base'])
+
+        # Add assignment statistics columns for consistency with old approach
+        df_with_haplotypes['assigned_haplotype'] = df_with_haplotypes['haplotype_id']
+        df_with_haplotypes['is_tie'] = False  # No ties in ESV direct mapping
+        df_with_haplotypes['is_low_confidence'] = False  # All assignments are exact matches
+
+        # Count assignments
+        n_assigned = df_with_haplotypes['assigned_haplotype'].notna().sum()
+        n_total = len(df_with_haplotypes)
+
+        # Save annotated data
+        df_with_haplotypes.to_csv(annotated_tsv, sep="\t", index=False)
+        logger.info(f"  ✓ Wrote annotated metadata: {annotated_tsv}")
+
+        # Create diagnostics file (minimal for ESV direct mapping)
+        diagnostics_data = []
+        for _, row in df_with_haplotypes.iterrows():
+            diagnostics_data.append({
+                'processid': row['processid'],
+                'assigned_haplotype': row['assigned_haplotype'],
+                'is_tie': False,
+                'is_low_confidence': False,
+                'assignment_method': 'ESV_direct_mapping',
+                'note': 'Exact match from core region during haplotype discovery'
+            })
+
+        diagnostics_df = pd.DataFrame(diagnostics_data)
+        diagnostics_df.to_csv(diagnostics_csv, index=False)
+        logger.info(f"  ✓ Wrote diagnostics: {diagnostics_csv}")
+
+        logger.info(f"  ✓ Assigned {n_assigned}/{n_total} samples to haplotypes")
+        logger.info(f"  ✓ Assignment rate: {n_assigned/n_total*100:.1f}%")
+        logger.info(f"  ✓ Ties: 0 (ESV direct mapping - no ambiguous assignments)")
 
     except Exception as e:
         logger.error(f"Phase 4 failed: {e}", exc_info=True)
@@ -691,6 +742,80 @@ def run_pipeline(
         logger.debug("QC error details:", exc_info=True)
 
     # ========================================================================
+    # PHASE 6.5: Species-Level Aggregation
+    # ========================================================================
+    logger.info("")
+    logger.info("PHASE 6.5: Species-Level Aggregation")
+    logger.info("-" * 80)
+
+    try:
+        logger.info("6.5.1: Aggregating samples by assigned species...")
+
+        # Check if we have taxonomy assignments
+        if 'assigned_sp' not in df_final.columns or 'majority_fraction' not in df_final.columns:
+            logger.warning("  ⊘ Skipping species-level analysis (taxonomy assignments not found)")
+        else:
+            # Create species_composition DataFrame from taxonomy data
+            # Map from assign_table columns to expected species_composition columns
+            species_composition = assign_table.copy()
+            species_composition = species_composition.rename(columns={
+                'assigned_sp': 'primary_species',
+                'majority_fraction': 'primary_species_pct'
+            })
+
+            # Determine if haplotype is ambiguous
+            # Ambiguous if: (1) assignment_level is not 'species', or (2) majority_fraction < 0.7
+            species_composition['is_ambiguous'] = (
+                (species_composition['assignment_level'] != 'species') |
+                (species_composition['primary_species_pct'] < 0.7)
+            )
+
+            # Determine if haplotype has multiple species (check species_counts for multi-species haplotypes)
+            species_composition['is_multi_species'] = False  # Will be updated below
+
+            # Count how many species each haplotype has (from species_counts)
+            haplotype_species_count = species_counts.groupby('haplotype_id')['reported_species'].nunique()
+            multi_species_haplotypes = haplotype_species_count[haplotype_species_count > 1].index
+            species_composition.loc[
+                species_composition['haplotype_id'].isin(multi_species_haplotypes),
+                'is_multi_species'
+            ] = True
+
+            # Run species aggregation
+            species_assignments, species_summary = species_analysis.aggregate_samples_by_species(
+                annotated_metadata=df_final,
+                species_composition=species_composition,
+                min_confidence=0.7,
+                output_dir=dirs['species_analysis']
+            )
+
+            logger.info("6.5.2: Calculating species-level diversity metrics...")
+            species_diversity = species_analysis.calculate_species_diversity(
+                species_assignments=species_assignments,
+                output_dir=dirs['species_analysis']
+            )
+
+            logger.info("6.5.3: Generating species-level geographic summary...")
+            species_geographic = species_analysis.generate_species_geographic_summary(
+                species_assignments=species_assignments,
+                output_dir=dirs['species_analysis']
+            )
+
+            logger.info("6.5.4: Generating species-faceted haplotype subsets...")
+            species_subsets = species_analysis.generate_species_faceted_haplotype_subsets(
+                species_assignments=species_assignments,
+                output_dir=dirs['species_analysis'],
+                min_haplotypes=2
+            )
+            logger.info(f"  → Created {len(species_subsets)} species-specific haplotype subsets")
+
+            logger.info(f"  ✓ Species-level analysis complete: {dirs['species_analysis']}")
+
+    except Exception as e:
+        logger.warning(f"Species-level aggregation failed (non-critical): {e}")
+        logger.debug("Species aggregation error details:", exc_info=True)
+
+    # ========================================================================
     # PHASE 7: Geographic Analysis Enhancement
     # ========================================================================
     if geo_analysis_performed:
@@ -809,6 +934,48 @@ def run_pipeline(
                             logger.warning("  ⚠ Skipping relabeling: alignment or taxonomy file not found")
                     except Exception as e:
                         logger.warning(f"  ⚠ Relabeling failed (non-critical): {e}")
+
+                    # Generate MSA visualization if enabled
+                    if cfg.msa.enabled:
+                        logger.info("8.3: Generating MSA visualization...")
+                        try:
+                            # Use the alignment file that exists (prefer trimmed if available)
+                            alignment_file = None
+                            if Path(f"{intermediate_prefix}_aligned_trimmed.fasta").exists():
+                                alignment_file = Path(f"{intermediate_prefix}_aligned_trimmed.fasta")
+                            elif Path(f"{intermediate_prefix}_aligned.fasta").exists():
+                                alignment_file = Path(f"{intermediate_prefix}_aligned.fasta")
+
+                            if alignment_file and alignment_file.exists():
+                                msa_plots = msa_visualization.create_phylo_ordered_msa(
+                                    alignment_path=alignment_file,
+                                    tree_path=Path(tree_path),
+                                    output_dir=dirs['phylogenetic'],
+                                    organism=organism,
+                                    chunk_size=cfg.msa.chunk_size,
+                                    max_sequences=cfg.msa.max_sequences,
+                                    color_scheme=cfg.msa.color_scheme,
+                                    show_consensus=cfg.msa.show_consensus,
+                                    show_logo=cfg.msa.show_logo,
+                                    output_formats=cfg.msa.output_formats
+                                )
+                                if msa_plots:
+                                    logger.info(f"  ✓ Generated {len(msa_plots)} MSA plot(s)")
+                                else:
+                                    logger.warning("  ⚠ No MSA plots generated")
+                            else:
+                                logger.warning("  ⚠ Alignment file not found for MSA visualization")
+                        except ImportError:
+                            logger.warning(
+                                "  ⚠ MSA visualization skipped: pymsaviz not installed. "
+                                "Install with: pip install pymsaviz>=0.4.0"
+                            )
+                        except Exception as e:
+                            logger.warning(f"  ⚠ MSA visualization failed (non-critical): {e}")
+                            logger.debug("Full traceback:", exc_info=True)
+                    else:
+                        logger.info("  ⊘ MSA visualization disabled in config")
+
                 else:
                     logger.warning(f"  ⚠ Phylogenetic tree building completed but output file not found: {tree_path}")
                     tree_path = None
@@ -845,6 +1012,48 @@ def run_pipeline(
             # Print summary to console
             divergence_analysis.print_divergence_summary(divergence_results)
 
+            # Species-level divergence analysis (if species data available)
+            logger.info("9.2: Calculating species-level divergence...")
+            species_summary_csv = dirs['species_analysis'] / 'species_summary.csv'
+
+            if species_summary_csv.exists() and 'divergence_matrix' in divergence_results:
+                try:
+                    # Load divergence matrix
+                    div_matrix_path = divergence_results['divergence_matrix']
+                    div_matrix = pd.read_csv(div_matrix_path, index_col=0)
+
+                    # Run species-level divergence analysis
+                    species_div_results = divergence_analysis.generate_species_divergence_analysis(
+                        divergence_matrix=div_matrix,
+                        species_summary_csv=species_summary_csv,
+                        haplotype_taxonomy_csv=taxonomy_csv_path,
+                        output_dir=dirs['species_analysis']
+                    )
+
+                    logger.info(f"  ✓ Species-level divergence analysis complete")
+
+                    # Species-faceted divergence (within-species haplotype divergence)
+                    logger.info("9.3: Calculating within-species divergence matrices...")
+                    try:
+                        species_faceted_div_results = species_analysis.generate_within_species_divergence_matrices(
+                            divergence_matrix=div_matrix,
+                            species_summary_csv=species_summary_csv,
+                            haplotype_taxonomy_csv=taxonomy_csv_path,
+                            output_dir=dirs['species_analysis'],
+                            min_haplotypes=2
+                        )
+                        n_species_with_div = len(species_faceted_div_results)
+                        logger.info(f"  ✓ Generated within-species divergence matrices for {n_species_with_div} species")
+                    except Exception as e:
+                        logger.warning(f"Within-species divergence analysis failed (non-critical): {e}")
+                        logger.debug("Within-species divergence error details:", exc_info=True)
+
+                except Exception as e:
+                    logger.warning(f"Species-level divergence analysis failed (non-critical): {e}")
+                    logger.debug("Species divergence error details:", exc_info=True)
+            else:
+                logger.info("  ⊘ Skipping species-level divergence (species data not available)")
+
         else:
             logger.warning("  ⊘ Skipping divergence analysis (haplotype or taxonomy files not found)")
 
@@ -869,12 +1078,19 @@ def run_pipeline(
                 # Distribution maps
                 if 'lat' in df_final.columns and 'lon' in df_final.columns:
                     try:
+                        # Determine background detail: use "full" for main plots
+                        detail = "full" if cfg.visualization.map_background_detail == "full" else cfg.visualization.map_background_detail
+                        if cfg.visualization.map_background_detail == "auto":
+                            detail = "full"  # Main plot gets full detail
+
                         map_path, map_data = visualization.plot_distribution_map(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
                             genotype_column='haplotype_sp',
                             latitude_col='lat',
-                            longitude_col='lon'
+                            longitude_col='lon',
+                            dpi=cfg.visualization.figure_dpi,
+                            map_background_detail=detail
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if map_data:
@@ -921,23 +1137,156 @@ def run_pipeline(
                     except Exception as e:
                         logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
 
+                # Species-level visualizations (if species data available)
+                species_assignments_csv = dirs['species_analysis'] / 'species_assignments.csv'
+                if species_assignments_csv.exists():
+                    try:
+                        # Load species assignments
+                        species_df = pd.read_csv(species_assignments_csv)
+
+                        # Species distribution map
+                        if 'lat' in species_df.columns and 'lon' in species_df.columns and 'primary_species' in species_df.columns:
+                            try:
+                                # Use full detail for species-level main plots
+                                detail = "full" if cfg.visualization.map_background_detail == "full" else cfg.visualization.map_background_detail
+                                if cfg.visualization.map_background_detail == "auto":
+                                    detail = "full"
+
+                                species_map_path, species_map_data = visualization.plot_species_distribution_map(
+                                    df=species_df,
+                                    output_path=str(dirs['visualization'] / f"{organism}_species_distribution_map.{fmt}"),
+                                    species_column='primary_species',
+                                    latitude_col='lat',
+                                    longitude_col='lon',
+                                    dpi=cfg.visualization.figure_dpi,
+                                    map_background_detail=detail
+                                )
+                                if species_map_data:
+                                    json_path = dirs['visualization'] / f"{organism}_species_distribution_map_data.json"
+                                    with open(json_path, 'w') as f:
+                                        json.dump(species_map_data, f, indent=2)
+                                    logger.debug(f"Saved species map data to: {json_path}")
+                            except Exception as e:
+                                logger.debug(f"Species distribution map skipped: {e}")
+
+                        # Species ocean basin abundance (relative)
+                        if 'ocean_basin' in species_df.columns and 'primary_species' in species_df.columns:
+                            try:
+                                species_bar_path, species_bar_data = visualization.plot_species_ocean_basin_abundance(
+                                    df=species_df,
+                                    output_path=str(dirs['visualization'] / f"{organism}_species_distribution_bar.{fmt}"),
+                                    species_column='primary_species',
+                                    basin_column='ocean_basin'
+                                )
+                                if species_bar_data:
+                                    json_path = dirs['visualization'] / f"{organism}_species_distribution_bar_data.json"
+                                    with open(json_path, 'w') as f:
+                                        json.dump(species_bar_data, f, indent=2)
+                                    logger.debug(f"Saved species bar data to: {json_path}")
+                            except Exception as e:
+                                logger.debug(f"Species basin bar plot skipped: {e}")
+
+                        # Species ocean basin abundance (total counts)
+                        if 'ocean_basin' in species_df.columns and 'primary_species' in species_df.columns:
+                            try:
+                                species_total_bar_path, species_total_bar_data = visualization.plot_species_ocean_basin_abundance_total(
+                                    df=species_df,
+                                    output_path=str(dirs['visualization'] / f"{organism}_species_totaldistribution_bar.{fmt}"),
+                                    species_column='primary_species',
+                                    basin_column='ocean_basin'
+                                )
+                                if species_total_bar_data:
+                                    json_path = dirs['visualization'] / f"{organism}_species_totaldistribution_bar_data.json"
+                                    with open(json_path, 'w') as f:
+                                        json.dump(species_total_bar_data, f, indent=2)
+                                    logger.debug(f"Saved species total bar data to: {json_path}")
+                            except Exception as e:
+                                logger.debug(f"Species total abundance bar plot skipped: {e}")
+
+                        # Species-faceted haplotype visualizations
+                        # (separate plots for each species showing haplotypes)
+                        try:
+                            logger.info("  → Generating species-faceted haplotype distribution maps...")
+                            # Use simplified background for species-faceted plots (many maps)
+                            detail = "simple" if cfg.visualization.map_background_detail == "auto" else cfg.visualization.map_background_detail
+
+                            species_maps_results = visualization.plot_haplotypes_by_species_maps(
+                                species_assignments=species_df,
+                                output_dir=dirs['visualization'],
+                                species_column='primary_species',
+                                haplotype_column='haplotype_sp',
+                                latitude_col='lat',
+                                longitude_col='lon',
+                                min_haplotypes=2,
+                                figure_format=fmt,
+                                dpi=cfg.visualization.facet_dpi,
+                                map_background_detail=detail
+                            )
+                            logger.info(f"  ✓ Created {len(species_maps_results)} species-faceted haplotype maps")
+                        except Exception as e:
+                            logger.debug(f"Species-faceted haplotype maps skipped: {e}")
+
+                        try:
+                            logger.info("  → Generating species-faceted haplotype basin charts...")
+                            species_bars_results = visualization.plot_haplotypes_by_species_basin_bars(
+                                species_assignments=species_df,
+                                output_dir=dirs['visualization'],
+                                species_column='primary_species',
+                                haplotype_column='haplotype_sp',
+                                basin_column='ocean_basin',
+                                min_haplotypes=2,
+                                figure_format=fmt
+                            )
+                            logger.info(f"  ✓ Created {len(species_bars_results)} species-faceted haplotype bar charts")
+                        except Exception as e:
+                            logger.debug(f"Species-faceted haplotype bar charts skipped: {e}")
+
+                    except Exception as e:
+                        logger.debug(f"Species-level visualizations skipped: {e}")
+
                 # Faceted distribution map by haplotype_sp
                 if ('lat' in df_final.columns and 'lon' in df_final.columns and
                     'haplotype_sp' in df_final.columns and 'haplotype_id' in df_final.columns):
                     try:
+                        # Use simplified background for faceted plots (better performance)
+                        detail = "simple" if cfg.visualization.map_background_detail == "auto" else cfg.visualization.map_background_detail
+
+                        # Only save individual facets if enabled (off by default for performance)
+                        facet_formats = cfg.visualization.facet_formats if cfg.visualization.save_individual_facets else None
+
                         visualization.plot_distribution_map_faceted(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
                             genotype_column='haplotype_id',
-                            species_column='haplotype_sp',
+                            species_column='assigned_sp',
                             latitude_col='lat',
                             longitude_col='lon',
+                            dpi=cfg.visualization.facet_dpi,
                             facet_by=cfg.visualization.facet_by,
                             map_buffer_degrees=cfg.visualization.map_buffer_degrees,
                             show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
                             show_scale_bar=cfg.visualization.show_scale_bar,
                             genotype_plots_dir=dirs['haplotype_plots'],
-                            formats=cfg.visualization.figure_format
+                            formats=facet_formats,
+                            map_background_detail=detail
+                        )
+
+                        # Additional species-faceted map (explicit file name for clarity)
+                        visualization.plot_distribution_map_faceted(
+                            df=df_final,
+                            output_path=str(dirs['visualization'] / f"{organism}_distribution_map_species_faceted.{fmt}"),
+                            genotype_column='haplotype_id',
+                            species_column='assigned_sp',
+                            latitude_col='lat',
+                            longitude_col='lon',
+                            dpi=cfg.visualization.facet_dpi,
+                            facet_by='species',
+                            map_buffer_degrees=cfg.visualization.map_buffer_degrees,
+                            show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
+                            show_scale_bar=cfg.visualization.show_scale_bar,
+                            genotype_plots_dir=dirs['haplotype_plots'],
+                            formats=facet_formats,
+                            map_background_detail=detail
                         )
                     except Exception as e:
                         logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
@@ -946,15 +1295,19 @@ def run_pipeline(
                 if ('ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns and
                     'haplotype_id' in df_final.columns):
                     try:
+                        # Only save individual facets if enabled (off by default for performance)
+                        facet_formats = cfg.visualization.facet_formats if cfg.visualization.save_individual_facets else None
+
                         faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
                             df=df_final,
                             output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
                             genotype_column='haplotype_id',
-                            species_column='haplotype_sp',
+                            species_column='assigned_sp',
                             basin_column='ocean_basin',
+                            dpi=cfg.visualization.facet_dpi,
                             facet_by=cfg.visualization.facet_by,
                             genotype_plots_dir=dirs['haplotype_plots'],
-                            formats=cfg.visualization.figure_format
+                            formats=facet_formats
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if faceted_bar_data:
@@ -962,6 +1315,24 @@ def run_pipeline(
                             with open(json_path, 'w') as f:
                                 json.dump(faceted_bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
+
+                        # Species-faceted version (explicit filename for clarity)
+                        species_bar_path, species_bar_data = visualization.plot_ocean_basin_abundance_faceted(
+                            df=df_final,
+                            output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_species_faceted.{fmt}"),
+                            genotype_column='haplotype_id',
+                            species_column='assigned_sp',
+                            basin_column='ocean_basin',
+                            dpi=cfg.visualization.facet_dpi,
+                            facet_by='species',
+                            genotype_plots_dir=dirs['haplotype_plots'],
+                            formats=facet_formats
+                        )
+                        if species_bar_data:
+                            json_path = dirs['visualization'] / f"{organism}_distribution_bar_species_faceted_data.json"
+                            with open(json_path, 'w') as f:
+                                json.dump(species_bar_data, f, indent=2)
+                            logger.debug(f"Saved species-faceted plot data to: {json_path}")
                     except Exception as e:
                         logger.debug(f"Faceted basin bar plot skipped: {e}")
             else:
@@ -969,39 +1340,49 @@ def run_pipeline(
 
             # Identity distribution (always generated if diagnostics exist)
             if diagnostics_csv.exists():
-                visualization.plot_identity_distribution(
-                    diagnostics_csv=str(diagnostics_csv),
-                    output_path=str(dirs['assignments'] / f"{organism}_identity_distribution.{fmt}"),
-                    figsize=(10, 6),
-                    dpi=cfg.visualization.figure_dpi
-                )
+                try:
+                    # Use intermediate DPI for diagnostic plots
+                    visualization.plot_identity_distribution(
+                        diagnostics_csv=str(diagnostics_csv),
+                        output_path=str(dirs['assignments'] / f"{organism}_identity_distribution.{fmt}"),
+                        figsize=(10, 6),
+                        dpi=cfg.visualization.intermediate_dpi
+                    )
+                except Exception as e:
+                    logger.warning(f"Identity distribution plot failed: {e}")
+                    logger.debug("Full traceback:", exc_info=True)
 
             # Phylogenetic tree
             if tree_path and Path(tree_path).exists():
-                # Use relabeled tree if it exists (so tips show haplotype_sp labels)
-                relabeled_tree_path = tree_path.replace("_tree.nwk", "_tree_relabeled.nwk")
-                if Path(relabeled_tree_path).exists():
-                    tree_to_plot = relabeled_tree_path
-                    logger.info(f"Using relabeled tree for visualization: {relabeled_tree_path}")
-                else:
-                    tree_to_plot = tree_path
+                try:
+                    # Use relabeled tree if it exists (so tips show haplotype_sp labels)
+                    relabeled_tree_path = tree_path.replace("_tree.nwk", "_tree_relabeled.nwk")
+                    if Path(relabeled_tree_path).exists():
+                        tree_to_plot = relabeled_tree_path
+                        logger.info(f"Using relabeled tree for visualization: {relabeled_tree_path}")
+                    else:
+                        tree_to_plot = tree_path
 
-                # Load color map if it exists
-                color_map_path = dirs['assignments'] / f"{organism}_haplotype_color_map.csv"
-                haplotype_colors = None
-                if color_map_path.exists():
-                    color_df = pd.read_csv(color_map_path)
-                    haplotype_colors = dict(zip(color_df['haplotype_sp'], color_df['color']))
+                    # Load color map if it exists
+                    color_map_path = dirs['assignments'] / f"{organism}_haplotype_color_map.csv"
+                    haplotype_colors = None
+                    if color_map_path.exists():
+                        color_df = pd.read_csv(color_map_path)
+                        haplotype_colors = dict(zip(color_df['haplotype_sp'], color_df['color']))
 
-                visualization.plot_phylogenetic_tree(
-                    tree_file=str(tree_to_plot),
-                    output_path=str(dirs['phylogenetic'] / f"{organism}_tree.{fmt}"),
-                    genotype_colors=haplotype_colors,
-                    show_bootstrap=True,
-                    bootstrap_threshold=cfg.visualization.show_bootstrap_threshold,
-                    figsize=None,  # Auto-scale based on tree size
-                    dpi=cfg.visualization.figure_dpi
-                )
+                    visualization.plot_phylogenetic_tree(
+                        tree_file=str(tree_to_plot),
+                        output_path=str(dirs['phylogenetic'] / f"{organism}_tree.{fmt}"),
+                        genotype_colors=haplotype_colors,
+                        show_bootstrap=True,
+                        bootstrap_threshold=cfg.visualization.show_bootstrap_threshold,
+                        figsize=None,  # Auto-scale based on tree size
+                        dpi=cfg.visualization.figure_dpi
+                    )
+                    logger.info(f"  ✓ Generated phylogenetic tree plot: {organism}_tree.{fmt}")
+                except Exception as e:
+                    logger.warning(f"Phylogenetic tree plot failed: {e}")
+                    logger.debug("Full traceback:", exc_info=True)
 
         logger.info(f"  ✓ Generated visualization plots")
 
@@ -1962,6 +2343,202 @@ Notes:
     except Exception as e:
         logger.error(f"Pipeline failed with error: {e}", exc_info=True)
         print(f"\nError: Pipeline failed. Check log file: {log_file}", file=sys.stderr)
+        return 1
+
+
+def main_query(argv=None) -> int:
+    """
+    CLI entry point for the 'boldgenotyper-query' command.
+
+    Query new COI sequences against previously identified haplotypes from
+    a completed BOLD analysis. Enables reproducible haplotype assignment
+    for new samples without re-running the full pipeline.
+
+    Example:
+        # Query single sequence
+        boldgenotyper-query \
+            --query new_sample.fasta \
+            --haplotypes analysis/haplotypes/Organism_haplotypes.fasta \
+            --output query_results/
+
+        # Query with metadata enrichment
+        boldgenotyper-query \
+            --query new_samples.fasta \
+            --haplotypes analysis/haplotypes/Organism_haplotypes.fasta \
+            --analysis-dir analysis/ \
+            --output query_results/
+    """
+    parser = argparse.ArgumentParser(
+        prog="boldgenotyper-query",
+        description="Query new COI sequences against previously identified haplotypes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Query single sequence
+  boldgenotyper-query --query new_sample.fasta \\
+                       --haplotypes analysis/haplotypes/Organism_haplotypes.fasta
+
+  # Query multiple sequences with metadata
+  boldgenotyper-query --query samples.fasta \\
+                       --haplotypes analysis/haplotypes/Organism_haplotypes.fasta \\
+                       --analysis-dir analysis/ \\
+                       --output results/
+
+  # Adjust top matches and length filters
+  boldgenotyper-query --query samples.fasta \\
+                       --haplotypes haplotypes.fasta \\
+                       --top-n 20 \\
+                       --min-length 150 \\
+                       --max-length 1500
+
+Output Formats:
+  All three formats are generated automatically:
+  - query_results.csv: Machine-readable table
+  - query_results.json: Structured data for programmatic access
+  - query_results_detailed.txt: Human-readable report with alignments
+
+Match Quality Classification:
+  - perfect: 100% identity - exact haplotype match
+  - high: ≥99.5% identity - likely same haplotype
+  - good: ≥97% identity - same species, possibly different haplotype
+  - moderate: ≥95% identity - same genus, divergent haplotype
+  - low: <95% identity - different species or contamination
+
+For more information:
+  https://github.com/SymbioSeas/BOLDGenotyper
+""")
+
+    # Required arguments
+    parser.add_argument(
+        '--query',
+        type=Path,
+        required=True,
+        help='Query FASTA file (single or multi-FASTA with COI sequences)'
+    )
+
+    parser.add_argument(
+        '--haplotypes',
+        type=Path,
+        required=True,
+        help='Haplotype consensus FASTA from previous analysis'
+    )
+
+    # Optional arguments
+    parser.add_argument(
+        '--analysis-dir',
+        type=Path,
+        default=None,
+        help='Previous analysis directory (for metadata enrichment)'
+    )
+
+    parser.add_argument(
+        '--output',
+        '-o',
+        type=Path,
+        default=None,
+        help='Output directory (default: haplotype_query_results/)'
+    )
+
+    parser.add_argument(
+        '--top-n',
+        type=int,
+        default=10,
+        help='Number of top matches to report per query (default: 10)'
+    )
+
+    parser.add_argument(
+        '--min-length',
+        type=int,
+        default=100,
+        help='Minimum query sequence length to process (default: 100)'
+    )
+
+    parser.add_argument(
+        '--max-length',
+        type=int,
+        default=2000,
+        help='Maximum query sequence length to process (default: 2000)'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default='INFO',
+        help='Logging verbosity (default: INFO)'
+    )
+
+    # Parse arguments
+    args = parser.parse_args(argv)
+
+    # Determine output directory
+    output_dir = args.output if args.output else Path("haplotype_query_results")
+    output_dir = output_dir.resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Setup logging
+    log_file = output_dir / "query.log"
+    utils.setup_logging(log_level=args.log_level, log_file=str(log_file))
+
+    logger.info("=" * 80)
+    logger.info("BOLDGenotyper Haplotype Query")
+    logger.info("=" * 80)
+    logger.info(f"Query file: {args.query}")
+    logger.info(f"Haplotype file: {args.haplotypes}")
+    if args.analysis_dir:
+        logger.info(f"Analysis directory: {args.analysis_dir}")
+    logger.info(f"Output directory: {output_dir}")
+    logger.info("")
+
+    try:
+        # Import haplotype_query module
+        from . import haplotype_query
+
+        # Run query
+        logger.info("Starting haplotype query analysis...")
+        results, metadata = haplotype_query.query_against_haplotypes(
+            query_fasta=args.query,
+            haplotype_fasta=args.haplotypes,
+            analysis_dir=args.analysis_dir,
+            top_n=args.top_n,
+            min_length=args.min_length,
+            max_length=args.max_length
+        )
+
+        # Write results
+        logger.info("Writing results...")
+        haplotype_query.write_results(
+            results=results,
+            output_dir=output_dir,
+            metadata=metadata,
+            haplotype_file=args.haplotypes,
+            analysis_dir=args.analysis_dir
+        )
+
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("Query Analysis Complete!")
+        logger.info("=" * 80)
+        logger.info(f"Results written to: {output_dir}")
+        logger.info("")
+        logger.info("Output files:")
+        logger.info(f"  - {output_dir / 'query_results.csv'}")
+        logger.info(f"  - {output_dir / 'query_results.json'}")
+        logger.info(f"  - {output_dir / 'query_results_detailed.txt'}")
+        logger.info("")
+
+        return 0
+
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        logger.error(f"Query analysis failed: {e}", exc_info=True)
+        print(f"Error: Query analysis failed. Check log: {log_file}", file=sys.stderr)
         return 1
 
 

@@ -55,6 +55,7 @@ import logging
 import re
 import pandas as pd
 import numpy as np
+import csv
 from functools import partial
 import multiprocessing as mp
 
@@ -137,25 +138,37 @@ def parse_bold_tsv(
 
     logger.info(f"Reading BOLD TSV file: {path}")
 
-    # Try reading with specified encoding
+    def _read_with_fallback(enc: str) -> pd.DataFrame:
+        """Read TSV with robust fallbacks for malformed rows."""
+        try:
+            return pd.read_csv(
+                path,
+                sep='\t',
+                encoding=enc,
+                dtype=str,  # Read all as strings initially
+                low_memory=False
+            )
+        except pd.errors.ParserError as e:
+            logger.warning(
+                f"Standard TSV parse failed (encoding={enc}): {e}. "
+                "Retrying with Python engine and skipping malformed rows."
+            )
+            return pd.read_csv(
+                path,
+                sep='\t',
+                encoding=enc,
+                dtype=str,
+                engine='python',
+                on_bad_lines='skip',
+                quoting=csv.QUOTE_MINIMAL
+            )
+
+    # Try reading with specified encoding, fallback to latin-1 if needed
     try:
-        df = pd.read_csv(
-            path,
-            sep='\t',
-            encoding=encoding,
-            dtype=str,  # Read all as strings initially
-            low_memory=False
-        )
+        df = _read_with_fallback(encoding)
     except UnicodeDecodeError:
-        # Fallback to latin-1 encoding
-        logger.warning(f"UTF-8 encoding failed, trying latin-1")
-        df = pd.read_csv(
-            path,
-            sep='\t',
-            encoding='latin-1',
-            dtype=str,
-            low_memory=False
-        )
+        logger.warning("UTF-8 decoding failed; retrying with latin-1 encoding.")
+        df = _read_with_fallback('latin-1')
 
     # Check if file is empty
     if df.empty:

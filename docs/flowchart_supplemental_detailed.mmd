@@ -1,0 +1,158 @@
+%% BOLDGenotyper Detailed Workflow - Supplemental Figure
+%% Render at: https://mermaid.live or use mermaid-cli
+%% For publication: Export as SVG at 300 DPI equivalent
+
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e3f2fd','primaryTextColor':'#000','primaryBorderColor':'#1976d2','lineColor':'#424242','secondaryColor':'#fff3e0','tertiaryColor':'#f1f8e9'}}}%%
+
+flowchart TD
+    %% ========================================
+    %% PHASE 1: Data Loading & Quality Marking
+    %% ========================================
+    START([BOLD TSV Input<br/>N total sequences]) --> P1_1[1.1: Parse BOLD TSV<br/>Validate required columns<br/>processid, nuc, species]
+    P1_1 --> P1_2[1.2: Mark Coordinate Quality<br/>Flag: has_centroid_coords<br/>Flag: has_missing_coords<br/>Calc: is_geographic_quality]
+    P1_2 --> P1_3{GOaS<br/>Available?}
+    P1_3 -->|Yes| P1_3A[1.3: Assign Ocean Basins<br/>Spatial join lat,lon → GOaS<br/>Only samples with is_geographic_quality=TRUE]
+    P1_3 -->|No| P1_3B[All basins = Unknown<br/>--no-geo flag]
+    P1_3A --> P1_OUT["✓ N samples with quality markers<br/>X with ocean basins, Y as Unknown"]
+    P1_3B --> P1_OUT
+
+    %% ========================================
+    %% PHASE 2: Pre-processing QC
+    %% ========================================
+    P1_OUT --> P2_1[2.1: Extract Sequences<br/>processid → sequence dict]
+    P2_1 --> P2_2[2.2: Orientation Normalization<br/>Try forward + rev complement<br/>Select best ORF coverage<br/>Genetic code: 2 vertebrate mito]
+    P2_2 --> P2_3[2.3: ORF Validation<br/>orf_coverage ≥ 50%<br/>orf_internal_stops ≤ 2]
+    P2_3 --> P2_4[2.4: Dynamic QC Filtering<br/>Length: ≥200bp AND ≥70% median<br/>N content: ≤5%]
+    P2_4 --> P2_5{require<br/>valid_orf?}
+    P2_5 -->|TRUE| P2_5A[Filter invalid ORFs]
+    P2_5 -->|FALSE| P2_5B[Keep all sequences]
+    P2_5A --> P2_OUT["✓ M QC-passed sequences<br/>~85% pass rate"]
+    P2_5B --> P2_OUT
+
+    %% ========================================
+    %% PHASE 3: Haplotype Discovery
+    %% ========================================
+    P2_OUT --> P3_1[3.1: Multiple Sequence Alignment<br/>MAFFT auto algorithm]
+    P3_1 --> P3_2[3.2: Gap Masking<br/>Mask columns with >50% gaps]
+    P3_2 --> P3_3[3.3: Core Region Extraction<br/>Positions with ≥80% coverage<br/>Min core length: 150bp]
+    P3_3 --> P3_4[3.4: Identify ESVs<br/>Group by 100% identity in core<br/>Each unique sequence = 1 haplotype]
+    P3_4 --> P3_5[3.5: Singleton Error Filter<br/>Calculate nearest-neighbor distance<br/>REMOVE singletons ≤0.5% divergent]
+    P3_5 --> P3_6{flag_suspect<br/>_haplotypes?}
+    P3_6 -->|TRUE| P3_6A[Flag singletons >5% divergent<br/>Potential contamination]
+    P3_6 -->|FALSE| P3_6B[No suspect flagging]
+    P3_6A --> P3_OUT["✓ K haplotypes after error filtering<br/>J singletons, I multi-member"]
+    P3_6B --> P3_OUT
+
+    %% ========================================
+    %% PHASE 4: Haplotype Assignment
+    %% ========================================
+    P3_OUT --> P4_1[4.1: Direct ESV Mapping<br/>Use exact assignments from Phase 3<br/>No distance-based re-assignment<br/>No ties all exact matches]
+    P4_1 --> P4_OUT["✓ All QC-passed samples assigned<br/>100% assignment rate<br/>0 ties, 0 low-confidence"]
+
+    %% ========================================
+    %% PHASE 5: Taxonomy Assignment
+    %% ========================================
+    P4_OUT --> P5_1[5.1: Metadata-Based Taxonomy<br/>Majority vote per haplotype<br/>If ≥70% agree → species<br/>Else → genus or ambiguous]
+    P5_1 --> P5_2{Sequence-based<br/>taxonomy<br/>available?}
+    P5_2 -->|Yes| P5_2A[BLAST/VSEARCH vs reference<br/>Threshold: ≥98.5% identity<br/>Query coverage: ≥90%]
+    P5_2 -->|No| P5_2B[Skip sequence taxonomy]
+    P5_2A --> P5_3[5.3: Conflict Resolution<br/>Integrate metadata + sequence<br/>Build labels: species h#<br/>Track provenance]
+    P5_2B --> P5_3
+    P5_3 --> P5_OUT["✓ K haplotypes with species labels<br/>L species-level, M genus-level"]
+
+    %% ========================================
+    %% PHASE 6: Post-assignment QC
+    %% ========================================
+    P5_OUT --> P6_1[6.1: Contamination Detection<br/>Multi-species haplotypes<br/>Low-majority species <70%<br/>Per-sample purity scores]
+    P6_1 --> P6_2[6.2: Quality Reports<br/>Contamination heatmap<br/>Purity distribution<br/>QC alerts flagged]
+    P6_2 --> P6_OUT[✓ QC-flagged samples added to output]
+
+    %% ========================================
+    %% PHASE 6.5: Species Aggregation
+    %% ========================================
+    P6_OUT --> P65_1[6.5.1: Aggregate by Species<br/>Filter to species-level ≥70%]
+    P65_1 --> P65_2[6.5.2: Diversity Metrics<br/>Haplotype richness<br/>Haplotype evenness Shannon]
+    P65_2 --> P65_3[6.5.3: Geographic Summary<br/>Samples per species per basin]
+    P65_3 --> P65_4[6.5.4: Species-Faceted Subsets<br/>One file per species if ≥2 haplotypes]
+    P65_4 --> P65_OUT["✓ P species analyzed<br/>Q species-specific subsets"]
+
+    %% ========================================
+    %% PHASE 7: Geographic Enhancement
+    %% ========================================
+    P65_OUT --> P7_1[7.1: Geographic Quality Assessment<br/>Missing data report<br/>Coordinate precision analysis<br/>Basin-level summaries]
+    P7_1 --> P7_OUT["✓ Enhanced geographic metadata<br/>R samples with geographic quality"]
+
+    %% ========================================
+    %% PHASE 8: Phylogenetic Analysis
+    %% ========================================
+    P7_OUT --> P8_DEC{build_tree<br/>enabled?}
+    P8_DEC -->|No| P9_START[Skip to Phase 9]
+    P8_DEC -->|Yes| P8_1[8.1: Filter Haplotypes<br/>Length ≥150bp default<br/>Cluster size ≥3 members]
+    P8_1 --> P8_2[8.2: Align Filtered Haplotypes<br/>MAFFT auto algorithm]
+    P8_2 --> P8_3{trim<br/>alignment?}
+    P8_3 -->|Yes| P8_3A[trimAl gappyout<br/>Remove gappy columns]
+    P8_3 -->|No| P8_3B[Use full alignment]
+    P8_3A --> P8_4[8.4: Build Tree<br/>FastTree GTR+Gamma<br/>Bootstrap support]
+    P8_3B --> P8_4
+    P8_4 --> P8_5{Outgroup<br/>specified?}
+    P8_5 -->|Yes| P8_5A[Root by outgroup<br/>FASTA/label/taxon]
+    P8_5 -->|No| P8_5B[Midpoint rooting if enabled]
+    P8_5A --> P8_6[8.6: Relabel Tree<br/>species h# labels]
+    P8_5B --> P8_6
+    P8_6 --> P8_7{MSA viz<br/>enabled?}
+    P8_7 -->|Yes| P8_7A[Phylogeny-ordered MSA plots<br/>100bp chunks, colored by nt]
+    P8_7 -->|No| P8_OUT
+    P8_7A --> P8_OUT["✓ Tree .nwk, alignment FASTA<br/>MSA plots PDF/PNG optional"]
+
+    %% ========================================
+    %% PHASE 9: Divergence Analysis
+    %% ========================================
+    P9_START --> P9_1
+    P8_OUT --> P9_1[9.1: Pairwise p-Distance Matrix<br/>Formula: 1 - matches/informative_sites<br/>Gaps and Ns ignored]
+    P9_1 --> P9_2[9.2: Barcoding Gap Analysis<br/>Within-species vs between-species<br/>Identify gap presence]
+    P9_2 --> P9_3[9.3: Species-Level Divergence<br/>Mean distance between species pairs]
+    P9_3 --> P9_4[9.4: Within-Species Divergence<br/>Per-species haplotype matrices]
+    P9_4 --> P9_OUT["✓ Distance matrices CSV<br/>Barcoding gap plots<br/>Divergence heatmaps"]
+
+    %% ========================================
+    %% PHASE 10: Visualization
+    %% ========================================
+    P9_OUT --> P10_1[10.1: Haplotype-Level Plots<br/>Distribution map global<br/>Basin abundance relative + total]
+    P10_1 --> P10_2[10.2: Species-Level Plots<br/>Species distribution map<br/>Species basin abundance]
+    P10_2 --> P10_3[10.3: Species-Faceted Haplotype Plots<br/>Per-species haplotype maps<br/>Per-species basin charts<br/>Zoomed to range +20° buffer]
+    P10_3 --> P10_OUT["✓ PNG 300 DPI, PDF vector, SVG<br/>JSON for interactive HTML"]
+
+    %% ========================================
+    %% PHASE 11: Report Generation
+    %% ========================================
+    P10_OUT --> P11_DEC{no_report<br/>flag?}
+    P11_DEC -->|Yes| FINAL[Skip report generation]
+    P11_DEC -->|No| P11_1[11.1: Interactive HTML Report<br/>Summary dashboard<br/>Pipeline parameters<br/>Plotly.js visualizations<br/>Methods section<br/>Data tables + downloads]
+    P11_1 --> FINAL
+
+    %% ========================================
+    %% FINAL OUTPUTS
+    %% ========================================
+    FINAL --> OUTPUT[/"📊 Complete Outputs:<br/>• organism_annotated.csv all samples<br/>• haplotypes.fasta K consensus seqs<br/>• tree_relabeled.nwk phylogeny<br/>• divergence_matrix.csv distances<br/>• distribution_map.pdf figures<br/>• summary_report.html interactive"/]
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef inputStyle fill:#bbdefb,stroke:#1565c0,stroke-width:3px,color:#000
+    classDef processStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+    classDef decisionStyle fill:#fff9c4,stroke:#f57c00,stroke-width:2px,color:#000
+    classDef outputStyle fill:#e1bee7,stroke:#6a1b9a,stroke-width:3px,color:#000
+    classDef countStyle fill:#b3e5fc,stroke:#0277bd,stroke-width:2px,color:#000
+    classDef skipStyle fill:#e0e0e0,stroke:#616161,stroke-width:1px,color:#000,stroke-dasharray: 5 5
+
+    class START inputStyle
+    class P1_1,P1_2,P1_3A,P1_3B,P2_1,P2_2,P2_3,P2_4,P2_5A,P2_5B processStyle
+    class P3_1,P3_2,P3_3,P3_4,P3_5,P3_6A,P3_6B processStyle
+    class P4_1,P5_1,P5_2A,P5_2B,P5_3,P6_1,P6_2 processStyle
+    class P65_1,P65_2,P65_3,P65_4,P7_1 processStyle
+    class P8_1,P8_2,P8_3A,P8_3B,P8_4,P8_5A,P8_5B,P8_6,P8_7A processStyle
+    class P9_1,P9_2,P9_3,P9_4,P10_1,P10_2,P10_3,P11_1 processStyle
+    class P1_3,P2_5,P3_6,P5_2,P8_DEC,P8_3,P8_5,P8_7,P11_DEC decisionStyle
+    class OUTPUT outputStyle
+    class P1_OUT,P2_OUT,P3_OUT,P4_OUT,P5_OUT,P6_OUT,P65_OUT,P7_OUT,P8_OUT,P9_OUT,P10_OUT countStyle
+    class P9_START,FINAL skipStyle
