@@ -613,7 +613,8 @@ def assign_regions_from_shapefile(
     shapefile_field: str = 'name',
     output_column: str = 'geographic_region',
     lat_col: str = 'lat',
-    lon_col: str = 'lon'
+    lon_col: str = 'lon',
+    coord_col: Optional[str] = None
 ) -> pd.DataFrame:
     """
     Assign geographic regions from a custom shapefile.
@@ -636,11 +637,15 @@ def assign_regions_from_shapefile(
         Name of latitude column
     lon_col : str, default='lon'
         Name of longitude column
+    coord_col : str, optional
+        Name of coordinate column containing [lat, lon] pairs (e.g., "coord").
+        If provided and lat/lon columns don't exist, coordinates will be parsed
+        from this column
 
     Returns
     -------
     pd.DataFrame
-        Copy of input DataFrame with added region assignment column
+        Copy of input DataFrame with added region assignment column and lat/lon columns
 
     Examples
     --------
@@ -679,6 +684,46 @@ def assign_regions_from_shapefile(
 
     # Create a copy to avoid modifying original
     df_copy = df.copy()
+
+    # Parse coordinates from coord_col if needed
+    if coord_col and coord_col in df_copy.columns:
+        if lat_col not in df_copy.columns or lon_col not in df_copy.columns:
+            logger.info(f"Parsing coordinates from '{coord_col}' column")
+            try:
+                import json
+                import ast
+
+                def parse_coord(coord_str):
+                    """Parse coordinate string like '[lat, lon]' to tuple (lat, lon)"""
+                    if pd.isna(coord_str) or coord_str == '':
+                        return pd.NA, pd.NA
+                    try:
+                        # Handle both string representations: "[lat, lon]" or "lat, lon"
+                        coord_str = str(coord_str).strip()
+                        if coord_str.startswith('[') and coord_str.endswith(']'):
+                            coord_list = ast.literal_eval(coord_str)
+                        else:
+                            coord_list = [float(x.strip()) for x in coord_str.split(',')]
+
+                        if len(coord_list) == 2:
+                            return float(coord_list[0]), float(coord_list[1])
+                        else:
+                            return pd.NA, pd.NA
+                    except (ValueError, SyntaxError, TypeError):
+                        return pd.NA, pd.NA
+
+                # Parse coordinates
+                coords = df_copy[coord_col].apply(parse_coord)
+                df_copy[lat_col] = coords.apply(lambda x: x[0])
+                df_copy[lon_col] = coords.apply(lambda x: x[1])
+
+                n_parsed = df_copy[lat_col].notna().sum()
+                logger.info(f"Parsed {n_parsed} coordinate pairs from '{coord_col}'")
+
+            except Exception as e:
+                logger.warning(f"Failed to parse coordinates from '{coord_col}': {e}")
+                df_copy[lat_col] = pd.NA
+                df_copy[lon_col] = pd.NA
 
     # Check if coordinate columns exist
     if lat_col not in df_copy.columns or lon_col not in df_copy.columns:

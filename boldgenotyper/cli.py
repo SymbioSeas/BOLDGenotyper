@@ -44,6 +44,7 @@ from . import (
     cluster_diagnostics, quality_control, plot_export, comparative_analysis,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     metadata_enrichment, popgen_export, species_analysis, msa_visualization,
+    metadata_analysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,14 @@ def setup_directories(base_output: Path) -> dict:
         'geographic_analysis': base_output / 'geographic_analysis',
         'phylogenetic': base_output / 'phylogenetic',
         'visualization': base_output / 'visualization',
+        'visualization_pdf': base_output / 'visualization' / 'pdf',
+        'visualization_svg': base_output / 'visualization' / 'svg',
+        'visualization_json': base_output / 'visualization' / 'json',
         'haplotype_plots': base_output / 'visualization' / 'haplotype_plots',
+        'metadata_viz_pdf': base_output / 'visualization' / 'metadata' / 'pdf',
+        'metadata_viz_svg': base_output / 'visualization' / 'metadata' / 'svg',
+        'metadata_viz_png': base_output / 'visualization' / 'metadata' / 'png',
+        'metadata_viz_json': base_output / 'visualization' / 'metadata' / 'json',
         'reports': base_output / 'reports',
     }
 
@@ -143,6 +151,45 @@ def setup_directories(base_output: Path) -> dict:
         dir_path.mkdir(parents=True, exist_ok=True)
 
     return dirs
+
+
+def get_viz_path(dirs: dict, filename: str, fmt: str, is_metadata: bool = False) -> Path:
+    """
+    Get the appropriate visualization output path based on format.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directory dictionary from setup_directories
+    filename : str
+        Base filename without extension
+    fmt : str
+        Format (pdf, svg, png, etc.)
+    is_metadata : bool
+        If True, use metadata visualization subdirectory
+
+    Returns
+    -------
+    Path
+        Full path for the output file
+    """
+    if is_metadata:
+        if fmt == 'pdf':
+            return dirs['metadata_viz_pdf'] / f"{filename}.{fmt}"
+        elif fmt == 'svg':
+            return dirs['metadata_viz_svg'] / f"{filename}.{fmt}"
+        elif fmt == 'png':
+            return dirs['metadata_viz_png'] / f"{filename}.{fmt}"
+        else:
+            return dirs['metadata_viz_pdf'] / f"{filename}.{fmt}"
+    else:
+        if fmt == 'pdf':
+            return dirs['visualization_pdf'] / f"{filename}.{fmt}"
+        elif fmt == 'svg':
+            return dirs['visualization_svg'] / f"{filename}.{fmt}"
+        else:
+            # PNG and other formats go to pdf directory
+            return dirs['visualization_pdf'] / f"{filename}.{fmt}"
 
 
 def run_pipeline(
@@ -154,6 +201,13 @@ def run_pipeline(
     skip_geo: bool = False,
     export_plot_data: bool = True,
     export_popgen_formats: Optional[list] = None,
+    metadata_analysis_enabled: bool = False,
+    metadata_fields: Optional[list] = None,
+    normalize_sex: bool = False,
+    temporal_analysis: bool = False,
+    shapefile_path: Optional[Path] = None,
+    shapefile_field: str = 'name',
+    geo_category: str = 'ocean_basin',
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -176,6 +230,12 @@ def run_pipeline(
         Export raw plot data and R regeneration scripts (default: True)
     export_popgen_formats : list, optional
         List of population genetics formats to export (default: None)
+    shapefile_path : Path, optional
+        Path to custom shapefile for geographic analysis (default: None uses GOaS)
+    shapefile_field : str, optional
+        Shapefile attribute field containing region names (default: 'name')
+    geo_category : str, optional
+        Geographic category name for outputs (default: 'ocean_basin')
 
     Returns
     -------
@@ -251,14 +311,83 @@ def run_pipeline(
         marked_tsv = dirs['intermediate'] / "02_marked_metadata.tsv"
         df.to_csv(marked_tsv, sep='\t', index=False)
 
-        # Assign ocean basins (only to samples with geographic quality)
-        logger.info("1.3: Assigning ocean basins...")
+        # Assign geographic regions (only to samples with geographic quality)
+        logger.info(f"1.3: Assigning geographic regions ({geo_category})...")
         geo_analysis_performed = False  # Track whether geographic analysis was successful
 
         if skip_geo:
             logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
             df_with_basins = df.copy()
-            df_with_basins['ocean_basin'] = 'Unknown'
+            df_with_basins[geo_category] = 'Unknown'
+        elif shapefile_path:
+            # Use custom shapefile
+            logger.info(f"  → Using custom shapefile: {shapefile_path}")
+            logger.info(f"  → Shapefile field: {shapefile_field}")
+            logger.info(f"  → Geographic category: {geo_category}")
+
+            try:
+                # Only assign regions to samples with geographic quality coordinates
+                df_geo_quality = df[df['is_geographic_quality']].copy()
+                logger.info(f"  → {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
+
+                if len(df_geo_quality) > 0:
+                    df_geo_assigned = geographic.assign_regions_from_shapefile(
+                        df_geo_quality,
+                        shapefile_path=shapefile_path,
+                        shapefile_field=shapefile_field,
+                        output_column=geo_category,
+                        coord_col="coord"
+                    )
+
+                    # Merge back with full dataset, preserving lat/lon columns for visualization
+                    df_with_basins = df.copy()
+                    # First set all to Unknown
+                    df_with_basins[geo_category] = 'Unknown'
+
+                    # Initialize lat/lon columns if not present
+                    if 'lat' not in df_with_basins.columns:
+                        df_with_basins['lat'] = pd.NA
+                    if 'lon' not in df_with_basins.columns:
+                        df_with_basins['lon'] = pd.NA
+
+                    # Extract columns to merge: geo_category and lat/lon (if they exist in df_geo_assigned)
+                    cols_to_merge = ['processid', geo_category]
+                    if 'lat' in df_geo_assigned.columns:
+                        cols_to_merge.append('lat')
+                    if 'lon' in df_geo_assigned.columns:
+                        cols_to_merge.append('lon')
+
+                    # Merge the geographic data back
+                    merged_geo = df_with_basins[['processid']].merge(
+                        df_geo_assigned[cols_to_merge], on='processid', how='left', suffixes=('', '_new')
+                    )
+
+                    # Update the columns
+                    df_with_basins[geo_category] = merged_geo[geo_category].fillna('Unknown')
+                    if 'lat_new' in merged_geo.columns:
+                        df_with_basins['lat'] = merged_geo['lat_new']
+                    elif 'lat' in merged_geo.columns:
+                        df_with_basins['lat'] = merged_geo['lat']
+                    if 'lon_new' in merged_geo.columns:
+                        df_with_basins['lon'] = merged_geo['lon_new']
+                    elif 'lon' in merged_geo.columns:
+                        df_with_basins['lon'] = merged_geo['lon']
+
+                    n_assigned = (df_with_basins[geo_category] != 'Unknown').sum()
+                    logger.info(f"  ✓ Assigned {geo_category} to {n_assigned} samples")
+                    logger.info(f"  → {len(df) - n_assigned} samples marked as 'Unknown' (missing coordinates)")
+                    geo_analysis_performed = True
+                else:
+                    logger.warning("  ⚠ No samples with geographic-quality coordinates")
+                    df_with_basins = df.copy()
+                    df_with_basins[geo_category] = 'Unknown'
+
+            except Exception as e:
+                logger.error(f"  ✗ Failed to load custom shapefile: {e}")
+                logger.warning("  Pipeline will continue without geographic analysis...")
+                df_with_basins = df.copy()
+                df_with_basins[geo_category] = 'Unknown'
+
         elif not cfg.geographic.goas_shapefile_path.exists():
             logger.warning(f"  ⚠ GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
             logger.warning("")
@@ -270,8 +399,10 @@ def run_pipeline(
             logger.warning("")
             logger.warning("  Pipeline will continue without geographic analysis...")
             df_with_basins = df.copy()
-            df_with_basins['ocean_basin'] = 'Unknown'
+            df_with_basins[geo_category] = 'Unknown'
         else:
+            # Use default GOaS shapefile
+            logger.info("  → Using default GOaS ocean basin shapefile")
             try:
                 goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
 
@@ -287,7 +418,7 @@ def run_pipeline(
                     # Merge back with full dataset, preserving lat/lon columns for visualization
                     df_with_basins = df.copy()
                     # First set all to Unknown
-                    df_with_basins['ocean_basin'] = 'Unknown'
+                    df_with_basins[geo_category] = 'Unknown'
 
                     # Initialize lat/lon columns if not present
                     if 'lat' not in df_with_basins.columns:
@@ -307,8 +438,9 @@ def run_pipeline(
                         df_geo_assigned[cols_to_merge], on='processid', how='left', suffixes=('', '_new')
                     )
 
-                    # Update the columns
-                    df_with_basins['ocean_basin'] = merged_geo['ocean_basin'].fillna('Unknown')
+                    # Update the columns (rename ocean_basin to geo_category if different)
+                    if 'ocean_basin' in merged_geo.columns:
+                        df_with_basins[geo_category] = merged_geo['ocean_basin'].fillna('Unknown')
                     if 'lat_new' in merged_geo.columns:
                         df_with_basins['lat'] = merged_geo['lat_new']
                     elif 'lat' in merged_geo.columns:
@@ -318,22 +450,22 @@ def run_pipeline(
                     elif 'lon' in merged_geo.columns:
                         df_with_basins['lon'] = merged_geo['lon']
 
-                    n_assigned = (df_with_basins['ocean_basin'] != 'Unknown').sum()
-                    logger.info(f"  ✓ Assigned ocean basins to {n_assigned} samples")
+                    n_assigned = (df_with_basins[geo_category] != 'Unknown').sum()
+                    logger.info(f"  ✓ Assigned {geo_category} to {n_assigned} samples")
                     logger.info(f"  → {len(df) - n_assigned} samples marked as 'Unknown' (centroid/missing coordinates)")
                     geo_analysis_performed = True
                 else:
                     logger.warning("  ⚠ No samples with geographic-quality coordinates")
                     df_with_basins = df.copy()
-                    df_with_basins['ocean_basin'] = 'Unknown'
+                    df_with_basins[geo_category] = 'Unknown'
 
             except Exception as e:
                 logger.error(f"  ✗ Failed to load GOaS data: {e}")
                 logger.warning("  Pipeline will continue without geographic analysis...")
                 df_with_basins = df.copy()
-                df_with_basins['ocean_basin'] = 'Unknown'
+                df_with_basins[geo_category] = 'Unknown'
 
-        basins_tsv = dirs['intermediate_geographic'] / "samples_with_ocean_basins.tsv"
+        basins_tsv = dirs['intermediate_geographic'] / f"samples_with_{geo_category}.tsv"
         df_with_basins.to_csv(basins_tsv, sep='\t', index=False)
 
     except Exception as e:
@@ -556,15 +688,25 @@ def run_pipeline(
         logger.info(f"  ✓ Wrote annotated metadata: {annotated_tsv}")
 
         # Create diagnostics file (minimal for ESV direct mapping)
+        # Status values: 'assigned' (successful), 'no_sequence' (no valid sequence), 'filtered' (failed QC)
         diagnostics_data = []
         for _, row in df_with_haplotypes.iterrows():
+            has_assignment = pd.notna(row['assigned_haplotype'])
+            # Determine status
+            if has_assignment:
+                status = 'assigned'
+            else:
+                # Sample didn't get a haplotype - likely had no sequence or failed core region extraction
+                status = 'no_sequence'
+
             diagnostics_data.append({
                 'processid': row['processid'],
                 'assigned_haplotype': row['assigned_haplotype'],
+                'status': status,
                 'is_tie': False,
                 'is_low_confidence': False,
                 'assignment_method': 'ESV_direct_mapping',
-                'note': 'Exact match from core region during haplotype discovery'
+                'note': 'Exact match from core region during haplotype discovery' if has_assignment else 'No valid core region extracted'
             })
 
         diagnostics_df = pd.DataFrame(diagnostics_data)
@@ -601,18 +743,13 @@ def run_pipeline(
             all_groups=all_haplotype_ids or None
         )
 
-        # Build haplotype_sp labels
-        def _strip_prefix(s: str) -> str:
-            return s.replace("consensus_", "") if isinstance(s, str) else s
-
-        assign_table["haplotype_short"] = assign_table["haplotype_id"].map(_strip_prefix)
-
+        # Build haplotype_sp labels (e.g., "Species name h1_n8")
         def _join_label(row):
             sp = row["assigned_sp"]
-            short = row["haplotype_short"]
+            hap_id = row["haplotype_id"]
             if not sp:
-                return short
-            return f"{sp} {short}"
+                return hap_id if isinstance(hap_id, str) else ""
+            return f"{sp} {hap_id}"
 
         assign_table["haplotype_sp"] = assign_table.apply(_join_label, axis=1)
 
@@ -650,8 +787,8 @@ def run_pipeline(
                     majority_frac=row.get("majority_fraction", 0.0),
                     cfg_taxonomy=cfg.taxonomy,
                 )
-                short = row["haplotype_id"].replace("consensus_", "") if isinstance(row.get("haplotype_id"), str) else ""
-                label = f"{final_sp} {short}".strip() if final_sp else short
+                hap_id = row["haplotype_id"] if isinstance(row.get("haplotype_id"), str) else ""
+                label = f"{final_sp} {hap_id}".strip() if final_sp else hap_id
                 return pd.Series({
                     "final_group_sp": final_sp,
                     "final_group_level": final_level,
@@ -832,7 +969,8 @@ def run_pipeline(
                 output_dir=dirs['geographic_analysis'],
                 organism=organism,
                 group_col="haplotype_id",
-                goas_data=goas_data if 'goas_data' in locals() else None
+                goas_data=goas_data if 'goas_data' in locals() else None,
+                geo_category=geo_category
             )
 
             # Update df_final with enhanced geographic data
@@ -1062,6 +1200,46 @@ def run_pipeline(
         logger.debug("Divergence analysis error details:", exc_info=True)
 
     # ========================================================================
+    # PHASE 9.5: Metadata Analysis
+    # ========================================================================
+    metadata_analysis_results = None
+    if metadata_analysis_enabled:
+        logger.info("")
+        logger.info("PHASE 9.5: Metadata Analysis")
+        logger.info("-" * 80)
+
+        try:
+            # Build color map for consistent visualization
+            color_map = visualization.build_genotype_colors_dict(df_final, 'haplotype_sp')
+
+            # Run metadata analysis (handles missing fields gracefully)
+            metadata_analysis_results = metadata_analysis.run_metadata_analysis(
+                annotated_df=df_final,
+                output_dir=output_dir,
+                organism=organism,
+                fields=metadata_fields,
+                normalize_sex=normalize_sex,
+                temporal_analysis=temporal_analysis,
+                color_map=color_map,
+                haplotype_col='haplotype_sp'
+            )
+
+            logger.info(f"  ✓ Metadata analysis complete")
+            logger.info(f"    - Fields analyzed: {metadata_analysis_results.get('n_fields_analyzed', 0)}")
+            logger.info(f"    - Visualizations created: {metadata_analysis_results.get('n_visualizations', 0)}")
+            if metadata_analysis_results.get('temporal_analysis'):
+                logger.info(f"    - Temporal analysis: enabled")
+            if metadata_analysis_results.get('missing_fields'):
+                logger.info(f"    - Missing fields (skipped): {', '.join(metadata_analysis_results.get('missing_fields', []))}")
+
+        except Exception as e:
+            logger.warning(f"Metadata analysis failed (non-critical): {e}")
+            logger.debug("Metadata analysis error details:", exc_info=True)
+    else:
+        logger.info("")
+        logger.info("PHASE 9.5: Metadata Analysis - SKIPPED (use --no-metadata-analysis was specified)")
+
+    # ========================================================================
     # PHASE 10: Visualization
     # ========================================================================
     logger.info("")
@@ -1085,7 +1263,7 @@ def run_pipeline(
 
                         map_path, map_data = visualization.plot_distribution_map(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_distribution_map.{fmt}"),
+                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_map", fmt)),
                             genotype_column='haplotype_sp',
                             latitude_col='lat',
                             longitude_col='lon',
@@ -1094,48 +1272,48 @@ def run_pipeline(
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if map_data:
-                            json_path = dirs['visualization'] / f"{organism}_distribution_map_data.json"
+                            json_path = dirs['visualization_json'] / f"{organism}_distribution_map_data.json"
                             with open(json_path, 'w') as f:
                                 json.dump(map_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
                         logger.debug(f"Distribution map skipped: {e}")
 
-                # Ocean basin abundance bar plot (relative)
-                if 'ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns:
+                # Geographic region abundance bar plot (relative)
+                if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
                     try:
                         bar_path, bar_data = visualization.plot_ocean_basin_abundance(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_distribution_bar.{fmt}"),
+                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_bar", fmt)),
                             genotype_column='haplotype_sp',
-                            basin_column='ocean_basin'
+                            basin_column=geo_category
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if bar_data:
-                            json_path = dirs['visualization'] / f"{organism}_distribution_bar_data.json"
+                            json_path = dirs['visualization_json'] / f"{organism}_distribution_bar_data.json"
                             with open(json_path, 'w') as f:
                                 json.dump(bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Ocean basin bar plot skipped: {e}")
+                        logger.debug(f"Geographic region bar plot skipped: {e}")
 
-                # Ocean basin abundance bar plot (total counts)
-                if 'ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns:
+                # Geographic region abundance bar plot (total counts)
+                if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
                     try:
                         total_bar_path, total_bar_data = visualization.plot_ocean_basin_abundance_total(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_totaldistribution_bar.{fmt}"),
+                            output_path=str(get_viz_path(dirs, f"{organism}_totaldistribution_bar", fmt)),
                             genotype_column='haplotype_sp',
-                            basin_column='ocean_basin'
+                            basin_column=geo_category
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if total_bar_data:
-                            json_path = dirs['visualization'] / f"{organism}_totaldistribution_bar_data.json"
+                            json_path = dirs['visualization_json'] / f"{organism}_totaldistribution_bar_data.json"
                             with open(json_path, 'w') as f:
                                 json.dump(total_bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Ocean basin total abundance bar plot skipped: {e}")
+                        logger.debug(f"Geographic region total abundance bar plot skipped: {e}")
 
                 # Species-level visualizations (if species data available)
                 species_assignments_csv = dirs['species_analysis'] / 'species_assignments.csv'
@@ -1154,7 +1332,7 @@ def run_pipeline(
 
                                 species_map_path, species_map_data = visualization.plot_species_distribution_map(
                                     df=species_df,
-                                    output_path=str(dirs['visualization'] / f"{organism}_species_distribution_map.{fmt}"),
+                                    output_path=str(get_viz_path(dirs, f"{organism}_species_distribution_map", fmt)),
                                     species_column='primary_species',
                                     latitude_col='lat',
                                     longitude_col='lon',
@@ -1162,46 +1340,46 @@ def run_pipeline(
                                     map_background_detail=detail
                                 )
                                 if species_map_data:
-                                    json_path = dirs['visualization'] / f"{organism}_species_distribution_map_data.json"
+                                    json_path = dirs['visualization_json'] / f"{organism}_species_distribution_map_data.json"
                                     with open(json_path, 'w') as f:
                                         json.dump(species_map_data, f, indent=2)
                                     logger.debug(f"Saved species map data to: {json_path}")
                             except Exception as e:
                                 logger.debug(f"Species distribution map skipped: {e}")
 
-                        # Species ocean basin abundance (relative)
-                        if 'ocean_basin' in species_df.columns and 'primary_species' in species_df.columns:
+                        # Species geographic region abundance (relative)
+                        if geo_category in species_df.columns and 'primary_species' in species_df.columns:
                             try:
                                 species_bar_path, species_bar_data = visualization.plot_species_ocean_basin_abundance(
                                     df=species_df,
-                                    output_path=str(dirs['visualization'] / f"{organism}_species_distribution_bar.{fmt}"),
+                                    output_path=str(get_viz_path(dirs, f"{organism}_species_distribution_bar", fmt)),
                                     species_column='primary_species',
-                                    basin_column='ocean_basin'
+                                    basin_column=geo_category
                                 )
                                 if species_bar_data:
-                                    json_path = dirs['visualization'] / f"{organism}_species_distribution_bar_data.json"
+                                    json_path = dirs['visualization_json'] / f"{organism}_species_distribution_bar_data.json"
                                     with open(json_path, 'w') as f:
                                         json.dump(species_bar_data, f, indent=2)
                                     logger.debug(f"Saved species bar data to: {json_path}")
                             except Exception as e:
-                                logger.debug(f"Species basin bar plot skipped: {e}")
+                                logger.debug(f"Species region bar plot skipped: {e}")
 
-                        # Species ocean basin abundance (total counts)
-                        if 'ocean_basin' in species_df.columns and 'primary_species' in species_df.columns:
+                        # Species geographic region abundance (total counts)
+                        if geo_category in species_df.columns and 'primary_species' in species_df.columns:
                             try:
                                 species_total_bar_path, species_total_bar_data = visualization.plot_species_ocean_basin_abundance_total(
                                     df=species_df,
-                                    output_path=str(dirs['visualization'] / f"{organism}_species_totaldistribution_bar.{fmt}"),
+                                    output_path=str(get_viz_path(dirs, f"{organism}_species_totaldistribution_bar", fmt)),
                                     species_column='primary_species',
-                                    basin_column='ocean_basin'
+                                    basin_column=geo_category
                                 )
                                 if species_total_bar_data:
-                                    json_path = dirs['visualization'] / f"{organism}_species_totaldistribution_bar_data.json"
+                                    json_path = dirs['visualization_json'] / f"{organism}_species_totaldistribution_bar_data.json"
                                     with open(json_path, 'w') as f:
                                         json.dump(species_total_bar_data, f, indent=2)
                                     logger.debug(f"Saved species total bar data to: {json_path}")
                             except Exception as e:
-                                logger.debug(f"Species total abundance bar plot skipped: {e}")
+                                logger.debug(f"Species geographic region total abundance bar plot skipped: {e}")
 
                         # Species-faceted haplotype visualizations
                         # (separate plots for each species showing haplotypes)
@@ -1210,9 +1388,13 @@ def run_pipeline(
                             # Use simplified background for species-faceted plots (many maps)
                             detail = "simple" if cfg.visualization.map_background_detail == "auto" else cfg.visualization.map_background_detail
 
+                            # For species-faceted plots, use format-specific subdirectory
+                            species_facet_dir = dirs['visualization_pdf'] if fmt == 'pdf' else (
+                                dirs['visualization_svg'] if fmt == 'svg' else dirs['visualization_pdf']
+                            )
                             species_maps_results = visualization.plot_haplotypes_by_species_maps(
                                 species_assignments=species_df,
-                                output_dir=dirs['visualization'],
+                                output_dir=species_facet_dir,
                                 species_column='primary_species',
                                 haplotype_column='haplotype_sp',
                                 latitude_col='lat',
@@ -1228,9 +1410,13 @@ def run_pipeline(
 
                         try:
                             logger.info("  → Generating species-faceted haplotype basin charts...")
+                            # For species-faceted plots, use format-specific subdirectory
+                            species_bar_facet_dir = dirs['visualization_pdf'] if fmt == 'pdf' else (
+                                dirs['visualization_svg'] if fmt == 'svg' else dirs['visualization_pdf']
+                            )
                             species_bars_results = visualization.plot_haplotypes_by_species_basin_bars(
                                 species_assignments=species_df,
-                                output_dir=dirs['visualization'],
+                                output_dir=species_bar_facet_dir,
                                 species_column='primary_species',
                                 haplotype_column='haplotype_sp',
                                 basin_column='ocean_basin',
@@ -1256,13 +1442,13 @@ def run_pipeline(
 
                         visualization.plot_distribution_map_faceted(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_distribution_map_faceted.{fmt}"),
-                            genotype_column='haplotype_id',
+                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_map_faceted", fmt)),
+                            genotype_column='haplotype_sp',
                             species_column='assigned_sp',
                             latitude_col='lat',
                             longitude_col='lon',
                             dpi=cfg.visualization.facet_dpi,
-                            facet_by=cfg.visualization.facet_by,
+                            facet_by='genotype',
                             map_buffer_degrees=cfg.visualization.map_buffer_degrees,
                             show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
                             show_scale_bar=cfg.visualization.show_scale_bar,
@@ -1274,8 +1460,8 @@ def run_pipeline(
                         # Additional species-faceted map (explicit file name for clarity)
                         visualization.plot_distribution_map_faceted(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_distribution_map_species_faceted.{fmt}"),
-                            genotype_column='haplotype_id',
+                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_map_species_faceted", fmt)),
+                            genotype_column='haplotype_sp',
                             species_column='assigned_sp',
                             latitude_col='lat',
                             longitude_col='lon',
@@ -1291,8 +1477,8 @@ def run_pipeline(
                     except Exception as e:
                         logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
 
-                # Faceted ocean basin bar plot by haplotype_sp
-                if ('ocean_basin' in df_final.columns and 'haplotype_sp' in df_final.columns and
+                # Faceted geographic region bar plot by haplotype_sp
+                if (geo_category in df_final.columns and 'haplotype_sp' in df_final.columns and
                     'haplotype_id' in df_final.columns):
                     try:
                         # Only save individual facets if enabled (off by default for performance)
@@ -1300,10 +1486,10 @@ def run_pipeline(
 
                         faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_faceted.{fmt}"),
+                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_bar_faceted", fmt)),
                             genotype_column='haplotype_id',
                             species_column='assigned_sp',
-                            basin_column='ocean_basin',
+                            basin_column=geo_category,
                             dpi=cfg.visualization.facet_dpi,
                             facet_by=cfg.visualization.facet_by,
                             genotype_plots_dir=dirs['haplotype_plots'],
@@ -1311,7 +1497,7 @@ def run_pipeline(
                         )
                         # Save plot data as JSON for interactive plotting in HTML report
                         if faceted_bar_data:
-                            json_path = dirs['visualization'] / f"{organism}_distribution_bar_faceted_data.json"
+                            json_path = dirs['visualization_json'] / f"{organism}_distribution_bar_faceted_data.json"
                             with open(json_path, 'w') as f:
                                 json.dump(faceted_bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
@@ -1319,22 +1505,22 @@ def run_pipeline(
                         # Species-faceted version (explicit filename for clarity)
                         species_bar_path, species_bar_data = visualization.plot_ocean_basin_abundance_faceted(
                             df=df_final,
-                            output_path=str(dirs['visualization'] / f"{organism}_distribution_bar_species_faceted.{fmt}"),
+                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_bar_species_faceted", fmt)),
                             genotype_column='haplotype_id',
                             species_column='assigned_sp',
-                            basin_column='ocean_basin',
+                            basin_column=geo_category,
                             dpi=cfg.visualization.facet_dpi,
                             facet_by='species',
                             genotype_plots_dir=dirs['haplotype_plots'],
                             formats=facet_formats
                         )
                         if species_bar_data:
-                            json_path = dirs['visualization'] / f"{organism}_distribution_bar_species_faceted_data.json"
+                            json_path = dirs['visualization_json'] / f"{organism}_distribution_bar_species_faceted_data.json"
                             with open(json_path, 'w') as f:
                                 json.dump(species_bar_data, f, indent=2)
                             logger.debug(f"Saved species-faceted plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Faceted basin bar plot skipped: {e}")
+                        logger.debug(f"Faceted geographic region bar plot skipped: {e}")
             else:
                 logger.info("  ⊘ Skipping geographic visualizations (geographic analysis not performed)")
 
@@ -1509,6 +1695,20 @@ def run_pipeline(
     else:
         logger.info("")
         logger.info("HTML report generation skipped (--no-report)")
+
+    # ========================================================================
+    # Cleanup: Remove Intermediate Directory (unless --keep-intermediates)
+    # ========================================================================
+    if not cfg.keep_intermediates:
+        intermediate_dir = output_dir / 'intermediate'
+        if intermediate_dir.exists():
+            import shutil
+            try:
+                shutil.rmtree(intermediate_dir)
+                logger.info("")
+                logger.info("Removed intermediate directory")
+            except Exception as e:
+                logger.debug(f"Could not remove intermediate directory: {e}")
 
     # ========================================================================
     # Pipeline Complete
@@ -1773,7 +1973,8 @@ def main_sweep(argv=None) -> int:
     """
     CLI entry point for the 'boldgenotyper-sweep' command.
 
-    Test multiple parameter values to optimize clustering thresholds.
+    Sweep min_singleton_distance across a range of values to find the
+    optimal singleton error-filtering threshold for the dataset.
 
     Example:
         boldgenotyper-sweep Sphyrna_lewini.tsv \
@@ -1782,7 +1983,7 @@ def main_sweep(argv=None) -> int:
     """
     parser = argparse.ArgumentParser(
         prog="boldgenotyper-sweep",
-        description="Parameter sweep tool for threshold optimization",
+        description="Sweep min_singleton_distance to optimise singleton error filtering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -2122,9 +2323,21 @@ Examples:
   # Skip geographic plots or the HTML report
   boldgenotyper data/Euprymna.tsv --no-geo --no-report
 
+  # Custom geographic analysis for freshwater organisms (HydroBASINS)
+  boldgenotyper data/Salmonidae.tsv --build-tree \\
+                --custom-shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp \\
+                --shp-field HYBAS_ID --geo-category freshwater_basin
+
+  # Custom geographic analysis for terrestrial organisms (Ecoregions2017)
+  boldgenotyper data/Pieridae.tsv --build-tree \\
+                --custom-shp Ecoregions2017/Ecoregions2017.shp \\
+                --shp-field ECO_NAME --geo-category ecoregion
+
 Notes:
   - Phylogeny requires MAFFT and FastTree in PATH; trimAl is used if available.
   - Trees are built from haplotypes and relabeled with haplotype_sp by default.
+  - Geographic analysis uses GOaS ocean basins by default; use --custom-shp for other regions.
+  - Custom shapefiles support freshwater basins, terrestrial ecoregions, or any spatial regions.
   - Plot regeneration kits are exported by default; use --no-export-plot-data to skip.
   - Reports go to the output folder (reports/, visualization/, phylogenetic/).
 """
@@ -2250,10 +2463,75 @@ Notes:
     )
 
     parser.add_argument(
+        '--custom-shp',
+        type=Path,
+        default=None,
+        dest='shapefile_path',
+        help='Path to custom shapefile for geographic region assignment. '
+             'Use this to analyze freshwater basins, terrestrial ecoregions, or other geographic regions '
+             'instead of the default ocean basins. '
+             'Examples: HydroBASINS for freshwater, Ecoregions2017 for terrestrial.'
+    )
+
+    parser.add_argument(
+        '--shp-field',
+        type=str,
+        default='name',
+        dest='shapefile_field',
+        help='Name of shapefile attribute containing region labels (default: "name"). '
+             'Examples: "ECO_NAME" for Ecoregions2017, "HYBAS_ID" for HydroBASINS. '
+             'Use this to specify which field in your shapefile contains the region identifiers.'
+    )
+
+    parser.add_argument(
+        '--geo-category',
+        type=str,
+        default='ocean_basin',
+        dest='geo_category',
+        help='Name for geographic category in outputs (default: "ocean_basin"). '
+             'Examples: "ecoregion", "freshwater_basin", "watershed", "biome". '
+             'This label will be used in output files, plots, and column names.'
+    )
+
+    # Metadata Analysis Arguments (enabled by default)
+    parser.add_argument(
+        '--no-metadata-analysis',
+        action='store_true',
+        help='Disable metadata analysis module (enabled by default)'
+    )
+
+    parser.add_argument(
+        '--metadata-fields',
+        nargs='+',
+        default=None,
+        help='Metadata fields to analyze. Default: sex, life_stage, reproduction, '
+             'country/ocean, country_iso, province/state, realm, biome, ecoregion, habitat, geoid'
+    )
+
+    parser.add_argument(
+        '--no-normalize-sex',
+        action='store_true',
+        help='Do not normalize sex values. By default, sex values are normalized '
+             '(M/Male/m -> Male, F/Female/f -> Female).'
+    )
+
+    parser.add_argument(
+        '--no-temporal-analysis',
+        action='store_true',
+        help='Disable temporal analysis of collection dates (enabled by default)'
+    )
+
+    parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         default='INFO',
         help='Logging verbosity (default: INFO)'
+    )
+
+    parser.add_argument(
+        '--keep-intermediates',
+        action='store_true',
+        help='Keep intermediate files (default: remove after pipeline completion)'
     )
 
     parser.add_argument(
@@ -2267,6 +2545,11 @@ Notes:
     # Validate input file
     if not args.tsv.exists():
         print(f"Error: Input TSV file not found: {args.tsv}", file=sys.stderr)
+        return 1
+
+    # Validate custom shapefile if provided
+    if args.shapefile_path and not args.shapefile_path.exists():
+        print(f"Error: Custom shapefile not found: {args.shapefile_path}", file=sys.stderr)
         return 1
 
     # Determine organism name and sanitize for consistent file naming
@@ -2298,7 +2581,7 @@ Notes:
         phylogenetic__outgroup_fasta=args.phylo_outgroup_fasta,
         phylogenetic__outgroup_label=args.phylo_outgroup_label,
         phylogenetic__outgroup_taxon=args.phylo_outgroup_taxon,
-        keep_intermediates=True
+        keep_intermediates=args.keep_intermediates
     )
 
     # Print banner
@@ -2319,6 +2602,15 @@ Notes:
     print(f"  Phylo outgroup FASTA: {args.phylo_outgroup_fasta or 'None'}")
     print(f"  Phylo outgroup label: {args.phylo_outgroup_label or 'None'}")
     print(f"  Phylo outgroup taxon: {args.phylo_outgroup_taxon or 'None'}")
+    if args.no_geo:
+        print(f"  Geographic analysis: Disabled")
+    elif args.shapefile_path:
+        print(f"  Geographic analysis: Custom shapefile")
+        print(f"    Shapefile: {args.shapefile_path}")
+        print(f"    Field: {args.shapefile_field}")
+        print(f"    Category: {args.geo_category}")
+    else:
+        print(f"  Geographic analysis: Default (GOaS ocean basins)")
     print("=" * 80)
     print()
 
@@ -2331,8 +2623,15 @@ Notes:
             cfg=cfg,
             no_report=args.no_report,
             skip_geo=args.no_geo,
-        export_plot_data=not args.no_export_plot_data,
-            export_popgen_formats=args.export_format
+            export_plot_data=not args.no_export_plot_data,
+            export_popgen_formats=args.export_format,
+            metadata_analysis_enabled=not args.no_metadata_analysis,
+            metadata_fields=args.metadata_fields,
+            normalize_sex=not args.no_normalize_sex,
+            temporal_analysis=not args.no_temporal_analysis,
+            shapefile_path=args.shapefile_path,
+            shapefile_field=args.shapefile_field,
+            geo_category=args.geo_category
         )
 
         return 0 if success else 1

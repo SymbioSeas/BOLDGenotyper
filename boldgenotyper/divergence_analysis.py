@@ -167,29 +167,17 @@ def calculate_pairwise_divergence_matrix(
         seq_id = record.id
         sequences[seq_id] = str(record.seq)
 
-    # Create labels mapping consensus_group to species
-    group_to_species = {}
-    if 'consensus_group' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
-        group_to_species = dict(zip(
-            taxonomy_df['consensus_group'],
-            taxonomy_df['assigned_sp']
-        ))
+    # Build label map: haplotype_id -> haplotype_sp (e.g. "h1_n5" -> "Salmo salar h1_n5")
+    id_to_sp = {}
+    if 'haplotype_id' in taxonomy_df.columns and 'haplotype_sp' in taxonomy_df.columns:
+        id_to_sp = dict(zip(taxonomy_df['haplotype_id'], taxonomy_df['haplotype_sp']))
 
-    # Create row labels (consensus_group_species format)
+    # Create row labels using haplotype_sp if available, else keep raw seq_id
     labels = []
     seq_ids = list(sequences.keys())
 
     for seq_id in seq_ids:
-        # Extract consensus group from sequence ID
-        # Assuming format like "consensus_c1" or just "c1"
-        group = seq_id.replace('consensus_', '')
-        species = group_to_species.get(group, group_to_species.get(seq_id, ''))
-
-        if species:
-            label = f"{group}_{species.replace(' ', '_')}"
-        else:
-            label = group
-
+        label = id_to_sp.get(seq_id, seq_id)
         labels.append(label)
 
     # Calculate pairwise distances
@@ -244,19 +232,23 @@ def generate_divergence_summary(
 
     labels = divergence_matrix.index.tolist()
 
-    # Parse labels to extract group and species
-    def parse_label(label):
-        """Extract consensus group and species from label."""
-        parts = label.split('_')
-        if len(parts) >= 2:
-            group = parts[0]
-            species = '_'.join(parts[1:])
-        else:
-            group = label
-            species = ''
-        return group, species
+    # Build label→species mapping from taxonomy_df
+    label_to_species = {}
+    if 'haplotype_sp' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
+        label_to_species = dict(zip(taxonomy_df['haplotype_sp'], taxonomy_df['assigned_sp']))
+    # Also map by haplotype_id in case labels are raw IDs
+    if 'haplotype_id' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
+        id_to_sp = dict(zip(taxonomy_df['haplotype_id'], taxonomy_df['assigned_sp']))
+        for hid, sp in id_to_sp.items():
+            if hid not in label_to_species:
+                label_to_species[hid] = sp
 
-    group_species_map = {label: parse_label(label) for label in labels}
+    def get_group_species(label):
+        """Extract group and species from label using taxonomy mapping."""
+        species = label_to_species.get(label, '')
+        return label, species
+
+    group_species_map = {label: get_group_species(label) for label in labels}
 
     # Calculate within-species and between-species divergences
     for i, label1 in enumerate(labels):
@@ -313,12 +305,12 @@ def generate_divergence_summary(
     if len(summary_df) > 0:
         agg_summary = summary_df.groupby(
             ['comparison_type', 'species_pair']
-        )['divergence'].agg(['mean', 'std', 'min', 'max', 'count'])
+        )['divergence'].agg(['mean', 'min', 'max'])
 
         agg_summary = agg_summary.reset_index()
         agg_summary.columns = [
             'comparison_type', 'species_pair', 'mean_divergence',
-            'sd_divergence', 'min_divergence', 'max_divergence', 'n_comparisons'
+            'min_divergence', 'max_divergence'
         ]
 
         return agg_summary
@@ -349,18 +341,17 @@ def analyze_barcoding_gap(
 
     labels = divergence_matrix.index.tolist()
 
-    # Parse labels
-    def parse_label(label):
-        parts = label.split('_')
-        if len(parts) >= 2:
-            group = parts[0]
-            species = '_'.join(parts[1:])
-        else:
-            group = label
-            species = ''
-        return group, species
+    # Build label→species mapping from taxonomy_df
+    label_to_species = {}
+    if 'haplotype_sp' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
+        label_to_species = dict(zip(taxonomy_df['haplotype_sp'], taxonomy_df['assigned_sp']))
+    if 'haplotype_id' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
+        id_to_sp = dict(zip(taxonomy_df['haplotype_id'], taxonomy_df['assigned_sp']))
+        for hid, sp in id_to_sp.items():
+            if hid not in label_to_species:
+                label_to_species[hid] = sp
 
-    group_species_map = {label: parse_label(label) for label in labels}
+    group_species_map = {label: (label, label_to_species.get(label, '')) for label in labels}
 
     # Collect within and between species divergences
     within_species = {}
@@ -471,9 +462,24 @@ def create_divergence_heatmap(
     row_linkage = linkage(dist_array, method="complete")
     col_linkage = linkage(dist_array, method="complete")
 
-    # Determine figure size based on matrix size
+    # Adaptive sizing based on matrix dimensions
     n = len(mat)
-    figsize = (max(9, n * 0.4), max(9, n * 0.4))
+    if n <= 20:
+        figsize = (max(9, n * 0.5), max(9, n * 0.5))
+        annotation_fontsize = 8
+        tick_fontsize = 9
+    elif n <= 50:
+        figsize = (max(12, n * 0.35), max(12, n * 0.35))
+        annotation_fontsize = 6
+        tick_fontsize = 7
+    elif n <= 100:
+        figsize = (max(15, n * 0.25), max(15, n * 0.25))
+        annotation_fontsize = 5
+        tick_fontsize = 6
+    else:
+        figsize = (max(20, n * 0.2), max(20, n * 0.2))
+        annotation_fontsize = 4
+        tick_fontsize = 5
 
     # Color map settings
     cmap = sns.color_palette("mako_r", as_cmap=True)
@@ -524,7 +530,7 @@ def create_divergence_heatmap(
                     "×",
                     ha="center",
                     va="center",
-                    fontsize=8,
+                    fontsize=annotation_fontsize,
                     color="black",
                 )
             else:
@@ -536,18 +542,18 @@ def create_divergence_heatmap(
                     f"{val:.3f}",
                     ha="center",
                     va="center",
-                    fontsize=7.5,
+                    fontsize=annotation_fontsize,
                     color=txt_color,
                 )
 
     # Rotate tick labels for readability
     for tick in ax.get_xticklabels():
-        tick.set_fontsize(9)
+        tick.set_fontsize(tick_fontsize)
         tick.set_rotation(45)
         tick.set_ha("right")
 
     for tick in ax.get_yticklabels():
-        tick.set_fontsize(9)
+        tick.set_fontsize(tick_fontsize)
 
     # Add title
     plt.subplots_adjust(top=0.96)
@@ -581,18 +587,17 @@ def create_barcoding_gap_plot(
 
     labels = divergence_matrix.index.tolist()
 
-    # Parse labels
-    def parse_label(label):
-        parts = label.split('_')
-        if len(parts) >= 2:
-            group = parts[0]
-            species = '_'.join(parts[1:])
-        else:
-            group = label
-            species = ''
-        return group, species
+    # Build label→species mapping from taxonomy_df
+    label_to_species = {}
+    if 'haplotype_sp' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
+        label_to_species = dict(zip(taxonomy_df['haplotype_sp'], taxonomy_df['assigned_sp']))
+    if 'haplotype_id' in taxonomy_df.columns and 'assigned_sp' in taxonomy_df.columns:
+        id_to_sp = dict(zip(taxonomy_df['haplotype_id'], taxonomy_df['assigned_sp']))
+        for hid, sp in id_to_sp.items():
+            if hid not in label_to_species:
+                label_to_species[hid] = sp
 
-    group_species_map = {label: parse_label(label) for label in labels}
+    group_species_map = {label: (label, label_to_species.get(label, '')) for label in labels}
 
     # Collect divergences
     within_divergences = []
@@ -757,15 +762,21 @@ def generate_divergence_analysis(
 
 ## Overview
 
-This directory contains pairwise divergence analysis results for consensus sequences.
+This directory contains pairwise divergence analysis results for haplotype sequences.
 
 ## Files
 
 - **pairwise_divergence_matrix.csv**: Square matrix of uncorrected p-distances
-- **divergence_summary.csv**: Summary statistics by comparison type
+- **divergence_summary.csv**: Summary statistics by comparison type (mean, min, max divergence)
 - **within_vs_between_species.csv**: Barcoding gap analysis per species
 - **divergence_heatmap.pdf**: Visual heatmap of pairwise divergences
 - **barcoding_gap.pdf**: Within vs between species divergence distributions
+
+## Haplotype Label Format
+
+Haplotype labels follow the format `h{{number}}_n{{count}}`:
+- `h1_n45` = Haplotype 1 with 45 member sequences
+- `h2_n12` = Haplotype 2 with 12 member sequences
 
 ## Interpretation
 
@@ -786,6 +797,12 @@ This directory contains pairwise divergence analysis results for consensus seque
 A "barcoding gap" exists when the minimum between-species divergence exceeds
 the maximum within-species divergence. This indicates clear species boundaries
 and supports species delimitation.
+
+## FASTA Files
+
+The pipeline produces two FASTA files with different purposes:
+- **haplotypes.fasta** (in haplotypes/): Ungapped sequences for downstream use
+- **consensus_aligned.fasta** (in intermediate/): Aligned sequences used for divergence calculation
 
 ## Methodology
 

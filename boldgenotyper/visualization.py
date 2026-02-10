@@ -512,11 +512,22 @@ def plot_distribution_map(
         fontsize=9
     )
     plt.tight_layout()
-    if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
-    else:
-        plt.savefig(out, bbox_inches="tight")
-    plt.close()
+    try:
+        if out.suffix.lower() == ".png":
+            plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        else:
+            plt.savefig(out, bbox_inches="tight")
+
+        # Validate the saved file
+        if out.exists() and out.stat().st_size < 1024:
+            logger.warning(f"Distribution map file appears damaged (size={out.stat().st_size} bytes), removing: {out}")
+            out.unlink()
+    except Exception as e:
+        logger.warning(f"Failed to save distribution map: {e}")
+        if out.exists():
+            out.unlink()
+    finally:
+        plt.close()
 
     # Prepare data for interactive plotting
     sample_counts = d.groupby(genotype_column).size().to_dict()
@@ -561,6 +572,7 @@ def plot_ocean_basin_abundance(
     basin_column: str = "ocean_basin",
     figsize: Tuple[int, int] = (10, 6),
     dpi: int = 300,
+    basin_label: Optional[str] = None,
 ) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create stacked bar chart showing genotype proportions by ocean basin.
@@ -579,6 +591,8 @@ def plot_ocean_basin_abundance(
         Figure size in inches (default: 10x6)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+    basin_label : str, optional
+        Label for x-axis (default: derived from basin_column)
 
     Returns
     -------
@@ -592,6 +606,11 @@ def plot_ocean_basin_abundance(
     for c in need:
         if c not in df.columns:
             raise ValueError(f"Column '{c}' not found in dataframe")
+
+    # Generate axis label from basin_column if not provided
+    if basin_label is None:
+        basin_label = basin_column.replace('_', ' ').title()
+
     d = df.copy()
     d[basin_column] = d[basin_column].fillna("Unknown")
     d[genotype_column] = d[genotype_column].fillna("Unassigned")
@@ -643,7 +662,7 @@ def plot_ocean_basin_abundance(
         bottom = vals if bottom is None else bottom + vals
 
     ax.set_ylabel("Relative abundance")
-    ax.set_xlabel("Ocean basin")
+    ax.set_xlabel(basin_label)
     ax.set_ylim(0, 1.0)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v*100)}%"))
     ax.legend(title="Genotype", bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False)
@@ -691,6 +710,7 @@ def plot_ocean_basin_abundance_total(
     basin_column: str = "ocean_basin",
     figsize: Tuple[int, int] = (10, 6),
     dpi: int = 300,
+    basin_label: Optional[str] = None,
 ) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create stacked bar chart showing total genotype counts by ocean basin.
@@ -712,6 +732,8 @@ def plot_ocean_basin_abundance_total(
         Figure size in inches (default: 10x6)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+    basin_label : str, optional
+        Label for x-axis (default: derived from basin_column)
 
     Returns
     -------
@@ -725,6 +747,11 @@ def plot_ocean_basin_abundance_total(
     for c in need:
         if c not in df.columns:
             raise ValueError(f"Column '{c}' not found in dataframe")
+
+    # Generate axis label from basin_column if not provided
+    if basin_label is None:
+        basin_label = basin_column.replace('_', ' ').title()
+
     d = df.copy()
     d[basin_column] = d[basin_column].fillna("Unknown")
     d[genotype_column] = d[genotype_column].fillna("Unassigned")
@@ -774,7 +801,7 @@ def plot_ocean_basin_abundance_total(
         bottom = vals if bottom is None else bottom + vals
 
     ax.set_ylabel("Total sample count")
-    ax.set_xlabel("Ocean basin")
+    ax.set_xlabel(basin_label)
     # Don't set ylim to 1.0 - let it auto-scale based on counts
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v)}"))
     ax.legend(title="Genotype", bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False)
@@ -952,7 +979,11 @@ def plot_distribution_map_faceted(
     # Create figure with cartopy projection for each subplot
     logger.info(f"Creating faceted distribution map with {'cartopy' if use_cartopy else 'simple'} backgrounds, "
                 f"faceting by {facet_by}")
-    fig_height = height_per_facet * n_facets
+    # Cap total figure height to prevent excessively large figures
+    fig_height = min(height_per_facet * n_facets, 200)
+    # Reduce height_per_facet dynamically for many facets
+    if n_facets > 40:
+        fig_height = min(n_facets * 3, 200)
     fig = plt.figure(figsize=(width, fig_height))
 
     axes = []
@@ -1057,6 +1088,35 @@ def plot_distribution_map_faceted(
                      fontsize=8,
                      title_fontsize=8)
 
+        # Add color legend for haplotypes when faceted by species
+        if facet_by == "species" and len(facet_genotypes) > 0:
+            from matplotlib.lines import Line2D
+            color_legend_elements = [
+                Line2D([0], [0], marker='o', color='w',
+                       markerfacecolor=color_map[g], markersize=8,
+                       label=str(g), markeredgecolor='black', markeredgewidth=0.5)
+                for g in facet_genotypes
+            ]
+            # Place color legend to the right of the plot
+            color_leg = ax.legend(
+                handles=color_legend_elements,
+                loc='upper right',
+                frameon=True,
+                title='Haplotype',
+                fontsize=7,
+                title_fontsize=8,
+                ncol=max(1, len(facet_genotypes) // 8)
+            )
+            # Re-add the size legend (since ax.legend replaces previous)
+            if show_scale_bar:
+                ax.add_artist(color_leg)
+                ax.legend(handles=size_legend_elements,
+                         loc='lower left',
+                         frameon=True,
+                         title='Sample Count',
+                         fontsize=8,
+                         title_fontsize=8)
+
         # Add unknown geography annotation if requested
         if show_unknown_annotation:
             # Count samples in this facet that are missing coordinates in original df
@@ -1103,12 +1163,24 @@ def plot_distribution_map_faceted(
             )
 
     plt.tight_layout()
-    if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
-    else:
-        plt.savefig(out, bbox_inches="tight")
-    plt.close()
-    logger.info(f"Saved faceted distribution map: {out}")
+    try:
+        if out.suffix.lower() == ".png":
+            plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        else:
+            plt.savefig(out, bbox_inches="tight")
+
+        # Validate the saved file
+        if out.exists() and out.stat().st_size < 1024:
+            logger.warning(f"Distribution map file appears damaged (size={out.stat().st_size} bytes), removing: {out}")
+            out.unlink()
+        else:
+            logger.info(f"Saved faceted distribution map: {out}")
+    except Exception as e:
+        logger.warning(f"Failed to save faceted distribution map: {e}")
+        if out.exists():
+            out.unlink()
+    finally:
+        plt.close()
 
 
 def plot_ocean_basin_abundance_faceted(
@@ -1123,6 +1195,7 @@ def plot_ocean_basin_abundance_faceted(
     facet_by: str = "species",
     genotype_plots_dir: Optional[Path] = None,
     formats: Optional[List[str]] = None,
+    basin_label: Optional[str] = None,
 ) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create bar chart with separate facets.
@@ -1156,6 +1229,8 @@ def plot_ocean_basin_abundance_faceted(
         Resolution for PNG output (default: 300)
     facet_by : str, optional
         Faceting mode: "species" or "genotype" (default: "species")
+    basin_label : str, optional
+        Label for x-axis (default: derived from basin_column)
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1163,6 +1238,10 @@ def plot_ocean_basin_abundance_faceted(
     # Validate facet_by parameter
     if facet_by not in ["species", "genotype"]:
         raise ValueError(f"facet_by must be 'species' or 'genotype', got '{facet_by}'")
+
+    # Generate axis label from basin_column if not provided
+    if basin_label is None:
+        basin_label = basin_column.replace('_', ' ').title()
 
     # Validate required columns
     if facet_by == "species":
@@ -1280,7 +1359,7 @@ def plot_ocean_basin_abundance_faceted(
         ax.set_xticks(x_positions)
         ax.set_xticklabels(display_labels)
         ax.set_ylabel("Sample count")
-        ax.set_xlabel("Ocean basin")
+        ax.set_xlabel(basin_label)
         # Format y-axis to show only integers
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, p: f"{int(v)}"))
 
@@ -1328,7 +1407,7 @@ def plot_ocean_basin_abundance_faceted(
     if genotype_plots_dir is not None:
         for idx in range(n_facets):
             if idx < len(axes_flat):
-                axes_flat[idx].set_xlabel("Ocean basin")
+                axes_flat[idx].set_xlabel(basin_label)
 
     # Hide unused subplots if n_facets is odd
     for idx in range(n_facets, len(axes_flat)):
@@ -1894,6 +1973,7 @@ def plot_species_ocean_basin_abundance(
     basin_column: str = "ocean_basin",
     figsize: Tuple[int, int] = (10, 6),
     dpi: int = 300,
+    basin_label: Optional[str] = None,
 ) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create stacked bar chart showing species proportions by ocean basin.
@@ -1915,6 +1995,8 @@ def plot_species_ocean_basin_abundance(
         Figure size in inches (default: 10x6)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+    basin_label : str, optional
+        Label for x-axis (default: derived from basin_column)
 
     Returns
     -------
@@ -1937,6 +2019,7 @@ def plot_species_ocean_basin_abundance(
         output_path=output_path,
         genotype_column=species_column,
         basin_column=basin_column,
+        basin_label=basin_label,
         figsize=figsize,
         dpi=dpi
     )
@@ -1949,6 +2032,7 @@ def plot_species_ocean_basin_abundance_total(
     basin_column: str = "ocean_basin",
     figsize: Tuple[int, int] = (10, 6),
     dpi: int = 300,
+    basin_label: Optional[str] = None,
 ) -> Tuple[Optional[Path], Optional[dict]]:
     """
     Create stacked bar chart showing species total counts by ocean basin.
@@ -1970,6 +2054,8 @@ def plot_species_ocean_basin_abundance_total(
         Figure size in inches (default: 10x6)
     dpi : int, optional
         Resolution for PNG output (default: 300)
+    basin_label : str, optional
+        Label for x-axis (default: derived from basin_column)
 
     Returns
     -------
@@ -1993,7 +2079,8 @@ def plot_species_ocean_basin_abundance_total(
         genotype_column=species_column,
         basin_column=basin_column,
         figsize=figsize,
-        dpi=dpi
+        dpi=dpi,
+        basin_label=basin_label
     )
 
 

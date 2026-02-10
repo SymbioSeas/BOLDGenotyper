@@ -1,32 +1,35 @@
 """
 Parameter Sweep Module for BOLDGenotyper
 
-This module helps users optimize clustering thresholds by testing multiple values
-and visualizing stability. It identifies the "elbow point" where grouping stabilizes
-and provides automated recommendations.
+Sweeps the singleton error-filtering threshold (min_singleton_distance) across
+a range of values to help users choose the setting that best fits their dataset.
 
-Key Features:
-- Test multiple threshold values efficiently
-- Track sample movement between thresholds
-- Generate stability plots and elbow curves
-- Provide automated recommendations
-- Reuse alignments to save time
+The pipeline discovers haplotypes as Exact Sequence Variants (ESVs) — unique
+consensus sequences.  Singletons (one-member haplotypes) that are very close
+to an existing multi-member haplotype are likely sequencing or PCR errors and
+are removed when their nearest-neighbour distance is ≤ min_singleton_distance.
+
+This module runs the pipeline once per threshold value, collects haplotype-level
+and sample-level metrics, and produces:
+- sweep_summary.csv           per-threshold metric table
+- group_membership_tracking.csv  sample-level stability across thresholds
+- threshold_stability.pdf     4-panel stability visualisation
+- elbow_plot.pdf              optimal-threshold detection
+- recommendations.txt         automated interpretation
 
 Author: Steph Smith (steph.smith@unc.edu)
 """
 
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 import logging
 from datetime import datetime
-import subprocess
 import shutil
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +48,7 @@ def run_single_threshold(
     keep_intermediates: bool = False
 ) -> Dict[str, Any]:
     """
-    Run BOLDGenotyper pipeline with a single threshold value.
+    Run BOLDGenotyper pipeline with a single min_singleton_distance value.
 
     Parameters
     ----------
@@ -54,7 +57,8 @@ def run_single_threshold(
     organism : str
         Organism name
     threshold : float
-        Clustering threshold to test
+        Singleton distance threshold to test.  Singletons with nearest-
+        neighbour distance ≤ this value are removed as likely errors.
     output_dir : Path
         Output directory for this run
     threads : int
@@ -76,8 +80,12 @@ def run_single_threshold(
 
     # Load and configure pipeline
     cfg = config.get_default_config()
+    # max_singleton_distance must be ≥ min_singleton_distance; raise it when
+    # the sweep threshold exceeds the default (0.05).
+    max_singleton_dist = max(threshold, cfg.haplotype.max_singleton_distance)
     cfg = cfg.update(
-        dereplication__clustering_threshold=threshold,
+        haplotype__min_singleton_distance=threshold,
+        haplotype__max_singleton_distance=max_singleton_dist,
         genotype_assignment__min_identity=0.5,
         n_threads=threads,
         output_dir=output_dir,
@@ -124,6 +132,10 @@ def extract_run_metrics(
     """
     Extract summary metrics from a completed run.
 
+    Reads two files:
+    - haplotypes/{organism}_haplotype_stats.csv  → haplotype counts
+    - {organism}_annotated.csv                   → sample-level metrics
+
     Parameters
     ----------
     output_dir : Path
@@ -140,100 +152,57 @@ def extract_run_metrics(
     """
     metrics = {'threshold': threshold}
 
-    # Load annotated data
+    # ---------------------------------------------------------------------------
+    # Haplotype-level metrics (from haplotype_stats.csv)
+    # ---------------------------------------------------------------------------
+    stats_path = output_dir / "haplotypes" / f"{organism}_haplotype_stats.csv"
+    if stats_path.exists():
+        stats_df = pd.read_csv(stats_path)
+        metrics['n_haplotypes'] = len(stats_df)
+        if 'is_singleton' in stats_df.columns:
+            metrics['n_singletons'] = int(stats_df['is_singleton'].sum())
+        if 'is_suspect' in stats_df.columns:
+            metrics['n_suspect'] = int(stats_df['is_suspect'].sum())
+
+    # ---------------------------------------------------------------------------
+    # Sample-level metrics (from annotated CSV)
+    # ---------------------------------------------------------------------------
     annotated_path = output_dir / f"{organism}_annotated.csv"
     if not annotated_path.exists():
         return metrics
 
     df = pd.read_csv(annotated_path)
-
-    # Basic metrics
     metrics['n_samples'] = len(df)
 
-    if 'consensus_group' in df.columns:
-        # Number of groups
-        n_groups = df['consensus_group'].nunique()
-        metrics['n_groups'] = n_groups
-
-        # Group sizes
-        group_sizes = df.groupby('consensus_group').size()
-        metrics['n_singletons'] = (group_sizes == 1).sum()
-        metrics['mean_group_size'] = group_sizes.mean()
-        metrics['median_group_size'] = group_sizes.median()
-        metrics['max_group_size'] = group_sizes.max()
-
-    # Identity metrics - read from diagnostics file
-    diagnostics_dir = output_dir / "genotype_assignments"
-    # Accept both legacy and current diagnostics filenames
-    diagnostics_candidates = [
-        diagnostics_dir / f"{organism}_assignment_diagnostics.csv",
-        diagnostics_dir / f"{organism}_diagnostics.csv"
-    ]
-    diagnostics_path = next((p for p in diagnostics_candidates if p.exists()), None)
-
-    if diagnostics_path:
-        try:
-            diag_df = pd.read_csv(diagnostics_path)
-            if 'identity' in diag_df.columns:
-                # Calculate mean and median identity for assigned samples
-                assigned_diag = diag_df[diag_df['identity'].notna()]
-                if len(assigned_diag) > 0:
-                    identities = assigned_diag['identity']
-                    # Identity is stored as proportion (0-1); scale to percent for reporting
-                    if identities.max() <= 1.0:
-                        identities = identities * 100
-                    metrics['mean_identity'] = identities.mean()
-                    metrics['median_identity'] = identities.median()
-                else:
-                    metrics['mean_identity'] = None
-                    metrics['median_identity'] = None
-            else:
-                metrics['mean_identity'] = None
-                metrics['median_identity'] = None
-        except Exception as e:
-            logger.debug(f"Could not read identity from diagnostics: {e}")
-            metrics['mean_identity'] = None
-            metrics['median_identity'] = None
-    else:
-        # Fallback: try annotated file
-        if 'identity' in df.columns:
-            assigned_ann = df[df['identity'].notna()]
-            if len(assigned_ann) > 0:
-                metrics['mean_identity'] = assigned_ann['identity'].mean()
-                metrics['median_identity'] = assigned_ann['identity'].median()
-            else:
-                metrics['mean_identity'] = None
-                metrics['median_identity'] = None
-        else:
-            metrics['mean_identity'] = None
-            metrics['median_identity'] = None
-
-    # Assignment metrics
-    if 'consensus_group' in df.columns:
-        assigned = df[df['consensus_group'].notna()]
+    # Assignment coverage: fraction of samples assigned to a haplotype
+    if 'haplotype_id' in df.columns:
+        assigned = df[df['haplotype_id'].notna()]
         metrics['pct_assigned'] = (len(assigned) / len(df) * 100) if len(df) > 0 else 0
 
-    # Quality flags
-    if 'is_tie' in df.columns:
-        ties = df['is_tie'].sum() if df['is_tie'].dtype == bool else (df['is_tie'] == True).sum()
-        metrics['pct_tie'] = (ties / len(df) * 100) if len(df) > 0 else 0
-
-    if 'potential_misidentification' in df.columns:
-        low_conf = df['potential_misidentification'].sum() if df['potential_misidentification'].dtype == bool else (df['potential_misidentification'] == True).sum()
-        metrics['pct_low_confidence'] = (low_conf / len(df) * 100) if len(df) > 0 else 0
-
-    # Species metrics
+    # Species richness (from depositor taxonomy — constant across thresholds,
+    # included for completeness in the summary table)
     if 'species' in df.columns:
         metrics['n_species_detected'] = df['species'].nunique()
 
-    # Mixed groups
-    if 'group_species_count' in df.columns:
-        mixed = df.groupby('consensus_group')['group_species_count'].first()
-        metrics['n_mixed_groups'] = (mixed > 1).sum() if len(mixed) > 0 else 0
+    # Potential misidentification flags — fraction of samples whose assigned
+    # haplotype does not match their depositor species.  Can change when
+    # singleton removal causes samples to be reassigned.
+    if 'potential_misidentification' in df.columns:
+        misid = (
+            df['potential_misidentification'].sum()
+            if df['potential_misidentification'].dtype == bool
+            else (df['potential_misidentification'] == True).sum()
+        )
+        metrics['pct_potential_misid'] = (misid / len(df) * 100) if len(df) > 0 else 0
 
-    # Group purity
-    if 'group_majority_pct' in df.columns:
-        purities = df.groupby('consensus_group')['group_majority_pct'].first()
+    # Mixed haplotype groups (haplotypes containing >1 depositor species)
+    if 'group_species_count' in df.columns and 'haplotype_id' in df.columns:
+        mixed = df.groupby('haplotype_id')['group_species_count'].first()
+        metrics['n_mixed_groups'] = int((mixed > 1).sum()) if len(mixed) > 0 else 0
+
+    # Average group purity
+    if 'group_majority_pct' in df.columns and 'haplotype_id' in df.columns:
+        purities = df.groupby('haplotype_id')['group_majority_pct'].first()
         metrics['avg_group_purity'] = purities.mean() if len(purities) > 0 else 0
 
     return metrics
@@ -241,29 +210,31 @@ def extract_run_metrics(
 
 def cleanup_intermediate_files(output_dir: Path) -> None:
     """
-    Remove intermediate files to save space.
+    Remove per-threshold output directories that are no longer needed after
+    metrics have been extracted.  Retains only the annotated CSV and haplotype
+    stats that the analysis scripts read.
 
     Parameters
     ----------
     output_dir : Path
         Output directory to clean
     """
-    # Keep only essential files
-    keep_patterns = [
-        '*_annotated.csv',
-        '*_consensus.fasta',
-        '*_diagnostics.csv',
-        '*_consensus_taxonomy.csv'
+    # These directories are produced by the sweep runs but are not needed
+    # once extract_run_metrics has pulled the numbers.
+    removable = [
+        'haplotype_assignments',
+        'species_analysis',
+        'taxonomy',
+        # Legacy names kept for safety if an older pipeline version wrote them
+        'intermediate',
+        'visualization',
+        'phylogenetic',
+        'reports',
+        'quality_control',
+        'divergence_analysis',
     ]
-
-    # Remove intermediate directory
-    intermediate_dir = output_dir / 'intermediate'
-    if intermediate_dir.exists():
-        shutil.rmtree(intermediate_dir)
-
-    # Remove other directories
-    for subdir in ['visualization', 'phylogenetic', 'reports', 'quality_control', 'divergence_analysis']:
-        dir_path = output_dir / subdir
+    for name in removable:
+        dir_path = output_dir / name
         if dir_path.exists():
             shutil.rmtree(dir_path)
 
@@ -274,10 +245,11 @@ def track_group_membership(
     thresholds: List[float]
 ) -> pd.DataFrame:
     """
-    Track how samples move between groups as threshold varies.
+    Track how samples move between haplotypes as the singleton distance
+    threshold varies.
 
     Uses a biologically meaningful approach: tracks whether samples cluster
-    WITH THE SAME PARTNERS, regardless of arbitrary group names.
+    WITH THE SAME PARTNERS, regardless of arbitrary haplotype names.
 
     Parameters
     ----------
@@ -296,8 +268,8 @@ def track_group_membership(
     logger.info("  Tracking group membership across thresholds...")
 
     # Load annotated data for each threshold
-    sample_assignments = {}  # threshold -> {sample_id: group_name}
-    group_members = {}  # threshold -> {group_name: set(sample_ids)}
+    sample_assignments = {}  # threshold -> {sample_id: haplotype_id}
+    group_members = {}       # threshold -> {haplotype_id: set(sample_ids)}
 
     for threshold in sorted(thresholds):
         output_dir = run_outputs[threshold]
@@ -305,18 +277,14 @@ def track_group_membership(
 
         if annotated_path.exists():
             df = pd.read_csv(annotated_path)
-            if 'processid' in df.columns and 'consensus_group' in df.columns:
-                # Store sample -> group mapping
-                assignments = dict(zip(df['processid'], df['consensus_group']))
+            if 'processid' in df.columns and 'haplotype_id' in df.columns:
+                assignments = dict(zip(df['processid'], df['haplotype_id']))
                 sample_assignments[threshold] = assignments
 
-                # Store group -> members mapping
                 members = {}
-                for sample, group in assignments.items():
-                    if pd.notna(group):
-                        if group not in members:
-                            members[group] = set()
-                        members[group].add(sample)
+                for sample, hap in assignments.items():
+                    if pd.notna(hap):
+                        members.setdefault(hap, set()).add(sample)
                 group_members[threshold] = members
 
     if not sample_assignments:
@@ -333,17 +301,15 @@ def track_group_membership(
     for sample_id in sorted(all_samples):
         row = {'processid': sample_id}
 
-        # Get assignments at each threshold and track cluster partners
         cluster_partners_by_threshold = []
 
         for threshold in sorted(thresholds):
             if threshold in sample_assignments:
-                group = sample_assignments[threshold].get(sample_id, 'unassigned')
-                row[f't_{threshold}'] = group
+                hap = sample_assignments[threshold].get(sample_id, 'unassigned')
+                row[f't_{threshold}'] = hap
 
-                # Get the set of samples this sample clusters with
-                if pd.notna(group) and group != 'unassigned' and threshold in group_members:
-                    partners = group_members[threshold].get(group, set()) - {sample_id}
+                if pd.notna(hap) and hap != 'unassigned' and threshold in group_members:
+                    partners = group_members[threshold].get(hap, set()) - {sample_id}
                     cluster_partners_by_threshold.append((threshold, partners))
                 else:
                     cluster_partners_by_threshold.append((threshold, set()))
@@ -358,34 +324,28 @@ def track_group_membership(
             prev_threshold, prev_partners = cluster_partners_by_threshold[i-1]
             curr_threshold, curr_partners = cluster_partners_by_threshold[i]
 
-            # Skip if either set is empty (unassigned)
             if not prev_partners and not curr_partners:
                 continue
 
-            # Calculate Jaccard similarity between partner sets
             if prev_partners or curr_partners:
                 intersection = len(prev_partners & curr_partners)
                 union = len(prev_partners | curr_partners)
                 jaccard = intersection / union if union > 0 else 0
 
-                # Consider it a change if Jaccard similarity < 0.7
-                # (more than 30% of partners changed)
+                # A change is counted when >30% of partners differ
                 if jaccard < 0.7:
                     n_composition_changes += 1
 
         row['n_changes'] = n_composition_changes
 
-        # Add cluster size information
-        cluster_sizes = []
-        for threshold, partners in cluster_partners_by_threshold:
-            cluster_sizes.append(len(partners) + 1)  # +1 for the sample itself
-
+        # Cluster size information
+        cluster_sizes = [len(partners) + 1 for _, partners in cluster_partners_by_threshold]
         if cluster_sizes:
             row['mean_cluster_size'] = np.mean(cluster_sizes)
             row['min_cluster_size'] = min(cluster_sizes)
             row['max_cluster_size'] = max(cluster_sizes)
 
-        # Stability score based on composition changes
+        # Stability score
         if n_composition_changes == 0:
             stability = 'high'
         elif n_composition_changes <= 2:
@@ -404,7 +364,13 @@ def create_threshold_stability_plot(
     output_path: Path
 ) -> None:
     """
-    Create multi-panel stability plot.
+    Create 4-panel stability plot showing key metrics vs threshold.
+
+    Panels:
+      A. Total haplotypes (primary signal of the sweep)
+      B. Singletons retained (expected to drop with rising threshold)
+      C. Suspect haplotypes (distant singletons flagged as contamination)
+      D. Assignment coverage and misidentification rate
 
     Parameters
     ----------
@@ -416,54 +382,63 @@ def create_threshold_stability_plot(
     logger.info("  Creating threshold stability plot...")
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle('Parameter Sweep Stability Analysis', fontsize=16, fontweight='bold')
+    fig.suptitle('Singleton Distance Threshold — Stability Analysis',
+                 fontsize=16, fontweight='bold')
 
-    # Panel 1: Number of groups
-    ax1 = axes[0, 0]
-    ax1.plot(summary_df['threshold'], summary_df['n_groups'], 'o-', linewidth=2, markersize=8)
-    ax1.set_xlabel('Clustering Threshold', fontweight='bold')
-    ax1.set_ylabel('Number of Groups', fontweight='bold')
-    ax1.set_title('Grouping Stability')
-    ax1.grid(alpha=0.3)
+    # Panel A: Number of haplotypes
+    ax = axes[0, 0]
+    ax.plot(summary_df['threshold'], summary_df['n_haplotypes'],
+            'o-', linewidth=2, markersize=8, color='tab:blue')
+    ax.set_xlabel('min_singleton_distance')
+    ax.set_ylabel('Number of Haplotypes')
+    ax.set_title('A. Haplotype Count')
+    ax.grid(alpha=0.3)
 
-    # Panel 2: Mean identity (if available)
-    ax2 = axes[0, 1]
-    if 'mean_identity' in summary_df.columns and summary_df['mean_identity'].notna().any():
-        ax2.plot(summary_df['threshold'], summary_df['mean_identity'], 'o-',
-                 linewidth=2, markersize=8, color='green')
-        ax2.set_xlabel('Clustering Threshold', fontweight='bold')
-        ax2.set_ylabel('Mean Identity (%)', fontweight='bold')
-        ax2.set_title('Assignment Quality')
-        ax2.grid(alpha=0.3)
-    else:
-        ax2.text(0.5, 0.5, 'Identity data not available',
-                ha='center', va='center', transform=ax2.transAxes)
-        ax2.set_title('Assignment Quality (No Data)')
-        ax2.axis('off')
+    # Panel B: Singletons retained
+    ax = axes[0, 1]
+    if 'n_singletons' in summary_df.columns:
+        ax.plot(summary_df['threshold'], summary_df['n_singletons'],
+                'o-', linewidth=2, markersize=8, color='coral')
+    ax.set_xlabel('min_singleton_distance')
+    ax.set_ylabel('Singletons Retained')
+    ax.set_title('B. Singleton Count')
+    ax.grid(alpha=0.3)
 
-    # Panel 3: Assignment rate
-    ax3 = axes[1, 0]
-    ax3.plot(summary_df['threshold'], summary_df['pct_assigned'], 'o-',
-             linewidth=2, markersize=8, color='orange')
-    ax3.set_xlabel('Clustering Threshold', fontweight='bold')
-    ax3.set_ylabel('% Assigned', fontweight='bold')
-    ax3.set_title('Assignment Coverage')
-    ax3.grid(alpha=0.3)
+    # Panel C: Suspect haplotypes
+    ax = axes[1, 0]
+    if 'n_suspect' in summary_df.columns:
+        ax.plot(summary_df['threshold'], summary_df['n_suspect'],
+                'o-', linewidth=2, markersize=8, color='tab:orange')
+    ax.set_xlabel('min_singleton_distance')
+    ax.set_ylabel('Suspect Haplotypes')
+    ax.set_title('C. Suspect Count')
+    ax.grid(alpha=0.3)
 
-    # Panel 4: Singletons
-    ax4 = axes[1, 1]
-    ax4.plot(summary_df['threshold'], summary_df['n_singletons'], 'o-',
-             linewidth=2, markersize=8, color='red')
-    ax4.set_xlabel('Clustering Threshold', fontweight='bold')
-    ax4.set_ylabel('Number of Singletons', fontweight='bold')
-    ax4.set_title('Over-splitting Indicator')
-    ax4.grid(alpha=0.3)
+    # Panel D: Assignment coverage + misidentification rate (dual y-axis)
+    ax = axes[1, 1]
+    if 'pct_assigned' in summary_df.columns:
+        ax.plot(summary_df['threshold'], summary_df['pct_assigned'],
+                'o-', linewidth=2, markersize=8, color='tab:green', label='% Assigned')
+        ax.set_ylabel('% Assigned', color='tab:green')
+        ax.tick_params(axis='y', labelcolor='tab:green')
+
+    if 'pct_potential_misid' in summary_df.columns:
+        ax2 = ax.twinx()
+        ax2.plot(summary_df['threshold'], summary_df['pct_potential_misid'],
+                 's--', linewidth=2, markersize=6, color='tab:red', alpha=0.7,
+                 label='% Misid')
+        ax2.set_ylabel('% Potential Misidentification', color='tab:red')
+        ax2.tick_params(axis='y', labelcolor='tab:red')
+
+    ax.set_xlabel('min_singleton_distance')
+    ax.set_title('D. Assignment Quality')
+    ax.grid(alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"  ✓ Stability plot saved to {output_path}")
+    logger.info(f"  Stability plot saved to {output_path}")
 
 
 def create_elbow_plot(
@@ -472,7 +447,8 @@ def create_elbow_plot(
     recommended_threshold: Optional[float] = None
 ) -> None:
     """
-    Create elbow plot to identify optimal threshold.
+    Create elbow plot showing haplotype count vs threshold with the
+    recommended threshold highlighted.  Secondary axis shows singleton count.
 
     Parameters
     ----------
@@ -487,55 +463,56 @@ def create_elbow_plot(
 
     fig, ax1 = plt.subplots(figsize=(10, 6))
 
-    # Primary axis: Number of groups
-    color = 'tab:blue'
-    ax1.set_xlabel('Clustering Threshold', fontsize=12, fontweight='bold')
-    ax1.set_ylabel('Number of Groups', fontsize=12, fontweight='bold', color=color)
-    ax1.plot(summary_df['threshold'], summary_df['n_groups'], 'o-',
-             linewidth=2, markersize=10, color=color, label='Number of Groups')
-    ax1.tick_params(axis='y', labelcolor=color)
+    # Primary axis: haplotype count
+    color1 = 'tab:blue'
+    ax1.set_xlabel('min_singleton_distance', fontsize=12, fontweight='bold')
+    ax1.set_ylabel('Number of Haplotypes', fontsize=12, fontweight='bold', color=color1)
+    ax1.plot(summary_df['threshold'], summary_df['n_haplotypes'],
+             'o-', linewidth=2, markersize=10, color=color1, label='Haplotypes')
+    ax1.tick_params(axis='y', labelcolor=color1)
     ax1.grid(alpha=0.3)
 
-    # Secondary axis: Mean identity (if available)
-    if 'mean_identity' in summary_df.columns and summary_df['mean_identity'].notna().any():
+    # Secondary axis: singleton count
+    if 'n_singletons' in summary_df.columns and summary_df['n_singletons'].notna().any():
         ax2 = ax1.twinx()
-        color = 'tab:red'
-        ax2.set_ylabel('Mean Identity (%)', fontsize=12, fontweight='bold', color=color)
-        ax2.plot(summary_df['threshold'], summary_df['mean_identity'], 's--',
-                 linewidth=2, markersize=8, color=color, label='Mean Identity', alpha=0.7)
-        ax2.tick_params(axis='y', labelcolor=color)
+        color2 = 'tab:red'
+        ax2.set_ylabel('Singletons Retained', fontsize=12, fontweight='bold', color=color2)
+        ax2.plot(summary_df['threshold'], summary_df['n_singletons'],
+                 's--', linewidth=2, markersize=8, color=color2, label='Singletons', alpha=0.7)
+        ax2.tick_params(axis='y', labelcolor=color2)
 
     # Highlight recommended threshold
     if recommended_threshold is not None:
         ax1.axvline(recommended_threshold, color='green', linestyle='--',
                     linewidth=2, label=f'Recommended: {recommended_threshold}')
 
-    # Title and legend
-    ax1.set_title('Elbow Plot: Optimal Threshold Detection',
+    ax1.set_title('Elbow Plot: Optimal Singleton Distance Threshold',
                   fontsize=14, fontweight='bold', pad=20)
 
-    # Combine legends
+    # Combine legends from both axes
     lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
+    lines2, labels2 = (ax2.get_legend_handles_labels()
+                        if 'ax2' in dir() else ([], []))
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='best')
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"  ✓ Elbow plot saved to {output_path}")
+    logger.info(f"  Elbow plot saved to {output_path}")
 
 
 def find_elbow_point(summary_df: pd.DataFrame) -> float:
     """
-    Find the elbow point in the number of groups curve.
+    Find the elbow point in the haplotype-count curve — the threshold
+    beyond which further increases produce diminishing reductions.
 
-    Uses the "knee" detection algorithm to find where grouping stabilizes.
+    Uses maximum-curvature detection on the second derivative.
 
     Parameters
     ----------
     summary_df : pd.DataFrame
-        Summary metrics
+        Summary metrics (must contain 'threshold' and 'n_haplotypes')
 
     Returns
     -------
@@ -543,20 +520,18 @@ def find_elbow_point(summary_df: pd.DataFrame) -> float:
         Recommended threshold at elbow point
     """
     thresholds = summary_df['threshold'].values
-    n_groups = summary_df['n_groups'].values
+    n_haplotypes = summary_df['n_haplotypes'].values
 
-    # Simple elbow detection: find maximum curvature
-    # Calculate second derivative (rate of change of slope)
     if len(thresholds) < 3:
         return thresholds[len(thresholds) // 2]
 
-    # Calculate first derivative (slope)
-    slopes = np.diff(n_groups) / np.diff(thresholds)
+    # First derivative (slope)
+    slopes = np.diff(n_haplotypes) / np.diff(thresholds)
 
-    # Calculate second derivative (curvature)
+    # Second derivative (curvature)
     curvatures = np.diff(slopes) / np.diff(thresholds[:-1])
 
-    # Find maximum absolute curvature
+    # Maximum absolute curvature = elbow
     elbow_idx = np.argmax(np.abs(curvatures)) + 1
 
     return thresholds[elbow_idx]
@@ -592,136 +567,100 @@ def generate_recommendations(
     # Get metrics for recommended threshold
     rec_row = summary_df[summary_df['threshold'] == recommended_threshold].iloc[0]
 
-    # Define acceptable range (thresholds with similar grouping)
-    rec_n_groups = rec_row['n_groups']
-
-    # Build filter conditions
-    conditions = [
-        (summary_df['n_groups'] >= rec_n_groups * 0.8),
-        (summary_df['n_groups'] <= rec_n_groups * 1.2)
+    # Define acceptable range: thresholds with similar haplotype count (±20%)
+    rec_n_haplotypes = rec_row['n_haplotypes']
+    acceptable = summary_df[
+        (summary_df['n_haplotypes'] >= rec_n_haplotypes * 0.8) &
+        (summary_df['n_haplotypes'] <= rec_n_haplotypes * 1.2)
     ]
-
-    # Add adaptive identity filter only if available
-    if 'mean_identity' in summary_df.columns and summary_df['mean_identity'].notna().any():
-        # Use an adaptive threshold based on the data itself
-        # Instead of hardcoded 95%, use the 75th percentile of mean identities
-        identity_threshold = summary_df['mean_identity'].quantile(0.75)
-        # But don't go below 90% as a safety measure for barcode data
-        identity_threshold = max(identity_threshold, 90.0)
-        conditions.append(summary_df['mean_identity'] >= identity_threshold)
-        logger.debug(f"Using adaptive identity threshold: {identity_threshold:.1f}%")
-    else:
-        identity_threshold = None
-
-    # Combine conditions
-    acceptable = summary_df[pd.concat(conditions, axis=1).all(axis=1)]
-
-    # If no thresholds meet criteria, relax constraints
-    if len(acceptable) == 0:
-        logger.warning("No thresholds meet all criteria; relaxing constraints")
-        # Just use grouping constraint
-        acceptable = summary_df[
-            (summary_df['n_groups'] >= rec_n_groups * 0.8) &
-            (summary_df['n_groups'] <= rec_n_groups * 1.2)
-        ]
 
     if len(acceptable) > 0:
         min_threshold = acceptable['threshold'].min()
         max_threshold = acceptable['threshold'].max()
     else:
-        # Fallback: use recommended threshold ±0.01
         min_threshold = max(summary_df['threshold'].min(), recommended_threshold - 0.01)
         max_threshold = min(summary_df['threshold'].max(), recommended_threshold + 0.01)
 
-    # Generate recommendations text
-    text = f"""Parameter Sweep Analysis Results
-=================================
+    # Singleton counts at boundaries
+    first_row = summary_df.iloc[0]
+    last_row  = summary_df.iloc[-1]
 
-Dataset: {organism}
-Total Samples: {rec_row['n_samples']}
-Threshold Range Tested: {summary_df['threshold'].min():.3f} - {summary_df['threshold'].max():.3f}
-Number of Thresholds Tested: {len(summary_df)}
+    text = f"""Singleton Distance Threshold — Sweep Results
+=============================================
 
-SUMMARY:
---------
-Tested {len(summary_df)} threshold values across {summary_df['threshold'].min():.3f} to {summary_df['threshold'].max():.3f} range.
+Dataset:                  {organism}
+Total Samples:            {rec_row['n_samples']}
+Threshold Range Tested:   {summary_df['threshold'].min():.3f} – {summary_df['threshold'].max():.3f}
+Number of Thresholds:     {len(summary_df)}
 
-KEY FINDINGS:
--------------
-1. Grouping stability achieved at threshold >= {recommended_threshold:.3f}
-   - At {summary_df['threshold'].min():.3f}: {summary_df.iloc[0]['n_groups']} groups
-   - At {recommended_threshold:.3f}: {rec_row['n_groups']} groups (elbow point)
-   - At {summary_df['threshold'].max():.3f}: {summary_df.iloc[-1]['n_groups']} groups
+WHAT WAS SWEPT
+--------------
+min_singleton_distance controls removal of singleton haplotypes (one-member
+ESVs) that are very similar to an existing multi-member haplotype.  These
+singletons are likely sequencing or PCR errors.  A higher threshold removes
+more singletons; a lower threshold retains them.
 
-2. Assignment quality optimal between {min_threshold:.3f} - {max_threshold:.3f}
-   - Assignment rate: {rec_row['pct_assigned']:.1f}%"""
+KEY FINDINGS
+------------
+1. Haplotype count
+   At {summary_df['threshold'].min():.3f}:               {first_row['n_haplotypes']} haplotypes
+   At {recommended_threshold:.3f} (elbow):         {rec_row['n_haplotypes']} haplotypes
+   At {summary_df['threshold'].max():.3f}:               {last_row['n_haplotypes']} haplotypes
 
-    # Add mean identity only if available
-    if 'mean_identity' in rec_row.index and pd.notna(rec_row['mean_identity']):
+2. Singletons retained
+   At {summary_df['threshold'].min():.3f}:               {first_row.get('n_singletons', 'N/A')}
+   At {recommended_threshold:.3f} (elbow):         {rec_row.get('n_singletons', 'N/A')}
+   At {summary_df['threshold'].max():.3f}:               {last_row.get('n_singletons', 'N/A')}
+
+3. Assignment coverage at elbow:  {rec_row.get('pct_assigned', 'N/A'):.1f}%"""
+
+    if 'pct_potential_misid' in rec_row.index and pd.notna(rec_row.get('pct_potential_misid')):
         text += f"""
-   - Mean identity: {rec_row['mean_identity']:.1f}%"""
+   Potential misidentification rate:  {rec_row['pct_potential_misid']:.1f}%"""
 
     text += f"""
 
-3. Singletons and over-splitting:
-   - At {summary_df['threshold'].min():.3f}: {summary_df.iloc[0]['n_singletons']} singletons
-   - At {recommended_threshold:.3f}: {rec_row['n_singletons']} singletons
-   - At {summary_df['threshold'].max():.3f}: {summary_df.iloc[-1]['n_singletons']} singletons
+RECOMMENDATIONS
+---------------
+PRIMARY:  min_singleton_distance = {recommended_threshold:.3f}
+  • Elbow point in the haplotype-count curve
+  • {rec_row['n_haplotypes']} haplotypes, {rec_row.get('n_singletons', 'N/A')} singletons retained
+  • Assignment coverage: {rec_row.get('pct_assigned', 'N/A'):.1f}%
 
-RECOMMENDATIONS:
-----------------
-PRIMARY: threshold = {recommended_threshold:.3f}
-  Rationale:
-  - Elbow point in grouping curve"""
+ACCEPTABLE RANGE:  {min_threshold:.3f} – {max_threshold:.3f}
+  • Haplotype count within ±20% of the elbow value
+  • Use lower end to retain more rare variants
+  • Use upper end for a more conservative (error-filtered) set
 
-    # Add mean identity rationale only if available
-    if 'mean_identity' in rec_row.index and pd.notna(rec_row['mean_identity']):
-        text += f"""
-  - High mean identity ({rec_row['mean_identity']:.1f}%)"""
+AVOID
+-----
+  < {min_threshold:.3f}  — retains singletons that are likely sequencing errors
+  > {max_threshold:.3f}  — removes biologically real rare haplotypes
 
-    text += f"""
-  - Balanced singletons ({rec_row['n_singletons']} groups)
-  - Assignment rate: {rec_row['pct_assigned']:.1f}%
+IMPORTANT NOTES
+---------------
+• These recommendations are based on automated elbow detection.
+• Always visually inspect threshold_stability.pdf to confirm.
+• Biological knowledge and study goals should inform the final choice.
+• group_membership_tracking.csv shows which samples change haplotype
+  assignments across thresholds — samples with stability_score = 'low'
+  warrant manual review.
 
-ACCEPTABLE RANGE: {min_threshold:.3f} - {max_threshold:.3f}
-  Rationale:
-  - Similar grouping structure (±20%)"""
+NEXT STEPS
+----------
+1. Review threshold_stability.pdf and elbow_plot.pdf
 
-    # Add adaptive identity threshold information
-    if identity_threshold is not None:
-        text += f"""
-  - Maintains identity ≥{identity_threshold:.1f}% (data-driven threshold)"""
+2. Run the full pipeline with your chosen threshold.  Set it via the
+   pipeline config:
+       cfg = get_default_config()
+       cfg = cfg.update(haplotype__min_singleton_distance={recommended_threshold:.3f})
+   Or pass it programmatically — there is no dedicated CLI flag for this
+   parameter at present.
 
-    text += """
-  - Similar assignment rates
+3. If the result looks over- or under-split, adjust within the acceptable
+   range and re-run.
 
-IMPORTANT NOTES:
-----------------
-- These recommendations are based on automated elbow detection
-- The identity threshold is adaptively calculated from your data
-- Always visually inspect the stability plots to confirm recommendations
-- Consider biological knowledge and study goals when finalizing threshold
-- For different markers or taxonomic levels, these values may need adjustment
-
-AVOID:
-  - < {min_threshold:.3f}: May over-split (too many groups)
-  - > {max_threshold:.3f}: May under-split (lower identity)
-
-NEXT STEPS:
------------
-1. Review the threshold_stability.pdf plot to visually confirm the elbow point
-
-2. Run full analysis with recommended threshold:
-   boldgenotyper {organism}.tsv --clustering-threshold {recommended_threshold:.3f}
-
-3. If results seem over/under-split, adjust within acceptable range
-
-4. Examine group_membership_tracking.csv to see how samples cluster together
-   - n_changes: Number of times cluster composition changed significantly
-   - stability_score: Overall stability (high/medium/low)
-   - Look for samples with high n_changes - these may be problematic
-
-5. Document threshold choice in methods with justification
+4. Document the threshold and its rationale in your methods section.
 
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
@@ -729,7 +668,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     with open(output_path, 'w') as f:
         f.write(text)
 
-    logger.info(f"  ✓ Recommendations saved to {output_path}")
+    logger.info(f"  Recommendations saved to {output_path}")
 
     return recommended_threshold
 
@@ -745,25 +684,29 @@ def run_parameter_sweep(
     """
     Complete parameter sweep workflow.
 
+    Runs the pipeline once per threshold value, collects metrics, tracks
+    sample-level haplotype membership stability, and generates plots and
+    an automated recommendation.
+
     Parameters
     ----------
     tsv_path : Path
         Input TSV file
     thresholds : list
-        List of thresholds to test
+        min_singleton_distance values to test
     output_dir : Path
         Output directory
     organism : str, optional
-        Organism name
+        Organism name (inferred from TSV path if omitted)
     threads : int
         Number of threads
     keep_intermediates : bool
-        Keep full output for each run
+        Keep full per-threshold output
 
     Returns
     -------
     dict
-        Results and file paths
+        Results including paths to summary files and recommended threshold
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -776,7 +719,7 @@ def run_parameter_sweep(
     logger.info("="*70)
     logger.info(f"BOLDGenotyper Parameter Sweep: {organism}")
     logger.info("="*70)
-    logger.info(f"Testing {len(thresholds)} thresholds: {thresholds}")
+    logger.info(f"Sweeping min_singleton_distance across {len(thresholds)} values: {thresholds}")
     logger.info(f"Output: {output_dir}")
     logger.info("="*70)
 
@@ -816,7 +759,7 @@ def run_parameter_sweep(
     summary_path = output_dir / "sweep_summary.csv"
     summary_df.to_csv(summary_path, index=False)
     results['summary'] = summary_path
-    logger.info(f"✓ Summary table saved: {summary_path}")
+    logger.info(f"Summary table saved: {summary_path}")
 
     # Track group membership
     tracking_df = track_group_membership(run_outputs, organism, thresholds)
@@ -824,7 +767,7 @@ def run_parameter_sweep(
         tracking_path = output_dir / "group_membership_tracking.csv"
         tracking_df.to_csv(tracking_path, index=False)
         results['tracking'] = tracking_path
-        logger.info(f"✓ Group membership tracking saved: {tracking_path}")
+        logger.info(f"Group membership tracking saved: {tracking_path}")
 
     # Create visualizations
     try:
@@ -834,7 +777,7 @@ def run_parameter_sweep(
     except Exception as e:
         logger.warning(f"Could not create stability plot: {e}")
 
-    # Generate recommendations
+    # Generate recommendations and elbow plot
     try:
         recommendations_path = output_dir / "recommendations.txt"
         recommended_threshold = generate_recommendations(
@@ -843,7 +786,6 @@ def run_parameter_sweep(
         results['recommendations'] = recommendations_path
         results['recommended_threshold'] = recommended_threshold
 
-        # Create elbow plot
         elbow_path = output_dir / "elbow_plot.pdf"
         create_elbow_plot(summary_df, elbow_path, recommended_threshold)
         results['elbow_plot'] = elbow_path
@@ -852,73 +794,56 @@ def run_parameter_sweep(
 
     # Create README
     readme_path = output_dir / "README.md"
-    readme_content = f"""# Parameter Sweep Results for {organism}
+    rec_display = results.get('recommended_threshold', 'see recommendations.txt')
+    readme_content = f"""# Parameter Sweep Results — {organism}
 
-## Summary
+## What was swept
 
-Tested {len(thresholds)} clustering thresholds to identify optimal parameter values.
+`min_singleton_distance` — the divergence cutoff below which singleton
+haplotypes (single-member ESVs) are removed as likely sequencing or PCR
+errors.  Higher values filter more aggressively; lower values retain more
+rare variants.
 
-**Recommended Threshold:** {results.get('recommended_threshold', 'See recommendations.txt')}
+## Recommended value
+
+**{rec_display}**  (see `recommendations.txt` for full rationale)
 
 ## Files
 
-- `sweep_summary.csv` - Metrics for all tested thresholds
-- `threshold_stability.pdf` - Multi-panel stability visualization
-- `elbow_plot.pdf` - Optimal threshold detection
-- `group_membership_tracking.csv` - Sample clustering stability across thresholds
-- `recommendations.txt` - Detailed recommendations and rationale
-- `runs/` - Individual outputs for each threshold
+| File | Description |
+|------|-------------|
+| `sweep_summary.csv` | Per-threshold metrics table |
+| `threshold_stability.pdf` | 4-panel stability visualisation |
+| `elbow_plot.pdf` | Optimal-threshold detection |
+| `group_membership_tracking.csv` | Sample-level haplotype stability |
+| `recommendations.txt` | Automated interpretation and next steps |
+| `runs/` | Per-threshold pipeline outputs |
 
-## Key Files Explained
+## Reading group_membership_tracking.csv
 
-### group_membership_tracking.csv
+Each row is one sample.  Columns `t_X.XXX` show which haplotype the sample
+was assigned to at each tested threshold.  The key derived columns are:
 
-This file tracks how samples cluster together across different thresholds using a **biologically meaningful approach**:
+- **n_changes** — number of times the sample's haplotype *composition*
+  changed significantly (Jaccard similarity of cluster partners < 0.7).
+  Low values (0–2) indicate stable assignment.
+- **stability_score** — `high` (0 changes), `medium` (1–2), or `low` (>2).
+  Samples scored `low` are worth investigating manually.
+- **mean / min / max_cluster_size** — size of the sample's haplotype across
+  the sweep.
 
-- **Columns t_X.XXX**: Show which consensus group a sample was assigned to at each threshold
-- **n_changes**: Number of times the sample's cluster COMPOSITION changed significantly
-  - Based on Jaccard similarity of cluster partners (not arbitrary group names)
-  - A change is counted when >30% of cluster partners differ between consecutive thresholds
-  - Low values (0-2) indicate stable clustering
-- **stability_score**: Overall assessment (high/medium/low)
-  - high: n_changes = 0 (sample always clusters with same partners)
-  - medium: n_changes = 1-2 (minor composition changes)
-  - low: n_changes > 2 (unstable clustering - potential problem samples)
-- **mean_cluster_size**: Average number of samples in this sample's cluster across thresholds
-- **min/max_cluster_size**: Size range of clusters this sample belonged to
-
-**Important:** The group NAMES (e.g., c15, c18) are arbitrary and may change between runs.
-What matters is which OTHER samples cluster together, not what the group is called.
+> Haplotype *names* (e.g. `h1_n177`) are arbitrary and may differ between
+> runs.  What matters is which other samples share the same haplotype.
 
 ## Interpretation
 
-See `recommendations.txt` for detailed analysis and next steps.
+See `recommendations.txt`.  The recommended threshold is the elbow point
+where haplotype count stops dropping sharply — balancing error removal
+against retention of biologically real rare variants.
 
-The recommended threshold represents the "elbow point" where:
-1. Grouping structure stabilizes
-2. Identity remains high (data-driven adaptive threshold)
-3. Singletons are minimized
-4. Assignment coverage is maximized
+## Generated
 
-**Note:** Identity thresholds are calculated adaptively from your data, not hardcoded.
-Different markers or taxonomic levels may have different optimal values.
-
-## Next Steps
-
-1. Review `threshold_stability.pdf` to visually confirm the elbow point
-
-2. Examine `group_membership_tracking.csv`:
-   - Sort by n_changes descending to find unstable samples
-   - Investigate samples with stability_score = 'low'
-
-3. Run full analysis with recommended threshold:
-   ```bash
-   boldgenotyper {tsv_path.name} --clustering-threshold {results.get('recommended_threshold', 0.015):.3f}
-   ```
-
-4. Document your threshold choice and rationale in your methods
-
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
 
     with open(readme_path, 'w') as f:
@@ -927,14 +852,13 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     results['readme'] = readme_path
 
     logger.info("="*70)
-    logger.info("✓ Parameter sweep complete!")
+    logger.info("Parameter sweep complete!")
 
-    # Format recommended threshold properly
     rec_threshold = results.get('recommended_threshold', None)
     if rec_threshold is not None and isinstance(rec_threshold, (int, float)):
-        logger.info(f"  Recommended threshold: {rec_threshold:.3f}")
+        logger.info(f"  Recommended min_singleton_distance: {rec_threshold:.3f}")
     else:
-        logger.info(f"  Recommended threshold: N/A")
+        logger.info(f"  Recommended min_singleton_distance: N/A")
 
     logger.info(f"  Results: {output_dir}")
     logger.info("="*70)

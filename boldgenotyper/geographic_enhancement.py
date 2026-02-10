@@ -34,7 +34,8 @@ class GeographicEnhancementError(Exception):
 def assess_geographic_coverage(
     df: pd.DataFrame,
     group_col: str = "haplotype_id",
-    species_col: str = "species"
+    species_col: str = "species",
+    geo_category: str = "ocean_basin"
 ) -> pd.DataFrame:
     """
     Assess geographic data coverage per haplotype.
@@ -47,6 +48,8 @@ def assess_geographic_coverage(
         Column name for haplotype groups
     species_col : str
         Column name for species
+    geo_category : str
+        Geographic category column name (default: 'ocean_basin')
 
     Returns
     -------
@@ -75,13 +78,13 @@ def assess_geographic_coverage(
         if 'lat' in group_df.columns and 'lon' in group_df.columns:
             has_lat_lon = group_df[['lat', 'lon']].notna().all(axis=1).sum()
 
-        if 'ocean_basin' in group_df.columns:
-            has_ocean_basin = group_df['ocean_basin'].notna().sum()
-            # Exclude "Unknown" basins
+        if geo_category in group_df.columns:
+            has_ocean_basin = group_df[geo_category].notna().sum()
+            # Exclude "Unknown" regions
             has_ocean_basin = (
-                (group_df['ocean_basin'].notna()) &
-                (group_df['ocean_basin'] != 'Unknown') &
-                (group_df['ocean_basin'] != '')
+                (group_df[geo_category].notna()) &
+                (group_df[geo_category] != 'Unknown') &
+                (group_df[geo_category] != '')
             ).sum()
 
         if 'country' in group_df.columns:
@@ -122,20 +125,23 @@ def assess_geographic_coverage(
 
 def calculate_basin_assignment_confidence(
     df: pd.DataFrame,
-    goas_data: Optional[Any] = None
+    goas_data: Optional[Any] = None,
+    geo_category: str = "ocean_basin"
 ) -> pd.DataFrame:
     """
-    Calculate confidence levels for ocean basin assignments.
+    Calculate confidence levels for geographic region assignments.
 
-    Confidence is based on distance to basin boundaries. Samples near
+    Confidence is based on distance to region boundaries. Samples near
     boundaries have lower confidence.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Dataframe with lat, lon, and ocean_basin columns
+        Dataframe with lat, lon, and geographic region columns
     goas_data : GeoDataFrame, optional
-        GOaS shapefile data for boundary calculations
+        Shapefile data for boundary calculations
+    geo_category : str
+        Geographic category column name (default: 'ocean_basin')
 
     Returns
     -------
@@ -153,7 +159,7 @@ def calculate_basin_assignment_confidence(
 
     # For samples with coordinates and basin assignments
     has_coords = df['lat'].notna() & df['lon'].notna()
-    has_basin = df['ocean_basin'].notna() & (df['ocean_basin'] != 'Unknown')
+    has_basin = df[geo_category].notna() & (df[geo_category] != 'Unknown') if geo_category in df.columns else pd.Series([False] * len(df), index=df.index)
 
     valid_samples = has_coords & has_basin
 
@@ -178,13 +184,14 @@ def calculate_basin_assignment_confidence(
                 crs="EPSG:4326"
             )
 
-            # For each sample, calculate distance to nearest basin boundary
+            # For each sample, calculate distance to nearest region boundary
             for idx, row in samples_gdf.iterrows():
                 point = row.geometry
-                basin_name = row['ocean_basin']
+                region_name = row[geo_category]
 
-                # Get the basin polygon
-                basin_polygons = goas_data[goas_data['name'] == basin_name]
+                # Get the region polygon (assuming shapefile has 'name' field or custom field)
+                # For GOaS, use 'name'; for custom shapefiles, this might need to match shapefile_field
+                basin_polygons = goas_data[goas_data['name'] == region_name] if 'name' in goas_data.columns else goas_data[goas_data.iloc[:, 0] == region_name]
 
                 if len(basin_polygons) == 0:
                     df.loc[idx, 'basin_confidence'] = 'unknown'
@@ -230,7 +237,8 @@ def generate_missing_data_report(
     df: pd.DataFrame,
     coverage_df: pd.DataFrame,
     output_path: Path,
-    organism: str
+    organism: str,
+    geo_category: str = "ocean_basin"
 ) -> None:
     """
     Generate comprehensive missing data report.
@@ -245,19 +253,21 @@ def generate_missing_data_report(
         Output path for report
     organism : str
         Organism name
+    geo_category : str
+        Geographic category name (default: 'ocean_basin')
     """
     logger.info("  Generating missing data report...")
 
     # Overall statistics
     n_total = len(df)
     n_with_coords = df[['lat', 'lon']].notna().all(axis=1).sum()
-    n_with_basin = ((df['ocean_basin'].notna()) &
-                    (df['ocean_basin'] != 'Unknown') &
-                    (df['ocean_basin'] != '')).sum() if 'ocean_basin' in df.columns else 0
+    n_with_basin = ((df[geo_category].notna()) &
+                    (df[geo_category] != 'Unknown') &
+                    (df[geo_category] != '')).sum() if geo_category in df.columns else 0
     n_with_country = df['country'].notna().sum() if 'country' in df.columns else 0
     n_no_geo = ((~df[['lat', 'lon']].notna().all(axis=1)) &
-                (~df['ocean_basin'].notna()) &
-                (~df['country'].notna())).sum() if 'ocean_basin' in df.columns and 'country' in df.columns else n_total - n_with_coords
+                (~df[geo_category].notna()) &
+                (~df['country'].notna())).sum() if geo_category in df.columns and 'country' in df.columns else n_total - n_with_coords
 
     pct_coords = (n_with_coords / n_total * 100) if n_total > 0 else 0
     pct_basin = (n_with_basin / n_total * 100) if n_total > 0 else 0
@@ -368,7 +378,8 @@ Data Quality Notes:
 def print_geographic_warnings(
     coverage_df: pd.DataFrame,
     overall_pct_basin: float,
-    overall_pct_coords: float
+    overall_pct_coords: float,
+    geo_category: str = "ocean_basin"
 ) -> None:
     """
     Print geographic coverage warnings to console.
@@ -378,9 +389,11 @@ def print_geographic_warnings(
     coverage_df : pd.DataFrame
         Coverage statistics
     overall_pct_basin : float
-        Overall percentage with ocean basins
+        Overall percentage with geographic regions
     overall_pct_coords : float
         Overall percentage with coordinates
+    geo_category : str
+        Geographic category name (default: 'ocean_basin')
     """
     if overall_pct_basin < 25 or overall_pct_coords < 50:
         print("\n" + "="*70)
@@ -388,7 +401,7 @@ def print_geographic_warnings(
         print("="*70)
 
         if overall_pct_basin < 25:
-            print(f"\nOnly {overall_pct_basin:.1f}% of samples have ocean basin assignments")
+            print(f"\nOnly {overall_pct_basin:.1f}% of samples have {geo_category.replace('_', ' ')} assignments")
 
         if overall_pct_coords < 50:
             print(f"Only {overall_pct_coords:.1f}% have precise coordinates")
@@ -396,7 +409,7 @@ def print_geographic_warnings(
         print("\nThis may limit biogeographic conclusions.")
         print("Consider:")
         print("1. Focusing interpretation on samples with coordinates")
-        print("2. Presenting basin analysis as preliminary")
+        print(f"2. Presenting {geo_category.replace('_', ' ')} analysis as preliminary")
         print("3. Acknowledging limitations in manuscript")
 
         # Identify problematic genotypes
@@ -407,9 +420,9 @@ def print_geographic_warnings(
         if len(poor_genotypes) > 0:
             print(f"\n⚠️  {len(poor_genotypes)} genotype(s) with poor geographic coverage:")
             for _, row in poor_genotypes.head(5).iterrows():
-                print(f"  - {row['genotype']}: {row['pct_with_basin']:.1f}% with basins")
+                print(f"  - {row['genotype']}: {row['pct_with_basin']:.1f}% with {geo_category.replace('_', ' ')}")
 
-        print("\nSee: geographic_analysis/geographic_missing_data_report.txt")
+        print("\nSee: geographic_analysis/geographic_coverage.csv for per-haplotype details")
         print("="*70 + "\n")
 
 
@@ -418,7 +431,8 @@ def enhance_geographic_analysis(
     output_dir: Path,
     organism: str,
     group_col: str = "haplotype_id",
-    goas_data: Optional[Any] = None
+    goas_data: Optional[Any] = None,
+    geo_category: str = "ocean_basin"
 ) -> Dict[str, Any]:
     """
     Complete geographic enhancement workflow.
@@ -435,6 +449,8 @@ def enhance_geographic_analysis(
         Column name for haplotype groups
     goas_data : GeoDataFrame, optional
         GOaS data for basin confidence
+    geo_category : str
+        Geographic category name (default: 'ocean_basin')
 
     Returns
     -------
@@ -449,21 +465,21 @@ def enhance_geographic_analysis(
     results = {}
 
     # 1. Assess coverage
-    coverage_df = assess_geographic_coverage(df, group_col=group_col)
+    coverage_df = assess_geographic_coverage(df, group_col=group_col, geo_category=geo_category)
     coverage_path = output_dir / "geographic_coverage.csv"
     coverage_df.to_csv(coverage_path, index=False)
     results['coverage'] = coverage_path
     logger.info(f"  ✓ Coverage assessment saved: {coverage_path}")
 
     # 2. Calculate basin confidence
-    df_enhanced = calculate_basin_assignment_confidence(df, goas_data)
+    df_enhanced = calculate_basin_assignment_confidence(df, goas_data, geo_category=geo_category)
     results['enhanced_df'] = df_enhanced
 
     # Calculate overall statistics
     n_total = len(df)
-    n_with_basin = ((df['ocean_basin'].notna()) &
-                    (df['ocean_basin'] != 'Unknown') &
-                    (df['ocean_basin'] != '')).sum() if 'ocean_basin' in df.columns else 0
+    n_with_basin = ((df[geo_category].notna()) &
+                    (df[geo_category] != 'Unknown') &
+                    (df[geo_category] != '')).sum() if geo_category in df.columns else 0
     n_with_coords = df[['lat', 'lon']].notna().all(axis=1).sum()
 
     overall_pct_basin = (n_with_basin / n_total * 100) if n_total > 0 else 0
@@ -474,15 +490,10 @@ def enhance_geographic_analysis(
         'pct_coords': overall_pct_coords
     }
 
-    # 3. Generate missing data report
-    report_path = output_dir / "geographic_missing_data_report.txt"
-    generate_missing_data_report(df, coverage_df, report_path, organism)
-    results['report'] = report_path
+    # 3. Print warnings
+    print_geographic_warnings(coverage_df, overall_pct_basin, overall_pct_coords, geo_category=geo_category)
 
-    # 4. Print warnings
-    print_geographic_warnings(coverage_df, overall_pct_basin, overall_pct_coords)
-
-    # 5. Create README
+    # 4. Create README
     readme_path = output_dir / "README.md"
     readme_content = f"""# Geographic Analysis for {organism}
 
@@ -493,18 +504,17 @@ Enhanced geographic analysis with coverage assessment and quality metrics.
 ## Files
 
 - `geographic_coverage.csv` - Coverage statistics per haplotype
-- `geographic_missing_data_report.txt` - Detailed coverage report
 - Enhanced annotated CSV includes `basin_confidence` column
 
 ## Coverage Summary
 
-- **Ocean Basins**: {overall_pct_basin:.1f}% of samples
-- **Coordinates**: {overall_pct_coords:.1f}% of samples
+- **Geographic Region**: {overall_pct_basin:.1f}% of samples with region assignment
+- **Coordinates**: {overall_pct_coords:.1f}% of samples with lat/lon
 
 ## Confidence Levels
 
-**Basin Assignment Confidence:**
-- `high`: >50 km from basin boundary
+**Region Assignment Confidence:**
+- `high`: >50 km from region boundary
 - `medium`: 10-50 km from boundary
 - `low`: <10 km from boundary (uncertain assignment)
 - `none`: No coordinates available
@@ -512,19 +522,16 @@ Enhanced geographic analysis with coverage assessment and quality metrics.
 ## Representativeness Scores
 
 **Per-Haplotype Geographic Coverage:**
-- `excellent`: >50% with ocean basin
-- `good`: 25-50% with ocean basin
-- `moderate`: 10-25% with basin OR >50% with coords
-- `poor`: <10% with basin AND <25% with coords
+- `excellent`: >50% with region assignment
+- `good`: 25-50% with region assignment
+- `moderate`: 10-25% with region OR >50% with coords
+- `poor`: <10% with region AND <25% with coords
 - `very_poor`: <10% with any geographic data
 
 ## Interpretation
 
-See `geographic_missing_data_report.txt` for detailed analysis and
-recommendations for manuscript preparation.
-
 Geographic patterns should be interpreted cautiously when coverage is
-poor or moderate. High-confidence basin assignments are preferred for
+poor or moderate. High-confidence region assignments are preferred for
 biogeographic conclusions.
 """
 

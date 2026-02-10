@@ -1139,15 +1139,15 @@ def identify_unique_haplotypes(
     for ungapped_seq, members in sorted(haplotype_groups.items(), key=lambda x: -len(x[1])):
         n_members = len(members)
 
-        # Create haplotype ID
-        hap_id = f"haplotype_h{haplotype_id}_n{n_members}"
+        # Create haplotype ID (simplified format: h1_n8)
+        hap_id = f"h{haplotype_id}_n{n_members}"
 
         # Create SeqRecord with ALIGNED sequence (for distance calculation)
         # The aligned version is needed for pairwise distance matrix
         seq_record = SeqRecord(
             Seq(aligned_seqs[ungapped_seq]),
             id=hap_id,
-            description=f"Haplotype {haplotype_id} with {n_members} sequences"
+            description=""
         )
         haplotype_records.append(seq_record)
 
@@ -1166,16 +1166,27 @@ def identify_unique_haplotypes(
     # Convert mapping to DataFrame
     haplotype_df = pd.DataFrame(haplotype_mapping)
 
-    # Merge with ORF validation if provided
-    if orf_validation_results is not None:
-        haplotype_df = haplotype_df.merge(
-            orf_validation_results[['processid', 'orf_valid', 'orf_coverage', 'internal_stops']],
-            on='processid',
-            how='left'
-        )
+    # Merge with ORF validation if provided and contains non-null data
+    if orf_validation_results is not None and len(orf_validation_results) > 0:
+        orf_cols = ['processid', 'orf_valid', 'orf_coverage', 'internal_stops']
+        available_cols = [c for c in orf_cols if c in orf_validation_results.columns]
+        # Only merge if we have ORF data columns beyond processid
+        if len(available_cols) > 1:
+            orf_data = orf_validation_results[available_cols]
+            # Only include columns that have non-null data
+            cols_with_data = ['processid']
+            for col in available_cols[1:]:
+                if orf_data[col].notna().any():
+                    cols_with_data.append(col)
+            if len(cols_with_data) > 1:
+                haplotype_df = haplotype_df.merge(
+                    orf_data[cols_with_data],
+                    on='processid',
+                    how='left'
+                )
 
     logger.info(f"Identified {len(haplotype_records)} unique haplotypes from {len(headers)} sequences")
-    n_singletons = sum(1 for h in haplotype_records if h.description.endswith("1 sequences"))
+    n_singletons = sum(1 for h in haplotype_records if h.id.endswith("_n1"))
     logger.info(f"  Singletons: {n_singletons} ({n_singletons/len(haplotype_records)*100:.1f}%)")
 
     return haplotype_records, haplotype_df
@@ -1650,7 +1661,7 @@ def merge_zero_divergence_haplotypes(
     merged_records = []
     for hap_id, record in representatives.items():
         n_members = member_counts.get(hap_id, 0)
-        hap_number = int(re.search(r'_h(\d+)', hap_id).group(1))
+        hap_number = int(re.search(r'h(\d+)', hap_id).group(1))
 
         updated_record = SeqRecord(
             record.seq,
@@ -1855,7 +1866,18 @@ def identify_haplotypes(
     logger.info(f"Wrote haplotype mapping to {haplotype_mapping_file}")
 
     haplotype_stats_file = output_path / f"{Path(tsv_path).stem}_haplotype_stats.csv"
-    haplotype_stats.to_csv(haplotype_stats_file, index=False)
+    # Remove ORF columns if they are all empty/null
+    orf_cols = ['min_orf_coverage', 'max_internal_stops', 'suspect_orf_reason', 'has_orf_failure']
+    cols_to_drop = [c for c in orf_cols if c in haplotype_stats.columns and haplotype_stats[c].isna().all()]
+    # Also drop if all values are empty strings or False
+    for c in orf_cols:
+        if c in haplotype_stats.columns and c not in cols_to_drop:
+            if haplotype_stats[c].dtype == 'object' and (haplotype_stats[c] == '').all():
+                cols_to_drop.append(c)
+            elif haplotype_stats[c].dtype == 'bool' and not haplotype_stats[c].any():
+                cols_to_drop.append(c)
+    haplotype_stats_clean = haplotype_stats.drop(columns=cols_to_drop, errors='ignore')
+    haplotype_stats_clean.to_csv(haplotype_stats_file, index=False)
     logger.info(f"Wrote haplotype statistics to {haplotype_stats_file}")
 
     # Cleanup

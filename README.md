@@ -39,7 +39,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - **Automated Genotyping**: Identifies unique COI genotypes through hierarchical clustering and consensus sequence generation
 - **Robust Quality Control**: Multi-stage sequence filtering, coordinate quality assessment, and centroid exclusion
 - **Intelligent Genotype Assignment**: Edit distance-based matching with tie detection and low-confidence flagging
-- **Geographic Analysis**: Ocean basin assignment using GOaS (Global Oceans and Seas) reference data for marine organisms
+- **Geographic Analysis**: Region assignment using GOaS ocean basins (marine), HydroBASINS (freshwater), Ecoregions2017 (terrestrial), or any custom shapefile
 - **Phylogenetic Tree Building**: Optional phylogenetic reconstruction with FastTree (GTR+Gamma model)
 - **Interactive HTML Reports**: Comprehensive summary reports with interactive visualizations using Plotly.js
 - **Publication-Ready Visualizations**:
@@ -158,7 +158,7 @@ GOaS (Global Oceans and Seas) is a shapefile dataset from Marine Regions that de
 
 **Important Notes**:
 - The GOaS shapefile (~150-200 MB) is **not included** in this repository due to size constraints
-- Geographic analysis is **designed for marine organisms only** in v1.0
+- GOaS is the **default for marine organisms**; use `--custom-shp` for freshwater/terrestrial (see below)
 - If you're only interested in genotyping and phylogeny, skip this setup using the `--no-geo` flag
 
 ### Automated Download (Recommended)
@@ -218,28 +218,57 @@ python -m boldgenotyper.goas_downloader
    print(f'GOaS exists: {cfg.geographic.goas_shapefile_path.exists()}')"
    ```
 
+### Custom Shapefiles for Non-Marine Organisms
+
+BOLDGenotyper now supports custom shapefiles for **freshwater and terrestrial organisms**, enabling the same biogeographic analysis capabilities as marine datasets.
+
+**Supported Geographic Categories**:
+- **Marine**: GOaS ocean basins (default)
+- **Freshwater**: HydroBASINS watershed polygons
+- **Terrestrial**: Ecoregions2017 biogeographic regions
+- **Custom**: Any shapefile with geographic regions
+
+**Example: Freshwater organisms (Salmonidae)**
+```bash
+boldgenotyper data/Salmonidae.tsv \
+  --build-tree \
+  --custom-shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp \
+  --shp-field HYBAS_ID \
+  --geo-category freshwater_basin
+```
+
+**Example: Terrestrial organisms (Pieridae butterflies)**
+```bash
+boldgenotyper data/Pieridae.tsv \
+  --build-tree \
+  --custom-shp Ecoregions2017/Ecoregions2017.shp \
+  --shp-field ECO_NAME \
+  --geo-category ecoregion
+```
+
+**Parameters**:
+- `--custom-shp`: Path to shapefile (.shp file)
+- `--shp-field`: Attribute field containing region names (default: `name`)
+- `--geo-category`: Category name for outputs (e.g., `freshwater_basin`, `ecoregion`)
+
+**Where to get shapefiles**:
+- HydroBASINS: https://www.hydrosheds.org/products/hydrobasins
+- Ecoregions2017: https://ecoregions.appspot.com/
+- Any compatible shapefile with polygon geometries
+
 ### Skipping Geographic Analysis
 
-If you don't need geographic distribution analysis or are working with non-marine organisms:
+If you don't need geographic analysis:
 
 ```bash
-# Use the --no-geo flag to skip geographic analysis
+# Use the --no-geo flag to skip geographic analysis entirely
 boldgenotyper data/my_species.tsv --no-geo
-
-# This will:
-# ✓ Perform sequence clustering and genotyping
-# ✓ Generate phylogenetic trees (if --build-tree specified)
-# ✓ Create identity distribution plots
-# ✗ Skip ocean basin assignment (all samples marked as "Unknown")
-# ✗ Skip geographic distribution maps
-# ✗ Skip basin-specific visualizations
 ```
 
 **Use cases for `--no-geo`**:
-- Non-marine organisms (terrestrial, freshwater)
-- GOaS shapefile not available or failed to download
 - Only interested in genotype identification and phylogeny
-- Samples lack precise geographic coordinates
+- Samples lack geographic coordinates
+- No suitable shapefile available
 
 ---
 

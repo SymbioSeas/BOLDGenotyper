@@ -54,6 +54,7 @@ from . import comparative_analysis
 from . import parameter_sweep
 from . import metadata_enrichment
 from . import popgen_export
+from . import metadata_analysis
 
 # Legacy alias for backward compatibility
 from . import haplotype_assignment as genotype_assignment
@@ -74,5 +75,6 @@ __all__ = [
     "parameter_sweep",
     "metadata_enrichment",
     "popgen_export",
+    "metadata_analysis",
     "genotype_assignment",  # Legacy alias
 ]
