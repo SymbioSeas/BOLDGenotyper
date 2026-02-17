@@ -175,7 +175,6 @@ def calculate_basin_assignment_confidence(
         try:
             import geopandas as gpd
             from shapely.geometry import Point
-            from shapely.ops import nearest_points
 
             # Convert samples to GeoDataFrame
             geometry = [Point(lon, lat) for lat, lon in
@@ -188,37 +187,37 @@ def calculate_basin_assignment_confidence(
                 crs="EPSG:4326"
             )
 
-            # For each sample, calculate distance to nearest region boundary
-            for idx, row in samples_gdf.iterrows():
-                point = row.geometry
-                region_name = row[geo_category]
+            # Pre-compute boundary geometries per region (avoids redundant work)
+            name_col = 'name' if 'name' in goas_data.columns else goas_data.columns[0]
+            region_boundaries = {}
+            for region_name in samples_gdf[geo_category].unique():
+                basin_polygons = goas_data[goas_data[name_col] == region_name]
+                if len(basin_polygons) > 0:
+                    region_boundaries[region_name] = basin_polygons.unary_union.boundary
 
-                # Get the region polygon (assuming shapefile has 'name' field or custom field)
-                # For GOaS, use 'name'; for custom shapefiles, this might need to match shapefile_field
-                basin_polygons = goas_data[goas_data['name'] == region_name] if 'name' in goas_data.columns else goas_data[goas_data.iloc[:, 0] == region_name]
+            # Vectorized distance calculation per region
+            distances = pd.Series(np.nan, index=samples_gdf.index)
+            confidences = pd.Series('unknown', index=samples_gdf.index)
+            notes = pd.Series('', index=samples_gdf.index)
 
-                if len(basin_polygons) == 0:
-                    df.loc[idx, 'basin_confidence'] = 'unknown'
+            for region_name, boundary in region_boundaries.items():
+                mask = samples_gdf[geo_category] == region_name
+                if not mask.any():
                     continue
+                region_points = samples_gdf.loc[mask, 'geometry']
+                dist_deg = region_points.distance(boundary)
+                dist_km = dist_deg * 111  # Rough approximation
 
-                # Calculate distance to boundary (edge of polygon)
-                basin_polygon = basin_polygons.unary_union
-                boundary = basin_polygon.boundary
+                distances.loc[mask] = dist_km
+                confidences.loc[mask] = np.where(
+                    dist_km > 50, 'high',
+                    np.where(dist_km > 10, 'medium', 'low')
+                )
+                notes.loc[mask] = np.where(dist_km <= 10, 'near basin boundary', '')
 
-                # Distance in degrees, approximate conversion to km
-                distance_deg = point.distance(boundary)
-                distance_km = distance_deg * 111  # Rough approximation
-
-                df.loc[idx, 'distance_to_boundary_km'] = distance_km
-
-                # Assign confidence based on distance
-                if distance_km > 50:
-                    df.loc[idx, 'basin_confidence'] = 'high'
-                elif distance_km > 10:
-                    df.loc[idx, 'basin_confidence'] = 'medium'
-                else:
-                    df.loc[idx, 'basin_confidence'] = 'low'
-                    df.loc[idx, 'basin_notes'] = 'near basin boundary'
+            df.loc[valid_samples, 'distance_to_boundary_km'] = distances
+            df.loc[valid_samples, 'basin_confidence'] = confidences
+            df.loc[valid_samples, 'basin_notes'] = notes
 
         except Exception as e:
             logger.warning(f"Could not calculate basin distances: {e}")
@@ -430,7 +429,7 @@ def print_geographic_warnings(
         if len(poor_genotypes) > 0:
             print(f"\n⚠️  {len(poor_genotypes)} genotype(s) with poor geographic coverage:")
             for _, row in poor_genotypes.head(5).iterrows():
-                print(f"  - {row['genotype']}: {row['pct_with_basin']:.1f}% with {geo_category.replace('_', ' ')}")
+                print(f"  - {row['genotype']}: {row['pct_with_region']:.1f}% with {geo_category.replace('_', ' ')}")
 
         print("\nSee: geographic_analysis/geographic_coverage.csv for per-haplotype details")
         print("="*70 + "\n")

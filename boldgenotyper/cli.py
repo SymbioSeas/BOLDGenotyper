@@ -903,10 +903,11 @@ def run_pipeline(
 
             # Determine if haplotype is ambiguous
             # Ambiguous if: (1) assignment_level is not 'species', or (2) majority_fraction < 0.7
+            # fillna(True) ensures NaN values are treated as ambiguous (safe default)
             species_composition['is_ambiguous'] = (
                 (species_composition['assignment_level'] != 'species') |
                 (species_composition['primary_species_pct'] < 0.7)
-            )
+            ).fillna(True).astype(bool)
 
             # Determine if haplotype has multiple species (check species_counts for multi-species haplotypes)
             species_composition['is_multi_species'] = False  # Will be updated below
@@ -1255,7 +1256,7 @@ def run_pipeline(
             # Geographic visualizations - only if geographic analysis was performed
             if geo_analysis_performed:
                 # Distribution maps
-                if 'lat' in df_final.columns and 'lon' in df_final.columns:
+                if 'lat' in df_final.columns and 'lon' in df_final.columns and 'haplotype_sp' in df_final.columns:
                     try:
                         # Determine background detail: use "full" for main plots
                         detail = "full" if cfg.visualization.map_background_detail == "full" else cfg.visualization.map_background_detail
@@ -1278,7 +1279,7 @@ def run_pipeline(
                                 json.dump(map_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Distribution map skipped: {e}")
+                        logger.warning(f"Distribution map skipped: {e}")
 
                 # Geographic region abundance bar plot (relative)
                 if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
@@ -1492,7 +1493,7 @@ def run_pipeline(
                             species_column='assigned_sp',
                             basin_column=geo_category,
                             dpi=cfg.visualization.facet_dpi,
-                            facet_by=cfg.visualization.facet_by,
+                            facet_by='genotype',
                             genotype_plots_dir=dirs['haplotype_plots'],
                             formats=facet_formats
                         )

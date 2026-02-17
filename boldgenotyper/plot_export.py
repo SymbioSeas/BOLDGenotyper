@@ -69,6 +69,14 @@ def export_plot_data(
     plot_data_dir = output_dir / "plots" / "data"
     plot_data_dir.mkdir(parents=True, exist_ok=True)
 
+    # Normalize column names: haplotype workflow uses haplotype_id/haplotype_sp,
+    # but this module expects consensus_group/consensus_group_sp
+    if 'haplotype_id' in df.columns and 'consensus_group' not in df.columns:
+        df = df.copy()
+        df['consensus_group'] = df['haplotype_id']
+        if 'haplotype_sp' in df.columns:
+            df['consensus_group_sp'] = df['haplotype_sp']
+
     exported_files = {}
 
     # 1. Distribution map data
@@ -123,29 +131,38 @@ def export_plot_data(
         logger.info("  Exporting identity distribution data...")
         diag_df = pd.read_csv(diagnostics_path)
 
-        identity_cols = ['processid', 'consensus_group', 'identity']
-        if 'is_tie' in diag_df.columns:
-            identity_cols.append('is_tie')
-        if 'is_low_confidence' in diag_df.columns:
-            identity_cols.append('is_low_confidence')
+        # Normalize column name from haplotype workflow
+        if 'assigned_haplotype' in diag_df.columns and 'consensus_group' not in diag_df.columns:
+            diag_df['consensus_group'] = diag_df['assigned_haplotype']
 
-        # Merge with species info and consensus_group_sp if available
-        merge_cols = ['processid']
-        if 'species' in df.columns:
-            merge_cols.append('species')
-            identity_cols.append('species')
-        if 'consensus_group_sp' in df.columns:
-            merge_cols.append('consensus_group_sp')
-            identity_cols.append('consensus_group_sp')
+        # Skip if no identity data (ESV workflow uses exact matching)
+        if 'identity' not in diag_df.columns or 'consensus_group' not in diag_df.columns:
+            logger.info("  ⊘ Skipping identity export (not available in ESV workflow)")
+        else:
 
-        if len(merge_cols) > 1:
-            # Need to get consensus_group_sp from main df by matching on processid + consensus_group
-            merge_df = df[merge_cols + ['consensus_group']].drop_duplicates()
-            diag_df = diag_df.merge(merge_df, on=['processid', 'consensus_group'], how='left', suffixes=('', '_y'))
+            identity_cols = ['processid', 'consensus_group', 'identity']
+            if 'is_tie' in diag_df.columns:
+                identity_cols.append('is_tie')
+            if 'is_low_confidence' in diag_df.columns:
+                identity_cols.append('is_low_confidence')
 
-        identity_path = plot_data_dir / "identity_distribution.csv"
-        diag_df[identity_cols].to_csv(identity_path, index=False)
-        exported_files['identity_distribution'] = identity_path
+            # Merge with species info and consensus_group_sp if available
+            merge_cols = ['processid']
+            if 'species' in df.columns:
+                merge_cols.append('species')
+                identity_cols.append('species')
+            if 'consensus_group_sp' in df.columns:
+                merge_cols.append('consensus_group_sp')
+                identity_cols.append('consensus_group_sp')
+
+            if len(merge_cols) > 1:
+                # Need to get consensus_group_sp from main df by matching on processid + consensus_group
+                merge_df = df[merge_cols + ['consensus_group']].drop_duplicates()
+                diag_df = diag_df.merge(merge_df, on=['processid', 'consensus_group'], how='left', suffixes=('', '_y'))
+
+            identity_path = plot_data_dir / "identity_distribution.csv"
+            diag_df[identity_cols].to_csv(identity_path, index=False)
+            exported_files['identity_distribution'] = identity_path
 
     # 5. Genotype colors
     if color_map:

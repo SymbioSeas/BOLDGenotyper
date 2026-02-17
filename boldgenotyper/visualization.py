@@ -563,7 +563,7 @@ def plot_distribution_map(
             )
         ax.set_xlabel("Longitude"); ax.set_ylabel("Latitude")
         ax.set_xlim(-180, 180); ax.set_ylim(-90, 90)
-        ax.grid(True, linestyle="--", linewidth=0, alpha=0.5)
+        ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
 
     # Place legend below the map to maximize map size
     # Use multiple columns for better horizontal space usage
@@ -1118,7 +1118,7 @@ def plot_distribution_map_faceted(
             ax.set_ylabel("Latitude", fontsize=10)
             ax.set_xlim(lon_min, lon_max)
             ax.set_ylim(lat_min, lat_max)
-            ax.grid(True, linestyle="--", linewidth=0, alpha=0.5)
+            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
 
         # Add scale bar if requested
         if show_scale_bar:
@@ -1193,12 +1193,12 @@ def plot_distribution_map_faceted(
 
             if n_unknown > 0:
                 ax.text(
-                    0.98, 0.98,
+                    0.02, 0.98,
                     f'Unknown Geography\nn={n_unknown}',
                     transform=ax.transAxes,
                     fontsize=9,
                     verticalalignment='top',
-                    horizontalalignment='right',
+                    horizontalalignment='left',
                     bbox=dict(boxstyle='round', facecolor='white',
                              alpha=0.85, edgecolor='gray', linewidth=0.5)
                 )

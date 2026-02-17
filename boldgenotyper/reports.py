@@ -3424,17 +3424,11 @@ def _build_visualizations_section(
     # Define visualization categories and their display names (in display order)
     viz_categories = [
         {
-            'title': 'Identity Distribution',
-            'pattern': f'{organism}_identity_distribution.png',
-            'directory': 'genotype_assignments',
-            'description': 'Distribution of sequence identity scores for assigned samples'
-        },
-        {
             'title': 'Phylogenetic Tree',
             'pattern': f'{organism}_tree.png',
             'directory': 'phylogenetic',
-            'description': 'Phylogenetic tree showing relationships between consensus groups',
-            'note': f'💡 Newick tree file available at <code>phylogenetic/{organism}_tree_relabeled.nwk</code> for opening in tree editors such as <a href="https://treeviewer.org/" target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024) for re-rooting and customization'
+            'description': 'Phylogenetic tree showing relationships between haplotypes',
+            'note': f'Newick tree file available at <code>phylogenetic/{organism}_tree_relabeled.nwk</code> for opening in tree editors such as <a href="https://treeviewer.org/" target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024) for re-rooting and customization'
         },
         {
             'title': 'Relative Abundance by Geographic Region',
@@ -3449,16 +3443,16 @@ def _build_visualizations_section(
             'description': 'Total sample counts of haplotypes across geographic regions'
         },
         {
-            'title': 'Total Abundance by Region (Faceted)',
+            'title': 'Haplotype Abundance by Region',
             'pattern': f'{organism}_distribution_bar_faceted.png',
             'json_pattern': f'{organism}_distribution_bar_faceted_data.json',
-            'description': 'Total sample counts faceted by species or haplotype'
+            'description': 'Total sample counts faceted by haplotype across geographic regions'
         },
         {
-            'title': 'Total Abundance by Region (Species-Faceted)',
+            'title': 'Species Abundance by Region',
             'pattern': f'{organism}_distribution_bar_species_faceted.png',
             'json_pattern': f'{organism}_distribution_bar_species_faceted_data.json',
-            'description': 'Total sample counts faceted by assigned species with haplotypes stacked'
+            'description': 'Total sample counts faceted by assigned species with haplotypes stacked across geographic regions'
         },
         {
             'title': 'Distribution Map',
@@ -3486,11 +3480,11 @@ def _build_visualizations_section(
 
         # Allow SVG/PNG fallbacks (ESV workflow exports SVG)
         # Check both new structure (pdf/svg subdirs) and legacy (flat structure)
+        # Note: PDFs are excluded because they cannot be embedded in HTML <img> tags
         base_pattern = viz['pattern']
         base_name = Path(base_pattern).stem
         candidate_paths = [
-            # New structure
-            viz_pdf_dir / Path(base_pattern).with_suffix('.pdf').name,
+            # New structure (PNG and SVG only — embeddable in HTML)
             viz_pdf_dir / Path(base_pattern).with_suffix('.png').name,
             viz_svg_dir / Path(base_pattern).with_suffix('.svg').name,
             # Legacy flat structure
