@@ -1,13 +1,12 @@
 """
-Unit tests for improved identity calculation using CIGAR alignment paths.
+Unit tests for identity calculation using CIGAR alignment paths.
 
 Tests cover:
 - CIGAR string parsing
 - Identity calculation with edlib CIGAR paths
-- Target-based vs classic identity metrics
-- Configuration validation for identity_method
+- Target-based identity metric (primary) and classic identity (diagnostic)
 - Edge cases (empty sequences, identical sequences, length differences)
-- Method selection in find_best_consensus_match
+- find_best_haplotype_match function behaviour
 """
 
 import unittest
@@ -18,13 +17,12 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from boldgenotyper.genotype_assignment import (
+from boldgenotyper.haplotype_assignment import (
     parse_cigar,
     calculate_identity_with_cigar,
-    find_best_consensus_match,
+    find_best_haplotype_match,
     EDLIB_AVAILABLE
 )
-from boldgenotyper.config import GenotypeAssignmentConfig
 
 
 class TestCigarParsing(unittest.TestCase):
@@ -178,89 +176,53 @@ class TestIdentityWithCigar(unittest.TestCase):
         self.assertAlmostEqual(result['classic_identity'], 580/650, places=5)
 
 
-class TestFindBestConsensusMatch(unittest.TestCase):
-    """Test find_best_consensus_match with different identity methods."""
+class TestFindBestHaplotypeMatch(unittest.TestCase):
+    """Test find_best_haplotype_match function."""
 
     def setUp(self):
-        """Set up test consensus groups."""
-        self.consensus_groups = [
-            ("consensus_c1", "ACTGACTGACTG"),
-            ("consensus_c2", "TGCATGCATGCA"),
+        """Set up test haplotype groups."""
+        self.haplotype_groups = [
+            ("h1_n10", "ACTGACTGACTG"),
+            ("h2_n5", "TGCATGCATGCA"),
         ]
 
     @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_perfect_match_target_based(self):
-        """Test perfect match with target-based method."""
-        result = find_best_consensus_match(
+    def test_perfect_match(self):
+        """Test perfect match returns correct haplotype."""
+        result = find_best_haplotype_match(
             "ACTGACTGACTG",
-            self.consensus_groups,
+            self.haplotype_groups,
             min_identity=0.90,
-            identity_method="target_based"
         )
 
-        self.assertEqual(result['best_group'], 'consensus_c1')
+        self.assertEqual(result['best_haplotype'], 'h1_n10')
         self.assertEqual(result['best_identity'], 1.0)
-        self.assertEqual(result['identity_method'], 'target_based')
-        self.assertIsNotNone(result['best_group'])
+        self.assertIsNotNone(result['best_haplotype'])
 
     @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_perfect_match_classic(self):
-        """Test perfect match with classic method."""
-        result = find_best_consensus_match(
-            "ACTGACTGACTG",
-            self.consensus_groups,
-            min_identity=0.90,
-            identity_method="classic"
-        )
-
-        self.assertEqual(result['best_group'], 'consensus_c1')
-        self.assertEqual(result['best_identity'], 1.0)
-        self.assertEqual(result['identity_method'], 'classic')
-
-    @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_noisy_end_target_based_passes(self):
+    def test_noisy_end_passes_threshold(self):
         """Test that sample with noisy end passes with target-based method."""
         # Sample has perfect match + 4bp noisy end
-        result = find_best_consensus_match(
+        result = find_best_haplotype_match(
             "ACTGACTGACTGNNNN",
-            self.consensus_groups,
+            self.haplotype_groups,
             min_identity=0.90,
-            identity_method="target_based"
         )
 
-        # Should pass 90% threshold with target-based
-        self.assertIsNotNone(result['best_group'])
-        self.assertEqual(result['best_group'], 'consensus_c1')
+        # Should pass 90% threshold (target_identity = 100%)
+        self.assertIsNotNone(result['best_haplotype'])
+        self.assertEqual(result['best_haplotype'], 'h1_n10')
         self.assertEqual(result['best_identity'], 1.0)
-        self.assertGreaterEqual(result['best_identity'], 0.90)
 
     @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_noisy_end_classic_fails(self):
-        """Test that sample with noisy end fails with classic method."""
-        # Sample has perfect match + 4bp noisy end
-        result = find_best_consensus_match(
-            "ACTGACTGACTGNNNN",
-            self.consensus_groups,
-            min_identity=0.90,
-            identity_method="classic"
-        )
-
-        # Should fail 90% threshold with classic (75% identity)
-        self.assertIsNone(result['best_group'])
-        self.assertLess(result['best_identity'], 0.90)
-        self.assertAlmostEqual(result['classic_identity'], 0.75, places=2)
-
-    @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_both_metrics_always_available(self):
+    def test_both_metrics_always_returned(self):
         """Test that both identity metrics are always returned."""
-        result = find_best_consensus_match(
+        result = find_best_haplotype_match(
             "ACTGACTGACTGNNNN",
-            self.consensus_groups,
+            self.haplotype_groups,
             min_identity=0.90,
-            identity_method="target_based"
         )
 
-        # Both metrics should be present
         self.assertIn('target_identity', result)
         self.assertIn('classic_identity', result)
         self.assertIsNotNone(result['target_identity'])
@@ -269,11 +231,10 @@ class TestFindBestConsensusMatch(unittest.TestCase):
     @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
     def test_length_discrepancy_reported(self):
         """Test that length discrepancy is reported."""
-        result = find_best_consensus_match(
+        result = find_best_haplotype_match(
             "ACTGACTGACTGNNNN",  # 16bp
-            self.consensus_groups,  # consensus is 12bp
+            self.haplotype_groups,  # haplotype is 12bp
             min_identity=0.90,
-            identity_method="target_based"
         )
 
         self.assertEqual(result['length_discrepancy'], 4)
@@ -281,11 +242,10 @@ class TestFindBestConsensusMatch(unittest.TestCase):
     @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
     def test_alignment_details_present(self):
         """Test that alignment details are present in result."""
-        result = find_best_consensus_match(
+        result = find_best_haplotype_match(
             "ACTGACTGACTG",
-            self.consensus_groups,
+            self.haplotype_groups,
             min_identity=0.90,
-            identity_method="target_based"
         )
 
         self.assertIn('matches', result)
@@ -295,43 +255,15 @@ class TestFindBestConsensusMatch(unittest.TestCase):
         self.assertIn('edit_distance', result)
         self.assertIn('cigar', result)
 
-    def test_invalid_identity_method(self):
-        """Test that invalid identity method raises error."""
-        with self.assertRaises(ValueError) as cm:
-            find_best_consensus_match(
-                "ACTGACTGACTG",
-                self.consensus_groups,
-                min_identity=0.90,
-                identity_method="invalid"
-            )
+    def test_below_threshold_unassigned(self):
+        """Test that sequence below threshold returns None."""
+        result = find_best_haplotype_match(
+            "ACTGACTGACTG",
+            self.haplotype_groups,
+            min_identity=0.999,  # impossibly high
+        )
 
-        self.assertIn("identity_method must be", str(cm.exception))
-
-
-class TestConfigValidation(unittest.TestCase):
-    """Test configuration validation for identity_method."""
-
-    def test_config_target_based(self):
-        """Test config with target_based method."""
-        config = GenotypeAssignmentConfig(identity_method="target_based")
-        self.assertEqual(config.identity_method, "target_based")
-
-    def test_config_classic(self):
-        """Test config with classic method."""
-        config = GenotypeAssignmentConfig(identity_method="classic")
-        self.assertEqual(config.identity_method, "classic")
-
-    def test_config_invalid_method(self):
-        """Test that invalid method raises error."""
-        with self.assertRaises(ValueError) as cm:
-            GenotypeAssignmentConfig(identity_method="invalid")
-
-        self.assertIn("identity_method must be", str(cm.exception))
-
-    def test_config_default_is_target_based(self):
-        """Test that default identity_method is target_based."""
-        config = GenotypeAssignmentConfig()
-        self.assertEqual(config.identity_method, "target_based")
+        self.assertIsNone(result['best_haplotype'])
 
 
 class TestEdgeCases(unittest.TestCase):
@@ -377,72 +309,6 @@ class TestEdgeCases(unittest.TestCase):
         # Should have 2 matches (A, C), 2 mismatches (N, R)
         self.assertEqual(result['matches'], 2)
         self.assertEqual(result['mismatches'], 2)
-
-
-class TestMethodComparison(unittest.TestCase):
-    """Test comparison between target-based and classic methods."""
-
-    @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_methods_equal_for_same_length(self):
-        """Test that both methods give same result for same-length sequences."""
-        consensus_groups = [("c1", "ACTGACTGACTG")]
-        sample = "ACTGAGTGACTG"  # One mismatch
-
-        result_target = find_best_consensus_match(
-            sample, consensus_groups, identity_method="target_based"
-        )
-        result_classic = find_best_consensus_match(
-            sample, consensus_groups, identity_method="classic"
-        )
-
-        # Should be equal for same-length sequences
-        self.assertAlmostEqual(
-            result_target['best_identity'],
-            result_classic['best_identity'],
-            places=5
-        )
-
-    @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_target_more_lenient_for_length_diff(self):
-        """Test that target-based is more lenient for length differences."""
-        consensus_groups = [("c1", "ACTGACTGACTG")]
-        sample = "ACTGACTGACTGNNNN"  # 4bp longer
-
-        result_target = find_best_consensus_match(
-            sample, consensus_groups, identity_method="target_based"
-        )
-        result_classic = find_best_consensus_match(
-            sample, consensus_groups, identity_method="classic"
-        )
-
-        # Target-based should be more lenient (higher identity)
-        self.assertGreater(
-            result_target['best_identity'],
-            result_classic['best_identity']
-        )
-
-    @unittest.skipIf(not EDLIB_AVAILABLE, "edlib not available")
-    def test_realistic_impact_70bp_noisy_end(self):
-        """Test realistic scenario: 580bp consensus with 70bp noisy 3' end."""
-        consensus_groups = [("c1", "A" * 580)]
-        sample = "A" * 580 + "N" * 70
-
-        result_target = find_best_consensus_match(
-            sample, consensus_groups, min_identity=0.90,
-            identity_method="target_based"
-        )
-        result_classic = find_best_consensus_match(
-            sample, consensus_groups, min_identity=0.90,
-            identity_method="classic"
-        )
-
-        # Target-based should pass (100%)
-        self.assertIsNotNone(result_target['best_group'])
-        self.assertEqual(result_target['best_identity'], 1.0)
-
-        # Classic should fail (~89.2%)
-        self.assertIsNone(result_classic['best_group'])
-        self.assertLess(result_classic['best_identity'], 0.90)
 
 
 if __name__ == '__main__':

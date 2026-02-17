@@ -70,6 +70,14 @@ data/*.tsv
 .DS_Store
 Thumbs.db
 
+# Personal notes (not part of the repository)
+notes/
+
+# Benchmarking outputs
+benchmarking/runtime/output/
+
+# Shapefiles (too large for git; see README for download instructions)
+shapefiles/
+
 # Environment
 environment.yml.backup
-GOaS_v1_20211214/

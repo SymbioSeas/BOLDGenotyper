@@ -1,0 +1,28 @@
+{
+  "workflow": "haplotype-first",
+  "coi_validation": {
+    "genetic_code": 2,
+    "orf_min_coverage": 0.5,
+    "orf_max_internal_stops": 2
+  },
+  "qc": {
+    "min_raw_length_abs": 200,
+    "min_raw_length_frac_of_median": 0.7,
+    "max_raw_N_fraction": 0.05
+  },
+  "core_region": {
+    "min_coverage": 0.8,
+    "mask_gap_threshold": 0.5,
+    "min_length": 150
+  },
+  "haplotype": {
+    "max_singleton_distance": 0.065,
+    "flag_suspect_haplotypes": false
+  },
+  "assignment": {
+    "min_identity": 0.5,
+    "tie_margin": 0.003
+  },
+  "threads": 4,
+  "build_tree": false
+}

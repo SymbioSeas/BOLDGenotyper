@@ -2,8 +2,31 @@
 Tree Building and Phylogenetic Analysis
 
 This module provides optional phylogenetic analysis functionality for consensus
-sequences, including multiple sequence alignment, maximum likelihood tree
-construction, and bootstrap support calculation.
+sequences, including quality filtering, multiple sequence alignment, alignment
+trimming, and maximum likelihood tree construction.
+
+IMPORTANT: Quality-Filtered Phylogenetic Workflow
+=================================================
+This module implements a biologically appropriate phylogenetic workflow that
+addresses a critical issue in consensus-based phylogenetics:
+
+Problem:
+- Consensus sequences from small clusters (1-5 sequences) are highly incomplete
+- These short sequences (33-40% complete) create alignments with 60-70% gaps
+- High gap percentages compromise phylogenetic inference:
+  * Ambiguous positional homology
+  * Reduced phylogenetic signal
+  * Unreliable bootstrap support
+  * Distorted evolutionary distances
+
+Solution:
+- Filter consensus sequences BEFORE tree building
+- Only use high-quality sequences (≥600 bp, ≥5 sequences per cluster)
+- Trim gappy alignment columns with trimAl
+- ALL sequences still used for haplotype assignment
+
+This ensures phylogenetic trees are biologically meaningful while maintaining
+complete taxonomic coverage for genotyping.
 
 Phylogenetic Analysis Modes:
 
@@ -13,10 +36,10 @@ Mode 1: No phylogeny (default)
 - Suitable for exploratory analysis
 
 Mode 2: --phylogeny flag
-- Build tree from consensus sequences
+- Build filtered, quality-controlled phylogenetic tree
 - Midpoint rooted
 - No outgroup required
-- Good for visualizing relationships among genotypes
+- Good for visualizing relationships among haplotypes
 
 Mode 3: --phylogeny --outgroup <fasta>
 - User provides outgroup sequences
@@ -24,55 +47,359 @@ Mode 3: --phylogeny --outgroup <fasta>
 - Requires taxonomic expertise for outgroup selection
 - Best for publication-quality phylogenies
 
-Why Phylogeny is Optional:
-- Outgroup selection requires taxonomic knowledge
-- Not all users need phylogenetic trees
-- Makes pipeline more flexible for exploratory analysis
-- Reduces computational time for basic genotyping
-
-Workflow:
-1. Align consensus sequences using MAFFT (--auto mode)
-2. Optional: Trim alignment with trimAl
-3. Build maximum likelihood tree with PhyML
-   - Model: GTR+G+I (General Time Reversible with gamma and invariant sites)
+Quality-Filtered Workflow:
+1. Filter consensus sequences (≥600 bp, ≥5 sequences per cluster)
+2. Align filtered sequences using MAFFT (--auto mode)
+3. Trim gappy columns with trimAl (gappyout method)
+4. Build maximum likelihood tree with FastTree
+   - Model: GTR+CAT (General Time Reversible with CAT approximation)
    - Bootstrap: 1000 replicates (or user-specified)
-4. Midpoint root (if no outgroup provided)
-5. Export tree in Newick and visualization formats
+5. Midpoint root (if no outgroup provided)
+6. Export tree in Newick format
 
 Dependencies:
 - MAFFT v7+ for alignment
-- PhyML 3.0+ for tree building
+- trimAl 1.4+ for alignment trimming
+- FastTree 2.1+ for tree building
 - Biopython for tree parsing
-- ete3 or DendroPy for tree manipulation
 
-Tree Output:
-- Newick format: {organism}_phylogeny.tree
-- PDF visualization: {organism}_phylogeny.pdf
-- Bootstrap support values included as node labels
+Output Files:
+- {organism}_filtered.fasta : Quality-filtered consensus sequences
+- {organism}_aligned.fasta : MAFFT alignment
+- {organism}_aligned_trimmed.fasta : trimAl-trimmed alignment
+- {organism}_tree.nwk : Phylogenetic tree (Newick format)
+- {organism}_tree_relabeled.nwk : Tree with species labels
 
 Example Usage:
-    >>> from boldgenotyper.phylogenetics import build_phylogeny
+    >>> from boldhaplotyper.phylogenetics import build_phylogeny
     >>> tree = build_phylogeny(
-    ...     consensus_fasta="Sphyrna_lewini_consensus.fasta",
-    ...     output_prefix="results/Sphyrna_lewini",
-    ...     outgroup_fasta="outgroup_sequences.fasta",
-    ...     bootstrap=1000
+    ...     consensus_fasta="Sphyrna_consensus.fasta",
+    ...     output_prefix="results/Sphyrna",
+    ...     min_consensus_length=600,
+    ...     min_cluster_size=5,
+    ...     trim_alignment=True
     ... )
 
-Author: Steph Smith (steph.smith@unc.edu)
+Geographic Analysis Note:
+    Geographic analysis uses ALL consensus sequences (primary haplotypes),
+    NOT the filtered subset used for phylogenetics. This ensures complete
+    biogeographic coverage while maintaining phylogenetic quality.
+
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from pathlib import Path
 import logging
 import subprocess
 import shutil
+import re
 from Bio import Phylo
 from Bio import SeqIO
 from Bio.Phylo.TreeConstruction import DistanceCalculator, DistanceTreeConstructor
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def _extract_cluster_size(seq: SeqIO.SeqRecord) -> Tuple[int, str]:
+    """
+    Infer the cluster size encoded in a consensus/haplotype record.
+
+    Haplotype FASTA records generated by the pipeline encode cluster sizes in
+    multiple ways (e.g., ``haplotype_h5_n105`` IDs or descriptive text such as
+    ``Haplotype 5 with 105 sequences``). When the parser fails to recover this
+    value, phylogenetic filtering mistakenly treats clusters as singletons and
+    discards them. This helper makes the parsing tolerant of the different
+    naming schemes and returns the detected size alongside the match source.
+    """
+    seq_id = seq.id or ""
+    desc = seq.description or ""
+
+    patterns = [
+        (r"_n(\d+)(?:\b|$)", seq_id, "id_suffix"),
+        (r"\((\d+)\s+(?:reference|consensus|haplotype|sequence)s?\)", desc, "parenthetical"),
+        (r"\bwith\s+(\d+)\s+(?:sequence|sample)s?\b", desc, "with_clause"),
+        (r"\bcluster\s*(?:size)?\s*(\d+)\b", desc, "cluster_size"),
+        (r"\b(\d+)\s+(?:sequence|sample)s?\b", desc, "loose_number"),
+    ]
+
+    for pattern, text, source in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            try:
+                value = int(match.group(1))
+                if value > 0:
+                    return value, source
+            except ValueError:
+                continue
+
+    return 1, "default"
+
+
+def filter_consensus_sequences(
+    consensus_fasta: str,
+    output_fasta: str,
+    min_length: int = 600,
+    min_cluster_size: int = 5,
+    max_sequences: Optional[int] = None,
+) -> tuple[int, int, List[str]]:
+    """
+    Filter consensus sequences for phylogenetic analysis.
+
+    This function addresses a critical biological issue: consensus sequences from
+    small clusters (1-5 sequences) tend to be highly incomplete (<40% of full COI),
+    creating alignments with 60-70% gaps. Such alignments produce unreliable
+    phylogenetic trees due to:
+    - Ambiguous positional homology
+    - Reduced phylogenetic signal
+    - Inflated/deflated bootstrap support
+    - Distorted evolutionary distances
+
+    Only consensus sequences meeting quality criteria are retained for tree building.
+    All consensus sequences (including filtered ones) are still used for haplotype
+    assignment to ensure complete taxonomic coverage.
+
+    Parameters
+    ----------
+    consensus_fasta : str
+        Path to input consensus sequences FASTA
+    output_fasta : str
+        Path for filtered output FASTA
+    min_length : int, optional
+        Minimum ungapped sequence length in bp (default: 600)
+        Rationale: ~40% of full COI barcode (~1550 bp)
+    min_cluster_size : int, optional
+        Minimum number of sequences in cluster (default: 5)
+        Rationale: Larger clusters produce more complete consensus sequences
+    max_sequences : int, optional
+        Optional hard cap on number of sequences to keep (None = no cap)
+
+    Returns
+    -------
+    tuple of (n_total, n_kept, filtered_ids)
+        n_total : int
+            Total number of input sequences
+        n_kept : int
+            Number of sequences passing filters
+        filtered_ids : List[str]
+            IDs of filtered-out sequences
+
+    Examples
+    --------
+    >>> n_total, n_kept, filtered = filter_consensus_sequences(
+    ...     "consensus.fasta",
+    ...     "consensus_filtered.fasta",
+    ...     min_length=600,
+    ...     min_cluster_size=5
+    ... )
+    >>> print(f"Kept {n_kept}/{n_total} sequences for phylogenetics")
+
+    Notes
+    -----
+    This filtering is ONLY applied to phylogenetic tree building.
+    All consensus sequences are retained for:
+    - Genotype assignment
+    - Taxonomic identification
+    - Diversity metrics
+    - Geographic analysis
+
+    The filtering prevents the following issue:
+        Before filtering:
+        - consensus_c18 (1 seq):  513 bp → 67% gaps in alignment
+        - consensus_c17 (250 seq): 1548 bp → 0.4% gaps in alignment
+        → Unreliable tree topology
+
+        After filtering:
+        - Only sequences with >600 bp and >5 sequences retained
+        → Biologically meaningful phylogenetic relationships
+
+    See Also
+    --------
+    run_trimal : Trim gappy columns from alignment
+    build_phylogeny : Build phylogenetic tree from filtered sequences
+    """
+    sequences = list(SeqIO.parse(consensus_fasta, 'fasta'))
+    n_total = len(sequences)
+
+    filtered_seqs = []
+    filtered_ids = []
+
+    for seq in sequences:
+        # Use ungapped length so short core regions are not penalized by alignment dashes
+        seq_len = len(str(seq.seq).replace("-", ""))
+
+        cluster_size, cluster_source = _extract_cluster_size(seq)
+        if cluster_size == 1 and cluster_source == "default":
+            logger.debug(f"Could not parse cluster size for {seq.id}; defaulting to 1")
+
+        # Extract cluster size from description
+        # Format: "consensus_c1 Consensus sequence for cluster 1 (75 reference sequences)"
+        # Apply filters
+        passes_length = seq_len >= min_length
+        passes_cluster_size = cluster_size >= min_cluster_size
+
+        if passes_length and passes_cluster_size:
+            filtered_seqs.append(seq)
+        else:
+            filtered_ids.append(seq.id)
+            reason = []
+            if not passes_length:
+                reason.append(f"length={seq_len}<{min_length}")
+            if not passes_cluster_size:
+                reason.append(f"cluster_size={cluster_size}<{min_cluster_size}")
+            logger.debug(f"Filtered {seq.id}: {', '.join(reason)}")
+
+    n_kept = len(filtered_seqs)
+
+    # Optional downsampling guard (off by default). If set, keep first N.
+    if max_sequences is not None and n_kept > max_sequences:
+        logger.info(
+            f"Consensus filtering: applying max_sequences cap "
+            f"({max_sequences}); downsampling from {n_kept}."
+        )
+        filtered_seqs = filtered_seqs[:max_sequences]
+        n_kept = len(filtered_seqs)
+
+    # Write filtered sequences
+    if n_kept > 0:
+        SeqIO.write(filtered_seqs, output_fasta, 'fasta')
+        logger.info(
+            f"Consensus filtering: {n_kept}/{n_total} sequences retained for phylogenetics "
+            f"({(n_kept/n_total*100):.1f}%)"
+        )
+        if filtered_ids:
+            logger.info(
+                f"  Filtered out {len(filtered_ids)} sequences: "
+                f"{', '.join(filtered_ids[:5])}"
+                f"{' ...' if len(filtered_ids) > 5 else ''}"
+            )
+    else:
+        logger.warning(
+            f"No consensus sequences passed quality filters "
+            f"(min_length={min_length}, min_cluster_size={min_cluster_size})"
+        )
+
+    return n_total, n_kept, filtered_ids
+
+
+def run_trimal(
+    input_alignment: str,
+    output_alignment: str,
+    method: str = 'gappyout',
+    gap_threshold: float = 0.5,
+) -> str:
+    """
+    Trim poorly aligned regions from multiple sequence alignment.
+
+    Removes alignment columns with excessive gaps or low conservation, which
+    can introduce noise and reduce phylogenetic accuracy. This is especially
+    important when aligning consensus sequences of varying completeness.
+
+    Common issue addressed:
+    - Consensus sequences vary from 40-100% complete
+    - MAFFT aligns short fragments within longer sequences
+    - Creates many gap-only or gap-heavy columns
+    - These columns provide no phylogenetic signal but add noise
+
+    Parameters
+    ----------
+    input_alignment : str
+        Path to input aligned FASTA
+    output_alignment : str
+        Path for trimmed output alignment
+    method : str, optional
+        trimAl method (default: 'gappyout')
+        Options:
+        - 'gappyout': Remove gap-heavy columns (recommended for mixed-length seqs)
+        - 'strict': Very conservative trimming
+        - 'automated1': Heuristic balance of trimming
+        - 'manual': Use gap_threshold parameter
+    gap_threshold : float, optional
+        Maximum fraction of gaps allowed per column (default: 0.5)
+        Only used if method='manual'
+
+    Returns
+    -------
+    str
+        Path to trimmed alignment file
+
+    Raises
+    ------
+    RuntimeError
+        If trimAl is not found or trimming fails
+
+    Examples
+    --------
+    >>> trimmed = run_trimal(
+    ...     "alignment.fasta",
+    ...     "alignment_trimmed.fasta",
+    ...     method='gappyout'
+    ... )
+
+    Notes
+    -----
+    trimAl removes columns, not sequences. All input sequences are retained
+    in the output, but problematic alignment regions are removed.
+
+    Before trimming (example):
+        Seq1: ATCG----GCTA----NNNN  (50% gaps)
+        Seq2: ATCGATCGGCTAGCTATGCA  (0% gaps)
+        Column gap %: [0,0,0,0,50,50,50,50,...]
+
+    After gappyout trimming:
+        Seq1: ATCGGCTA  (gaps removed)
+        Seq2: ATCGATCGGCTAGCTA
+
+    References
+    ----------
+    Capella-Gutiérrez et al. (2009) trimAl: a tool for automated alignment
+    trimming in large-scale phylogenetic analyses. Bioinformatics, 25(15).
+    """
+    # Check if trimAl is available
+    if not shutil.which('trimal'):
+        raise RuntimeError(
+            "trimAl not found in PATH. Please install trimAl:\n"
+            "  - conda: conda install -c bioconda trimal\n"
+            "  - apt: sudo apt-get install trimal\n"
+            "  - brew: brew install brewsci/bio/trimal"
+        )
+
+    # Build trimAl command
+    if method == 'manual':
+        cmd = ['trimal', '-in', input_alignment, '-out', output_alignment,
+               '-gt', str(gap_threshold)]
+    else:
+        cmd = ['trimal', '-in', input_alignment, '-out', output_alignment,
+               f'-{method}']
+
+    logger.info(f"Running trimAl: {' '.join(cmd)}")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        # Parse trimAl output for statistics
+        if result.stdout:
+            for line in result.stdout.split('\n'):
+                if 'columns' in line.lower():
+                    logger.debug(f"trimAl: {line.strip()}")
+
+        logger.info(f"trimAl completed: {output_alignment}")
+        return output_alignment
+
+    except subprocess.CalledProcessError as e:
+        error_msg = f"trimAl failed:\n{e.stderr}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except OSError as e:
+        error_msg = f"Failed to run trimAl: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
 
 
 def build_phylogeny(
@@ -82,9 +409,25 @@ def build_phylogeny(
     model: str = "GTR",
     bootstrap: int = 1000,
     threads: int = 1,
+    min_consensus_length: int = 600,
+    min_cluster_size: int = 5,
+    trim_alignment: bool = True,
+    trim_method: str = 'gappyout',
 ) -> Optional[Phylo.BaseTree.Tree]:
     """
     Build maximum likelihood phylogenetic tree from consensus sequences.
+
+    This function implements a quality-filtered phylogenetic workflow:
+    1. Filter consensus sequences (remove short/low-coverage sequences)
+    2. Align filtered sequences with MAFFT
+    3. Trim gappy alignment columns with trimAl
+    4. Build ML tree with FastTree
+
+    The filtering and trimming steps address a critical issue: consensus sequences
+    from small clusters produce highly gappy alignments (60-70% gaps) that yield
+    unreliable phylogenetic trees. Only high-quality consensus sequences are used
+    for tree building, while ALL consensus sequences are retained for haplotype
+    assignment.
 
     Parameters
     ----------
@@ -95,38 +438,121 @@ def build_phylogeny(
     outgroup_fasta : str, optional
         Path to outgroup sequences for rooting
     model : str, optional
-        Substitution model for PhyML (default: GTR)
+        Substitution model for FastTree (default: GTR)
     bootstrap : int, optional
         Number of bootstrap replicates (default: 1000)
     threads : int, optional
         Number of CPU threads (default: 1)
+    min_consensus_length : int, optional
+        Minimum sequence length for phylogenetics (default: 600 bp)
+        Sequences shorter than this are excluded from tree building
+    min_cluster_size : int, optional
+        Minimum cluster size for phylogenetics (default: 5 sequences)
+        Clusters smaller than this are excluded from tree building
+    trim_alignment : bool, optional
+        Trim gappy columns with trimAl (default: True)
+        Recommended to remove noise from alignment
+    trim_method : str, optional
+        trimAl method (default: 'gappyout')
+        Options: gappyout, strict, automated1
 
     Returns
     -------
     Phylo.BaseTree.Tree or None
         Phylogenetic tree object, or None if tree building failed
+
+    Examples
+    --------
+    >>> tree = build_phylogeny(
+    ...     consensus_fasta="Sphyrna_consensus.fasta",
+    ...     output_prefix="results/Sphyrna",
+    ...     min_consensus_length=600,
+    ...     min_cluster_size=5,
+    ...     trim_alignment=True
+    ... )
+
+    Notes
+    -----
+    Filtering is ONLY applied to phylogenetic tree building. All consensus
+    sequences (including filtered ones) are used for:
+    - Genotype assignment
+    - Taxonomic identification
+    - Geographic analysis
+    - Diversity metrics
+
+    Files created:
+    - {output_prefix}_filtered.fasta : Filtered consensus sequences
+    - {output_prefix}_aligned.fasta : MAFFT alignment
+    - {output_prefix}_aligned_trimmed.fasta : trimAl-trimmed alignment (if enabled)
+    - {output_prefix}_tree.nwk : Final phylogenetic tree
+
+    See Also
+    --------
+    filter_consensus_sequences : Filter short/low-coverage sequences
+    run_trimal : Trim gappy alignment columns
     """
     try:
         output_prefix_path = Path(output_prefix)
         output_prefix_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Combine with outgroup if provided
-        input_fasta = consensus_fasta
-        if outgroup_fasta:
-            combined_fasta = f"{output_prefix}_combined.fasta"
-            input_fasta = add_outgroup(consensus_fasta, outgroup_fasta, combined_fasta)
+        # Step 1: Filter consensus sequences for phylogenetic quality
+        logger.info("  Step 1/4: Filtering consensus sequences...")
+        filtered_fasta = f"{output_prefix}_filtered.fasta"
+        n_total, n_kept, filtered_ids = filter_consensus_sequences(
+            consensus_fasta,
+            filtered_fasta,
+            min_length=min_consensus_length,
+            min_cluster_size=min_cluster_size,
+            max_sequences=None  # Do not downsample by default; keep all passing haplotypes
+        )
 
-        # Run MAFFT alignment
+        # Check if enough sequences passed filtering
+        if n_kept < 4:
+            logger.warning(
+                f"Only {n_kept} sequences passed quality filters. "
+                f"Need at least 4 sequences for phylogenetic tree. Skipping tree building."
+            )
+            return None
+
+        # Step 2: Combine with outgroup if provided
+        input_fasta = filtered_fasta
+        if outgroup_fasta:
+            logger.info("  Adding outgroup sequences...")
+            combined_fasta = f"{output_prefix}_combined.fasta"
+            input_fasta = add_outgroup(filtered_fasta, outgroup_fasta, combined_fasta)
+
+        # Step 3: Run MAFFT alignment
+        logger.info("  Step 2/4: Aligning sequences with MAFFT...")
         aligned_fasta = f"{output_prefix}_aligned.fasta"
         run_mafft_alignment(input_fasta, aligned_fasta, threads=threads)
 
-        # Run FastTree to build phylogeny
+        # Step 4: Trim alignment with trimAl (if enabled)
+        tree_input = aligned_fasta
+        if trim_alignment:
+            logger.info("  Step 3/4: Trimming alignment with trimAl...")
+            try:
+                trimmed_fasta = f"{output_prefix}_aligned_trimmed.fasta"
+                run_trimal(aligned_fasta, trimmed_fasta, method=trim_method)
+                tree_input = trimmed_fasta
+            except RuntimeError as e:
+                logger.warning(f"trimAl failed: {e}")
+                logger.warning("Proceeding with untrimmed alignment")
+                tree_input = aligned_fasta
+        else:
+            logger.info("  Step 3/4: Skipping alignment trimming (trim_alignment=False)")
+
+        # Step 5: Run FastTree to build phylogeny
+        logger.info("  Step 4/4: Building phylogenetic tree with FastTree...")
         tree_file = f"{output_prefix}_tree.nwk"
-        run_fasttree(aligned_fasta, tree_file, model=model)
+        run_fasttree(tree_input, tree_file, model=model)
 
         # Load and return tree
         if Path(tree_file).exists():
             tree = Phylo.read(tree_file, "newick")
+            logger.info(f"  ✓ Phylogenetic tree built successfully")
+            logger.info(f"    - {n_kept}/{n_total} consensus sequences used")
+            logger.info(f"    - Filtered out: {', '.join(filtered_ids[:3])}"
+                       f"{' ...' if len(filtered_ids) > 3 else ''}")
             return tree
         else:
             logger.warning(f"Tree file not created: {tree_file}")
@@ -338,14 +764,14 @@ def relabel_tree_and_alignment(
     taxonomy_csv: str,
     output_tree: str,
     output_alignment: str,
-    label_column: str = "consensus_group_sp",
-    id_column: str = "consensus_group"
+    label_column: str = "haplotype_sp",
+    id_column: str = "haplotype_id"
 ) -> tuple[str, str]:
     """
-    Relabel phylogenetic tree and alignment with consensus_group_sp labels.
+    Relabel phylogenetic tree and alignment with haplotype_sp labels.
 
-    This function replaces consensus_group labels (e.g., "consensus_c34_n97")
-    with consensus_group_sp labels (e.g., "Crassostrea hongkongensis c34_n97")
+    This function replaces haplotype_id labels (e.g., "consensus_c34_n97")
+    with haplotype_sp labels (e.g., "Crassostrea hongkongensis c34_n97")
     in both the tree and alignment files.
 
     Parameters
@@ -355,15 +781,15 @@ def relabel_tree_and_alignment(
     alignment_file : str
         Path to input aligned FASTA file
     taxonomy_csv : str
-        Path to taxonomy CSV with consensus_group and consensus_group_sp columns
+        Path to taxonomy CSV with haplotype_id and haplotype_sp columns
     output_tree : str
         Path for output relabeled tree file
     output_alignment : str
         Path for output relabeled alignment file
     label_column : str, optional
-        Column in taxonomy CSV containing new labels (default: "consensus_group_sp")
+        Column in taxonomy CSV containing new labels (default: "haplotype_sp")
     id_column : str, optional
-        Column in taxonomy CSV containing original IDs (default: "consensus_group")
+        Column in taxonomy CSV containing original IDs (default: "haplotype_id")
 
     Returns
     -------
@@ -411,24 +837,35 @@ def relabel_tree_and_alignment(
     if label_column not in taxonomy_df.columns:
         raise ValueError(f"Column '{label_column}' not found in taxonomy CSV")
 
-    # Create mapping dictionary: consensus_group -> consensus_group_sp
+    # Create mapping dictionary: haplotype_id -> haplotype_sp
     label_map = dict(zip(taxonomy_df[id_column], taxonomy_df[label_column]))
     logger.info(f"Loaded {len(label_map)} label mappings from taxonomy CSV")
 
-    # Create alternative mapping for base names (consensus_cX -> consensus_cX_nZ)
-    # This handles cases where tree tips are named consensus_c1 but taxonomy has consensus_c1_n84
+    # Create alternative mapping for base names
+    # This handles cases where tree tips have different suffix counts than taxonomy CSV
+    # Tree tips: haplotype_h1_n218 (discovery count)
+    # Taxonomy: haplotype_h1_n218_n239 (discovery count + assignment count)
     base_name_map = {}
-    for consensus_group, label in label_map.items():
-        # Extract base name: consensus_c1_n84 -> consensus_c1
+    for haplotype_id, label in label_map.items():
+        # Extract base patterns at multiple levels:
+        # haplotype_h1_n218_n239 -> try both haplotype_h1_n218 and haplotype_h1
         import re
-        match = re.match(r'(consensus_c\d+)(?:_n\d+)?$', str(consensus_group))
-        if match:
-            base_name = match.group(1)
-            # Store mapping from base name to full label
-            # If multiple entries have same base (shouldn't happen), use first one
+
+        # Pattern 1: Extract with first suffix (haplotype_h1_n218_n239 -> haplotype_h1_n218)
+        match1 = re.match(r'((?:haplotype_h|consensus_c)\d+_n\d+)(?:_n\d+)*$', str(haplotype_id))
+        if match1:
+            first_suffix_name = match1.group(1)
+            if first_suffix_name not in base_name_map:
+                base_name_map[first_suffix_name] = label
+                logger.debug(f"Base name mapping (first suffix): {first_suffix_name} -> {label}")
+
+        # Pattern 2: Extract without any suffix (haplotype_h1_n218 -> haplotype_h1)
+        match2 = re.match(r'((?:haplotype_h|consensus_c)\d+)(?:_n\d+)*$', str(haplotype_id))
+        if match2:
+            base_name = match2.group(1)
             if base_name not in base_name_map:
                 base_name_map[base_name] = label
-                logger.debug(f"Base name mapping: {base_name} -> {label}")
+                logger.debug(f"Base name mapping (no suffix): {base_name} -> {label}")
 
     logger.info(f"Created {len(base_name_map)} base name mappings")
 
@@ -442,7 +879,7 @@ def relabel_tree_and_alignment(
             new_name = None
 
             # Try exact match first
-            if original_name in label_map:
+            if original_name in label_map and label_map[original_name]:
                 new_name = label_map[original_name]
             # Try base name match if exact match fails
             elif original_name in base_name_map:
@@ -475,7 +912,7 @@ def relabel_tree_and_alignment(
             new_id = None
 
             # Try exact match first
-            if original_id in label_map:
+            if original_id in label_map and label_map[original_id]:
                 new_id = label_map[original_id]
             # Try base name match if exact match fails
             elif original_id in base_name_map:
@@ -502,3 +939,119 @@ def relabel_tree_and_alignment(
         raise RuntimeError(error_msg) from e
 
     return output_tree, output_alignment
+
+
+def reroot_tree_by_label(tree_file: str, outgroup_label: str, output_file: Optional[str] = None) -> Optional[str]:
+    """
+    Reroot a Newick tree on an existing tip label (e.g., an in-alignment outgroup).
+
+    Parameters
+    ----------
+    tree_file : str
+        Path to input tree
+    outgroup_label : str
+        Exact tip label to use as the outgroup/root
+    output_file : Optional[str], default None
+        Where to write the rerooted tree (defaults to overwrite input)
+
+    Returns
+    -------
+    Optional[str]
+        Path to rerooted tree if successful, else None
+    """
+    tree_path = Path(tree_file)
+    if not tree_path.exists():
+        logger.warning(f"Cannot reroot: tree file not found: {tree_file}")
+        return None
+
+    output_path = Path(output_file) if output_file else tree_path
+    try:
+        tree = Phylo.read(tree_path, "newick")
+        tip = next((t for t in tree.get_terminals() if t.name == outgroup_label), None)
+        if tip is None:
+            logger.warning(f"Outgroup label '{outgroup_label}' not found in tree; skipping reroot")
+            return None
+
+        tree.root_with_outgroup(tip)
+        Phylo.write(tree, output_path, "newick")
+        logger.info(f"  ✓ Rerooted tree on '{outgroup_label}': {output_path}")
+        return str(output_path)
+    except Exception as e:
+        logger.warning(f"Failed to reroot tree on '{outgroup_label}': {e}")
+        return None
+
+
+def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, output_file: Optional[str] = None) -> Optional[str]:
+    """
+    Reroot a tree using all tips whose assigned species/genus matches a query, by LCA.
+
+    Parameters
+    ----------
+    tree_file : str
+        Path to input tree
+    taxonomy_csv : str
+        Path to haplotype taxonomy table (haplotype_id, assigned_sp, haplotype_sp)
+    taxon_query : str
+        Species or genus name to match (case-insensitive contains)
+    output_file : Optional[str], default None
+        Where to write the rerooted tree (defaults to overwrite input)
+    """
+    tree_path = Path(tree_file)
+    tax_path = Path(taxonomy_csv)
+    if not tree_path.exists() or not tax_path.exists():
+        logger.warning(f"Cannot reroot by taxon (missing file): tree={tree_file}, taxonomy={taxonomy_csv}")
+        return None
+
+    try:
+        tax_df = pd.read_csv(tax_path)
+    except Exception as e:
+        logger.warning(f"Cannot reroot by taxon: failed to read taxonomy CSV: {e}")
+        return None
+
+    # Collect haplotype_ids whose assigned_sp or haplotype_sp contains the query
+    q = taxon_query.lower()
+    candidates = []
+    for _, row in tax_df.iterrows():
+        hid = row.get("haplotype_id")
+        assigned = str(row.get("assigned_sp", "")).lower()
+        label = str(row.get("haplotype_sp", "")).lower()
+        if hid and (q in assigned or q in label):
+            candidates.append(str(hid))
+
+    if not candidates:
+        logger.warning(f"No haplotypes matched outgroup taxon '{taxon_query}'")
+        return None
+
+    # Normalize to base IDs for matching tree tips (strip trailing _n counts)
+    import re
+    def _to_base(name: str) -> str:
+        m = re.match(r'((?:haplotype_h|consensus_c)\\d+)(?:_n\\d+)*$', name)
+        return m.group(1) if m else name
+
+    candidate_bases = {_to_base(c) for c in candidates}
+
+    try:
+        tree = Phylo.read(tree_path, "newick")
+        tip_matches = []
+        for tip in tree.get_terminals():
+            base = _to_base(tip.name or "")
+            if tip.name in candidates or base in candidate_bases:
+                tip_matches.append(tip)
+
+        if not tip_matches:
+            logger.warning(f"No matching tips found in tree for outgroup taxon '{taxon_query}'")
+            return None
+
+        if len(tip_matches) == 1:
+            tree.root_with_outgroup(tip_matches[0])
+        else:
+            lca = tree.common_ancestor(tip_matches)
+            tree.root_with_outgroup(lca)
+
+        output_path = Path(output_file) if output_file else tree_path
+        Phylo.write(tree, output_path, "newick")
+        logger.info(f"  ✓ Rerooted tree on taxon '{taxon_query}' (n={len(tip_matches)} tips): {output_path}")
+        return str(output_path)
+    except Exception as e:
+        logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}")
+        return None

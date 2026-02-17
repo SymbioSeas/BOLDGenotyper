@@ -1,9 +1,9 @@
 # BOLDGenotyper
 
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://img.shields.io/badge/DOI-pending-lightgrey.svg)](https://zenodo.org/)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/SymbioSeas/BOLDGenotyper/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/SymbioSeas/BOLDGenotyper/releases)
 
 **Automated COI sequence genotyping and biogeographic analysis from BOLD database data**
 
@@ -23,6 +23,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - [Usage Guide](#usage-guide)
 - [Parameter Reference](#parameter-reference)
 - [Output Files](#output-files)
+- [Customizing Plots for Publication](#customizing-plots-for-publication)
 - [Biological Context for Threshold Selection](#biological-context-for-threshold-selection)
 - [Assumptions and Limitations](#assumptions-and-limitations)
 - [Troubleshooting](#troubleshooting)
@@ -35,98 +36,159 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 ## Features
 
 - **Unified Command-Line Interface**: Single command runs the complete pipeline from TSV input to publication-ready outputs
-- **Automated Genotyping**: Identifies unique COI genotypes through hierarchical clustering and consensus sequence generation
+- **Automated Haplotype Discovery**: Identifies unique COI haplotypes using Exact Sequence Variants (ESVs) from a core alignment region
 - **Robust Quality Control**: Multi-stage sequence filtering, coordinate quality assessment, and centroid exclusion
 - **Intelligent Genotype Assignment**: Edit distance-based matching with tie detection and low-confidence flagging
-- **Geographic Analysis**: Ocean basin assignment using GOaS (Global Oceans and Seas) reference data for marine organisms
+- **Geographic Analysis**: Region assignment using GOaS ocean basins (marine), HydroBASINS (freshwater), Ecoregions2017 (terrestrial), or any custom shapefile
+- **Metadata Analysis**: Automated analysis of haplotype–metadata associations with chi-square testing, coverage assessment, and temporal emergence timelines
 - **Phylogenetic Tree Building**: Optional phylogenetic reconstruction with FastTree (GTR+Gamma model)
 - **Interactive HTML Reports**: Comprehensive summary reports with interactive visualizations using Plotly.js
 - **Publication-Ready Visualizations**:
   - Identity distribution histograms
   - Phylogenetic trees with tip labels
   - Geographic distribution maps (global and faceted by species)
-  - Relative and total abundance bar charts (by ocean basin)
+  - Relative and total abundance bar charts by geographic region
   - All outputs in PNG and PDF formats
+- **Plot Customization**: YAML-configured plot regeneration — modify colors, dimensions, projections, and filters without re-running the analysis
+- **Population Genetics Export**: Optional export to Arlequin, PopART/NEXUS, DnaSP, and generic formats with geographic populations defined automatically
 - **Reproducibility**: Complete parameter logging and standardized workflow
 - **Flexibility**: Customizable thresholds for different taxonomic groups and research questions
 - **Modular Design**: Skip geographic analysis with `--no-geo` flag for non-marine organisms or when GOaS is unavailable
 
 ---
 
+## Active Modules
+
+### Layer 1: Core Infrastructure
+- **cli.py**: Parses CLI args, calls other modules in sequence
+- **config.py**: Dataclass-based config with nested sections for each module
+- **utils.py**: Logging setup, external tool checking (MAFFT), file I/O, string sanitation
+
+### Layer 2: QC & Preprocessing
+- **metadata.py**: Parses BOLD TSV files, validates required columns, coordinate quality marking
+- **quality_control.py**: COI orientation normalization, ORF validation, dynamic length/N-fraction filtering
+
+### Layer 3: Haplotype Discovery & Assignment
+- **dereplication.py**: MAFFT alignment, core region extraction, ESV identification, suspect flagging
+- **haplotype_assignment.py**: Edit-distance matching of samples to haplotypes, confidence scoring
+
+### Layer 4: Analysis
+- **divergence_analysis.py**: Pairwise divergence matrices, barcoding gap, within/between-species divergence
+- **species_analysis.py**: Species-level aggregation, diversity metrics, geographic summaries
+- **scripts/compare_analyses.py**: Standalone utility — compares species vs. family-level runs, contamination crosswalk
+- **parameter_sweep.py**: Tests multiple singleton thresholds, tracks group membership stability
+
+### Layer 5: Geographic & Phylogenetic
+- **geographic.py**: GOaS shapefile loading, point-in-polygon ocean basin assignment
+- **geographic_enhancement.py**: Coverage assessment, basin confidence metrics
+- **goas_downloader.py**: Downloads Global Oceans and Seas reference shapefiles
+- **phylogenetics.py**: MAFFT alignment, trimAl, FastTree tree building, outgroup rooting
+- **msa_visualization.py**: Phylogeny-ordered MSA display with nucleotide coloring
+
+### Layer 6: Visualization & Reporting
+- **visualization.py**: Distribution maps, ocean basin bar charts, haplotype pie charts, faceted plots
+- **metadata_analysis.py**: Categorical metadata field analysis and plotting
+- **reports.py**: Assignment summary CSV, HTML report with embedded images
+- **plot_export.py**: Exports plot data CSVs + config YAML + Python regeneration scripts
+- **plot_regeneration.py**: Regenerates plots from exported data using customized config
+
+### Layer 7: Export
+- **popgen_export.py**: Exports to Arlequin, PopART/NEXUS, DnaSP, generic CSV/FASTA
+- **haplotype_query.py**: Queries user sequences against haplotype database
+
 ## Installation
 
-### Prerequisites
+### Quick Install (Recommended)
 
-**Required Software**:
-- **Python**: ≥3.8
-- **MAFFT**: v7+ (multiple sequence alignment)
-- **trimAl**: v1.4+ (alignment trimming)
-- **FastTree**: v2+ (optional, for phylogenetic trees)
+BOLDGenotyper uses conda to manage all dependencies, including external tools (MAFFT, trimAl, FastTree) and Python packages.
 
-**Recommended**: Conda/Mamba for dependency management
-
-### Option 1: Install from Source (Recommended for Development)
-
+**For Mac/Linux**:
 ```bash
 # Clone the repository
 git clone https://github.com/SymbioSeas/BOLDGenotyper.git
 cd BOLDGenotyper
 
-# Create and activate conda environment (includes all dependencies)
+# Run installation script (installs everything automatically)
+bash install.sh
+```
+
+**For Windows (requires WSL2)**:
+
+BOLDGenotyper depends on bioconda packages (MAFFT, trimAl, FastTree) which are not available on native Windows. You must use [WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+
+```powershell
+# Step 1: Install WSL2 (if not already installed)
+# Open PowerShell as Administrator and run:
+wsl --install
+
+# Step 2: After restarting, open your WSL terminal and install Miniconda:
+# https://docs.conda.io/en/latest/miniconda.html#linux-installers
+
+# Step 3: Clone and install inside WSL
+git clone https://github.com/SymbioSeas/BOLDGenotyper.git
+cd BOLDGenotyper
+bash install.sh
+```
+
+Alternatively, from a Windows Command Prompt (if WSL2 is already set up with conda):
+```
+install.bat
+```
+
+**Manual Installation** (if scripts don't work):
+```bash
+# Clone the repository
+git clone https://github.com/SymbioSeas/BOLDGenotyper.git
+cd BOLDGenotyper
+
+# Create and activate conda environment (includes ALL dependencies)
 conda env create -f environment.yml
 conda activate boldgenotyper
 
-# Install package in editable mode
+# Install package
 pip install -e .
 
 # Verify installation
 boldgenotyper --version
-
-# Alternative: If you have the old boldgenotyper_env.yml file
-# conda env create -f boldgenotyper_env.yml
-# conda activate depredation  # Note: old env name
 ```
 
-### Option 2: Install with pip (Coming Soon)
+### What Gets Installed
+
+The conda environment includes:
+
+**External Tools**:
+- MAFFT (multiple sequence alignment)
+- trimAl (alignment trimming)
+- FastTree (phylogenetic tree building)
+
+**Python Packages**:
+- Core: biopython, pandas, numpy, scipy, matplotlib, seaborn
+- Geographic: geopandas, cartopy, shapely (for maps and polygon analysis)
+- Utilities: pyyaml, jinja2
+
+**No additional installation needed!** All dependencies are managed by conda.
+
+### Verifying Installation
 
 ```bash
-# Once published to PyPI
-pip install boldgenotyper
-
-# Install with geographic analysis support
-pip install boldgenotyper[geo]
-
-# Install with all optional dependencies
-pip install boldgenotyper[all]
-```
-
-### Verifying External Dependencies
-
-```bash
-# Check MAFFT
-mafft --version
-
-# Check trimAl
-trimal --version
-
-# Check FastTree (optional, for phylogenetic analysis)
-fasttree 2>&1 | head -1
-
-# Verify Python packages
-python -c "import Bio, pandas, scipy, matplotlib, seaborn; print('Core packages OK')"
-
-# Verify geographic packages (if installed)
-python -c "import geopandas, cartopy, shapely; print('Geographic packages OK')"
-```
-
-### Installing External Tools with Conda
-
-If you don't have MAFFT, trimAl, or FastTree installed:
-
-```bash
+# Activate environment
 conda activate boldgenotyper
-conda install -c bioconda mafft trimal fasttree
+
+# Check boldgenotyper
+boldgenotyper --version
+
+# Check external tools
+mafft --version
+trimal --version
+fasttree 2>&1 | head -1
 ```
+
+### System Requirements
+
+- **Operating Systems**: macOS, Linux, Windows (via WSL2 — see above)
+- **Python**: 3.9 - 3.13
+- **RAM**: 4GB minimum, 8GB+ recommended for large datasets
+- **Disk**: ~2GB for conda environment + space for your data
 
 ---
 
@@ -141,7 +203,7 @@ GOaS (Global Oceans and Seas) is a shapefile dataset from Marine Regions that de
 
 **Important Notes**:
 - The GOaS shapefile (~150-200 MB) is **not included** in this repository due to size constraints
-- Geographic analysis is **designed for marine organisms only** in v1.0
+- GOaS is the **default for marine organisms**; use `--custom-shp` for freshwater/terrestrial (see below)
 - If you're only interested in genotyping and phylogeny, skip this setup using the `--no-geo` flag
 
 ### Automated Download (Recommended)
@@ -158,7 +220,7 @@ python -m boldgenotyper.goas_downloader
 
 # This will:
 # 1. Download World_Seas_IHO_v3.zip from Marine Regions
-# 2. Extract to boldgenotyper/GOaS_v1_20211214/
+# 2. Extract to shapefiles/GOaS_v1_20211214/
 # 3. Verify all required files (.shp, .shx, .dbf, .prj, .cpg)
 # 4. Create a citation file
 ```
@@ -171,7 +233,7 @@ python -m boldgenotyper.goas_downloader
 [INFO] ✓ All GOaS files present
 [INFO] ===============================================
 [INFO] GOaS setup complete!
-[INFO] Data location: boldgenotyper/GOaS_v1_20211214
+[INFO] Data location: shapefiles/GOaS_v1_20211214
 [INFO] ===============================================
 ```
 
@@ -187,10 +249,10 @@ python -m boldgenotyper.goas_downloader
    unzip World_Seas_IHO_v3.zip
 
    # Create the directory
-   mkdir -p boldgenotyper/GOaS_v1_20211214
+   mkdir -p shapefiles/GOaS_v1_20211214
 
    # Move all files (must include .shp, .shx, .dbf, .prj, .cpg)
-   mv World_Seas_IHO_v3.* boldgenotyper/GOaS_v1_20211214/
+   mv World_Seas_IHO_v3.* shapefiles/GOaS_v1_20211214/
    ```
 
 3. **Verify installation**:
@@ -201,28 +263,57 @@ python -m boldgenotyper.goas_downloader
    print(f'GOaS exists: {cfg.geographic.goas_shapefile_path.exists()}')"
    ```
 
+### Custom Shapefiles for Non-Marine Organisms
+
+BOLDGenotyper now supports custom shapefiles for **freshwater and terrestrial organisms**, enabling the same biogeographic analysis capabilities as marine datasets.
+
+**Supported Geographic Categories**:
+- **Marine**: GOaS ocean basins (default)
+- **Freshwater**: HydroBASINS watershed polygons
+- **Terrestrial**: Ecoregions2017 biogeographic regions
+- **Custom**: Any shapefile with geographic regions
+
+**Example: Freshwater organisms (Salmonidae)**
+```bash
+boldgenotyper data/Salmonidae.tsv \
+  --build-tree \
+  --custom-shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp \
+  --shp-field HYBAS_ID \
+  --geo-category freshwater_basin
+```
+
+**Example: Terrestrial organisms (Pieridae butterflies)**
+```bash
+boldgenotyper data/Pieridae.tsv \
+  --build-tree \
+  --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
+  --shp-field ECO_NAME \
+  --geo-category ecoregion
+```
+
+**Parameters**:
+- `--custom-shp`: Path to shapefile (.shp file)
+- `--shp-field`: Attribute field containing region names (default: `name`)
+- `--geo-category`: Category name for outputs (e.g., `freshwater_basin`, `ecoregion`)
+
+**Where to get shapefiles**:
+- HydroBASINS: https://www.hydrosheds.org/products/hydrobasins
+- Ecoregions2017: https://ecoregions.appspot.com/
+- Any compatible shapefile with polygon geometries
+
 ### Skipping Geographic Analysis
 
-If you don't need geographic distribution analysis or are working with non-marine organisms:
+If you don't need geographic analysis:
 
 ```bash
-# Use the --no-geo flag to skip geographic analysis
+# Use the --no-geo flag to skip geographic analysis entirely
 boldgenotyper data/my_species.tsv --no-geo
-
-# This will:
-# ✓ Perform sequence clustering and genotyping
-# ✓ Generate phylogenetic trees (if --build-tree specified)
-# ✓ Create identity distribution plots
-# ✗ Skip ocean basin assignment (all samples marked as "Unknown")
-# ✗ Skip geographic distribution maps
-# ✗ Skip basin-specific visualizations
 ```
 
 **Use cases for `--no-geo`**:
-- Non-marine organisms (terrestrial, freshwater)
-- GOaS shapefile not available or failed to download
 - Only interested in genotype identification and phylogeny
-- Samples lack precise geographic coordinates
+- Samples lack geographic coordinates
+- No suitable shapefile available
 
 ---
 
@@ -257,7 +348,6 @@ boldgenotyper data/Euprymna_scolopes.tsv --no-geo
 **Adjust parameters for highly diverse taxa**:
 ```bash
 boldgenotyper data/Carcharhinus.tsv \
-  --clustering-threshold 0.05 \
   --similarity-threshold 0.80 \
   --threads 8 \
   --build-tree
@@ -282,6 +372,28 @@ Results are organized in the output directory:
 **Open the HTML report** to explore your results interactively:
 ```bash
 open {organism}_output/{organism}_summary_report.html
+```
+
+### Step 4: Advanced Workflows (Optional)
+
+**Explore haplotype structure** with parameter sweep:
+```bash
+boldgenotyper-sweep data/Sphyrna_lewini.tsv \
+  --thresholds 0.01,0.015,0.02,0.03,0.05 \
+  --output parameter_sweep/
+```
+
+**Compare species vs. family analysis** for contamination detection:
+```bash
+# First run both analyses
+boldgenotyper data/Sphyrna_lewini.tsv --output Sphyrna_lewini_output/
+boldgenotyper data/Sphyrnidae.tsv --output Sphyrnidae_output/
+
+# Then compare
+python scripts/compare_analyses.py \
+  --species-level Sphyrna_lewini_output/ \
+  --family-level Sphyrnidae_output/ \
+  --output comparative_analysis/
 ```
 
 ---
@@ -370,58 +482,76 @@ wget -O Sphyrna_lewini.tsv \
 
 ## Pipeline Overview
 
-BOLDGenotyper runs a comprehensive 7-phase pipeline:
+BOLDGenotyper runs a comprehensive 8-phase pipeline:
 
 ### Phase 1: Data Loading and Quality Control
 - Parses BOLD TSV file and validates required columns
-- Filters samples based on coordinate quality (excludes country centroids)
-- Assigns samples to ocean basins using GOaS shapefile (if available)
-- Logs summary statistics (total samples, samples with coordinates, basin assignments)
+- **Marks coordinate quality** (identifies centroid, missing, or invalid coordinates)
+  - Samples with centroid/missing coordinates are **retained for genotyping**
+  - Quality markers used only for geographic analysis (not for filtering)
+- Assigns ocean basins using GOaS shapefile (only to samples with high-quality coordinates)
+  - Samples with centroid/missing coordinates marked as "Unknown" ocean basin
+- Logs summary statistics (total samples, geographic quality samples, basin assignments)
 
-### Phase 2: Sequence Dereplication
-- Filters sequences by length (default: ≥400 bp) and N content (default: ≤10%)
+### Phase 2: Haplotype Discovery
+- **Uses ALL samples** (including those with centroid coordinates)
+- Filters sequences by length (default: ≥200 bp) and N content (default: ≤10%)
 - Aligns sequences with MAFFT (auto algorithm selection)
-- Trims alignment with trimAl (automated1 method)
-- Calculates pairwise genetic distances (ignoring gaps and ambiguous bases)
-- Performs hierarchical clustering (average linkage, default threshold: 0.03)
-- Generates consensus sequences for each cluster
-- Filters short consensus sequences (default: ≥75% of median length)
+- Extracts core alignment region (trims ragged ends)
+- Identifies Exact Sequence Variants (ESVs) as unique haplotypes
+- Flags error singletons (singletons within 1 substitution of a larger haplotype)
+- Flags suspect haplotypes based on pairwise distance from majority cluster
 
-**Output**: Consensus FASTA file with representative genotypes
+**Output**: Haplotype FASTA file with representative ESV sequences
 
-### Phase 3: Genotype Assignment
-- Computes edit distance between each sample and all consensus sequences
-- Assigns samples to best-matching genotype above similarity threshold (default: 50%)
+### Phase 3: Haplotype Assignment
+- **Uses ALL samples** (including those with centroid coordinates)
+- Computes edit distance between each sample and all haplotype sequences
+- Assigns samples to best-matching haplotype above similarity threshold (default: 50%)
 - Flags ambiguous assignments (tie margin default: 0.003)
 - Flags low-confidence assignments (below tie threshold: 0.95)
 - Generates diagnostic CSV with identity scores and runner-up matches
 
-**Output**: Annotated dataset with genotype assignments and diagnostics
+**Output**: Annotated dataset with haplotype assignments and diagnostics (all samples included)
 
 ### Phase 4: Taxonomic Analysis
-- Aggregates species names within each consensus group
-- Determines majority species for each genotype
-- Identifies taxonomy conflicts (genotypes spanning multiple species)
+- Aggregates species names within each haplotype group
+- Determines majority species for each haplotype
+- Identifies taxonomy conflicts (haplotypes spanning multiple species)
 - Generates species composition tables
 
-**Output**: Consensus taxonomy and species-by-genotype tables
+**Output**: Taxonomy summaries and species-by-haplotype tables
 
 ### Phase 5: Phylogenetic Analysis (Optional, `--build-tree`)
-- Aligns consensus sequences with MAFFT
+- Aligns haplotype sequences with MAFFT
 - Constructs maximum-likelihood tree with FastTree (GTR+Gamma model)
 - Generates tree visualizations with tip labels
 - Outputs Newick format for further analysis in tree editors (e.g., [TreeViewer](https://treeviewer.org/), FigTree, iTOL)
 
 **Output**: Tree files (.nwk), relabeled tree with readable tip labels (_relabeled.nwk), visualizations (.png, .pdf)
 
-### Phase 6: Visualization
+### Phase 6: Metadata Analysis
+- Analyzes associations between haplotype assignments and specimen metadata fields
+- **Coverage analysis**: Assesses availability and completeness of each metadata field
+- **Categorical analysis**: Examines haplotype distributions across metadata categories (sex, life stage, country, habitat, realm, biome, ecoregion)
+- **Statistical testing**: Chi-square tests of haplotype–metadata associations with significance reporting
+- **Temporal analysis** (if collection dates available):
+  - Parses collection dates from various BOLD formats
+  - Calculates haplotype emergence timelines
+  - Analyzes temporal distribution patterns
+- **Visualizations**: Coverage bar charts, categorical stacked bars, heatmaps, emergence timelines, species-faceted and country-faceted temporal plots
+- Enabled by default; disable with `--no-metadata-analysis`
+
+**Output**: Coverage JSON, field analysis CSVs, association test results, temporal summaries, multiple PNG/PDF plots
+
+### Phase 7: Visualization
 - **Identity Distribution**: Histogram of sequence identity scores for assigned samples
 - **Geographic Distribution Maps**:
   - Global map with genotypes color-coded
   - Faceted maps (one per species or genotype)
   - Sample points sized by abundance
-- **Ocean Basin Bar Charts**:
-  - Relative abundance (stacked, normalized by basin)
+- **Region Abundance Bar Charts**:
+  - Relative abundance (stacked, normalized by region)
   - Total abundance (stacked counts)
   - Faceted versions (one per species)
 - All visualizations in PNG (high-res) and PDF (vector) formats
@@ -429,7 +559,16 @@ BOLDGenotyper runs a comprehensive 7-phase pipeline:
 
 **Output**: Multiple PNG/PDF files, JSON data files for interactive plots
 
-### Phase 7: Report Generation
+### Plot Data Export (automatic)
+- Exports raw data for each plot type as CSV files
+- Creates `plot_config.yaml` with all styling parameters (colors, DPI, projections, dimensions)
+- Generates Python regeneration scripts for each plot type
+- Enables users to customize plots for publication without re-running the pipeline
+- Disable with `--no-export-plot-data`
+
+**Output**: `plots/` directory with data CSVs, YAML config, and Python scripts (see [Customizing Plots](#customizing-plots-for-publication))
+
+### Phase 8: Report Generation
 - Aggregates all results into interactive HTML report
 - Summary statistics (total samples, genotypes, assignment rate, etc.)
 - Detailed tables (assignment status, identity scores, taxonomy, geography)
@@ -438,6 +577,43 @@ BOLDGenotyper runs a comprehensive 7-phase pipeline:
 - Export functionality (PNG, SVG, CSV)
 
 **Output**: Comprehensive HTML report, assignment summary CSVs
+
+### Advanced Workflows
+
+Beyond the main pipeline, BOLDGenotyper provides three additional commands for specialized analyses:
+
+#### Parameter Sweep (`boldgenotyper-sweep`)
+
+Systematically tests multiple singleton filtering thresholds to identify optimal settings for your dataset. The sweep analyzes:
+- Number of haplotypes vs. singleton threshold
+- Assignment success rate vs. threshold
+- Sample haplotype stability across thresholds
+- Identity score distributions
+- Automatic elbow-point detection
+
+**When to use**: Before running your final analysis, especially for datasets with many rare sequences.
+
+**Output**: Threshold recommendations, stability plots, group membership tracking
+
+See `parameter_sweep/README.md` for interpretation guide.
+
+#### Comparative Analysis (`scripts/compare_analyses.py`)
+
+Compares species-level and family-level analyses to detect potential contamination, mislabeling, or cryptic species. Identifies samples that cluster with unexpected species at the family level. This is a standalone utility script, not a package subcommand.
+
+**When to use**: Quality control for published datasets, contamination detection, multi-species studies
+
+**Usage**:
+```bash
+python scripts/compare_analyses.py \
+  --species-level Sphyrna_lewini_output/ \
+  --family-level Sphyrnidae_output/ \
+  --generate-reassignment-table
+```
+
+**Output**: Comparison metrics, genotype crosswalk table, sample reassignment recommendations, publication-ready methods text
+
+See [`docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md`](docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md) for detailed interpretation.
 
 ---
 
@@ -456,7 +632,6 @@ boldgenotyper <input_tsv> [options]
 boldgenotyper data/Sphyrna_lewini.tsv \
   --organism "Sphyrna_lewini" \
   --output results/Sphyrna_analysis \
-  --clustering-threshold 0.03 \
   --similarity-threshold 0.50 \
   --tie-margin 0.003 \
   --tie-threshold 0.95 \
@@ -477,20 +652,18 @@ boldgenotyper data/Sphyrna_lewini.tsv --build-tree
 boldgenotyper data/Anopheles_gambiae.tsv --no-geo --build-tree
 ```
 
-**3. Highly Diverse Taxon (Relaxed Clustering)**:
+**3. Highly Diverse Taxon (Lower Assignment Threshold)**:
 ```bash
-# Use looser clustering for species complexes
+# Use lower similarity threshold for species complexes with higher divergence
 boldgenotyper data/Carcharhinus_complex.tsv \
-  --clustering-threshold 0.05 \
   --similarity-threshold 0.80 \
   --threads 16
 ```
 
-**4. Fine-Scale Population Study (Strict Clustering)**:
+**4. Fine-Scale Population Study (Strict Assignment)**:
 ```bash
-# Use stringent clustering for within-species genotyping
+# Use stringent similarity threshold for within-species genotyping
 boldgenotyper data/Population_samples.tsv \
-  --clustering-threshold 0.01 \
   --similarity-threshold 0.95 \
   --build-tree
 ```
@@ -506,19 +679,69 @@ boldgenotyper data/my_species.tsv \
   --output /mnt/storage/results/my_analysis_2024
 ```
 
+### Querying New Sequences
+
+After completing a BOLD analysis, you can query new COI sequences against the identified haplotypes without re-running the full pipeline. This is useful for:
+- Assigning new specimens to existing haplotypes
+- Validating reference genomes against field samples
+- Cross-study comparison and longitudinal monitoring
+
+**Basic Query (Single or Multi-FASTA)**:
+```bash
+# Query new sequence(s) against identified haplotypes
+boldgenotyper-query \
+  --query new_samples.fasta \
+  --haplotypes results/Sphyrna_analysis/haplotypes/Sphyrna_haplotypes.fasta \
+  --output query_results/
+```
+
+**Query with Metadata Enrichment**:
+```bash
+# Include species composition and haplotype metadata
+boldgenotyper-query \
+  --query new_sample.fasta \
+  --haplotypes results/Sphyrna_analysis/haplotypes/Sphyrna_haplotypes.fasta \
+  --analysis-dir results/Sphyrna_analysis/ \
+  --output query_results/
+```
+
+**Customize Top Matches and Length Filters**:
+```bash
+# Report top 20 matches, filter by sequence length
+boldgenotyper-query \
+  --query samples.fasta \
+  --haplotypes haplotypes.fasta \
+  --top-n 20 \
+  --min-length 150 \
+  --max-length 1500 \
+  --output results/
+```
+
+**Query Output Files**:
+All three formats are generated automatically:
+- `query_results.csv`: Machine-readable table with identity metrics
+- `query_results.json`: Structured data for programmatic access
+- `query_results_detailed.txt`: Human-readable report with alignments
+
+**Match Quality Classification**:
+- **perfect** (100%): Exact haplotype match
+- **high** (≥99.5%): Likely same haplotype, minor sequencing variation
+- **good** (≥97%): Same species, possibly different haplotype
+- **moderate** (≥95%): Same genus, divergent haplotype
+- **low** (<95%): Different species or contamination
+
+**Important Notes**:
+- Query sequences must be **pre-extracted COI regions** (not multi-gene genomes)
+- Multi-FASTA files are supported for batch processing
+- No identity threshold - all matches are reported and ranked by quality
+- Local alignment handles length differences between query and consensus
+
 ### Input File Requirements
 
 **Filename Convention**: Your input TSV should follow this pattern for automatic organism detection:
 ```
 Genus_species.tsv
 ```
-
-Examples:
-- ✅ `Sphyrna_lewini.tsv`
-- ✅ `Carcharodon_carcharias.tsv`
-- ✅ `Euprymna_scolopes.tsv`
-- ❌ `shark_data.tsv` (no organism info)
-- ❌ `Sphyrna-lewini.tsv` (hyphens instead of underscores)
 
 **Override organism name** with `--organism` flag if needed:
 ```bash
@@ -540,39 +763,32 @@ boldgenotyper --help
 | `tsv` | Path | Required | Input BOLD TSV file with sequences and metadata |
 | `--organism` | String | Auto | Organism name (inferred from filename if not specified) |
 | `--output` | Path | `./{organism}_output` | Output directory |
-| `--clustering-threshold` | Float | 0.03 | Maximum genetic distance for clustering (0-1) |
-| `--similarity-threshold` | Float | 0.50 | Minimum identity for genotype assignment (0-1) |
+| `--similarity-threshold` | Float | 0.50 | Minimum identity for haplotype assignment (0-1) |
 | `--tie-margin` | Float | 0.003 | Maximum identity difference to call a tie (0-1) |
 | `--tie-threshold` | Float | 0.95 | Minimum identity to consider tie detection (0-1) |
 | `--threads` | Integer | 4 | Number of parallel CPU threads |
 | `--build-tree` | Flag | False | Build phylogenetic tree with FastTree |
 | `--no-report` | Flag | False | Skip HTML report generation |
 | `--no-geo` | Flag | False | Skip geographic analysis |
+| `--custom-shp` | Path | None | Custom shapefile for geographic region assignment |
+| `--shp-field` | String | name | Shapefile attribute field containing region labels |
+| `--geo-category` | String | Auto | Category name for geographic regions (auto-detected) |
+| `--no-metadata-analysis` | Flag | False | Skip metadata analysis |
+| `--metadata-fields` | List | All | Metadata fields to analyze (space-separated) |
+| `--no-normalize-sex` | Flag | False | Do not normalize sex values |
+| `--no-temporal-analysis` | Flag | False | Skip temporal analysis of collection dates |
+| `--no-export-plot-data` | Flag | False | Skip exporting plot data and regeneration scripts |
 | `--log-level` | String | INFO | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
 | `--version` | Flag | - | Show version and exit |
 
 ### Parameter Details
 
-#### `--clustering-threshold` (default: 0.03)
-
-**What it controls**: Maximum genetic distance for grouping sequences into consensus genotypes.
-
-**Formula**: `distance = 1 - (sequence_identity)`
-- `0.03` = sequences with ≥97% identity cluster together
-- `0.01` = sequences with ≥99% identity cluster together
-- `0.05` = sequences with ≥95% identity cluster together
-
-**When to adjust**:
-- **Lower (0.01-0.02)**: Fine-scale population studies, within-species genotyping
-- **Higher (0.04-0.10)**: Species complexes, divergent lineages, genus-level analyses
-
 #### `--similarity-threshold` (default: 0.50)
 
-**What it controls**: Minimum sequence identity required for a sample to be assigned to a genotype.
+**What it controls**: Minimum sequence identity required for a sample to be assigned to a haplotype.
 
 **Interpretation**:
 - Samples below this threshold are marked as "unassigned"
-- Should be lower than clustering threshold to account for within-cluster variation
 - Default of 50% is permissive to capture most samples
 
 **When to adjust**:
@@ -613,6 +829,47 @@ boldgenotyper --help
 
 **Recommendation**: Set to number of available cores (check with `nproc` or `sysctl -n hw.ncpu`)
 
+### Advanced Command Parameters
+
+#### `boldgenotyper-sweep` Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tsv` | Path | Required | Input BOLD TSV file |
+| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test |
+| `--output` | Path | parameter_sweep/ | Output directory |
+| `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
+| `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |
+| `--log-level` | String | INFO | Logging verbosity |
+
+**Example**:
+```bash
+boldgenotyper-sweep data/samples.tsv \
+  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
+  --threads 8 \
+  --output sweep_results/
+```
+
+#### `scripts/compare_analyses.py` Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--species-level` | Path | Required | Path to species-level analysis directory or annotated CSV |
+| `--family-level` | Path | Required | Path to family-level analysis directory or annotated CSV |
+| `--output` | Path | comparative_analysis/ | Output directory |
+| `--generate-reassignment-table` | Flag | False | Generate detailed sample-level reassignment table |
+| `--majority-threshold` | Float | 0.7 | Threshold for majority species assignment |
+| `--log-level` | String | INFO | Logging verbosity |
+
+**Example**:
+```bash
+python scripts/compare_analyses.py \
+  --species-level Sphyrna_lewini_output/ \
+  --family-level Sphyrnidae_output/ \
+  --generate-reassignment-table \
+  --output comparison_results/
+```
+
 ---
 
 ## Output Files
@@ -640,18 +897,45 @@ boldgenotyper --help
 │   ├── {organism}_tree_relabeled.nwk     # Tree with readable tip labels (for tree editors like TreeViewer)
 │   ├── {organism}_tree.png               # Tree visualization
 │   └── {organism}_tree.pdf
-│   # 💡 Open _relabeled.nwk files in tree editors such as TreeViewer (https://treeviewer.org/),
-│   #    FigTree, or iTOL for re-rooting, customization, and publication-quality figures
+│   #	Open _relabeled.nwk files in tree editors such as TreeViewer (https://treeviewer.org/),
+│   #   FigTree, or iTOL for re-rooting, customization, and publication-quality figures
+│
+├── metadata_analysis/                           # Metadata analysis outputs
+│   ├── {organism}_metadata_coverage.json        # Field availability statistics
+│   ├── {organism}_metadata_summary.csv          # Summary of all fields
+│   ├── {organism}_{field}_analysis.csv          # Per-field haplotype distributions
+│   ├── {organism}_association_tests.csv         # Chi-square test results
+│   └── {organism}_temporal_*.csv                # Temporal analysis (if dates available)
 │
 ├── visualization/
 │   ├── {organism}_identity_distribution.*       # Identity histogram
 │   ├── {organism}_distribution_map.*            # Global distribution map
 │   ├── {organism}_distribution_map_faceted.*    # Faceted by species
-│   ├── {organism}_distribution_bar.*            # Relative abundance by basin
+│   ├── {organism}_distribution_bar.*            # Relative abundance by region
 │   ├── {organism}_distribution_bar_faceted.*    # Faceted bar charts
-│   ├── {organism}_totaldistribution_bar.*       # Total counts by basin
+│   ├── {organism}_totaldistribution_bar.*       # Total counts by region
+│   ├── metadata/                                # Metadata analysis plots
+│   │   ├── {organism}_metadata_coverage.*       # Coverage bar chart
+│   │   ├── {organism}_{field}_by_haplotype.*    # Categorical stacked bars
+│   │   ├── {organism}_metadata_heatmap.*        # Haplotype × field heatmap
+│   │   └── {organism}_haplotype_emergence.*     # Temporal emergence timeline
 │   ├── *_data.json                              # Data for interactive HTML plots
 │   └── {organism}_tree.* (if --build-tree)
+│
+├── plots/                                       # Plot customization kit
+│   ├── plot_config.yaml                         # Editable styling parameters
+│   ├── README.md                                # Regeneration instructions
+│   ├── data/                                    # Raw plot data (CSV)
+│   │   ├── distribution_map.csv
+│   │   ├── distribution_bar_relative.csv
+│   │   ├── distribution_bar_absolute.csv
+│   │   ├── identity_distribution.csv
+│   │   └── genotype_colors.csv
+│   └── scripts/                                 # Python regeneration scripts
+│       ├── regenerate_all.py
+│       ├── regenerate_map.py
+│       ├── regenerate_bars.py
+│       └── regenerate_identity.py
 │
 ├── reports/
 │   └── {organism}_assignment_summary.csv        # Summary statistics
@@ -674,8 +958,14 @@ boldgenotyper --help
 - `consensus_group`: Assigned genotype (e.g., "Consensus_1")
 - `identity`: Sequence identity to assigned genotype (0-1)
 - `assignment_status`: "assigned", "low_confidence", "tie", "below_threshold", "no_sequence"
-- `ocean_basin`: Assigned ocean basin (e.g., "North Atlantic Ocean")
+- `ocean_basin`: Assigned ocean basin (e.g., "North Atlantic Ocean" or "Unknown")
 - `species`: Original BOLD species name
+- **Coordinate quality markers** (new):
+  - `has_centroid_coords`: True if coordinates are country/region centroids
+  - `has_missing_coords`: True if latitude or longitude is missing
+  - `has_zero_coords`: True if coordinates are [0, 0]
+  - `has_invalid_coords`: True if coordinates are out of valid range
+  - `is_geographic_quality`: True if coordinates suitable for ocean basin assignment
 - Original BOLD metadata columns preserved
 
 #### 2. `{organism}_summary_report.html`
@@ -732,7 +1022,7 @@ All visualization outputs are provided in multiple formats:
 
 **Complete pipeline log** with timestamps, including:
 - Input validation and data loading statistics
-- Dereplication metrics (clusters, consensus sequences)
+- Dereplication metrics (haplotypes identified, singletons filtered)
 - Assignment summary (success rate, ties, low-confidence)
 - Geographic analysis results (basin assignments)
 - Warnings and errors encountered
@@ -740,36 +1030,217 @@ All visualization outputs are provided in multiple formats:
 
 ---
 
+## Customizing Plots for Publication
+
+BOLDGenotyper exports all plot data and Python scripts for easy customization without re-running the entire analysis.
+
+**📚 Additional Resources:**
+- **Auto-generated guide**: After running the pipeline, see `{organism}_output/plots/README.md` for analysis-specific instructions
+- **Interactive tutorial**: See `notebooks/06_plot_customization_tutorial.ipynb` for detailed examples, common errors, and troubleshooting
+
+### Plot Regeneration Directory
+
+After running the pipeline, you'll find:
+
+```
+{organism}_output/plots/
+├── plot_config.yaml          # Customization settings (colors, sizes, formats)
+├── README.md                 # Quick start guide
+├── data/                     # Exported plot data (CSV files)
+│   ├── distribution_map.csv
+│   ├── distribution_bar_relative.csv
+│   ├── distribution_bar_absolute.csv
+│   ├── identity_distribution.csv
+│   └── genotype_colors.csv
+└── scripts/                  # Python regeneration scripts
+    ├── regenerate_all.py     # Run all plots at once
+    ├── regenerate_map.py     # Regenerate distribution map
+    ├── regenerate_bars.py    # Regenerate bar charts
+    └── regenerate_identity.py # Regenerate identity histogram
+```
+
+### Quick Start: Customize Your Plots
+
+**1. Edit the configuration file:**
+
+```bash
+cd {organism}_output/plots
+nano plot_config.yaml  # or use any text editor
+```
+
+**2. Modify settings:**
+
+```yaml
+# Example customizations
+general:
+  output_format: ['pdf', 'png']
+  dpi: 600  # High resolution for publication
+  width_inches: 12
+  height_inches: 8
+
+colors:
+  Consensus_1_S._lewini: "#E41A1C"    # Custom hex color
+  Consensus_2_S._lewini: "#377EB8"
+  Consensus_3_S._lewini: "#4DAF4A"
+
+filters:
+  include_genotypes: []              # Leave empty to include all
+  exclude_genotypes: ["Consensus_10"] # Hide specific genotypes
+
+map:
+  projection: "mollweide"             # robinson, mollweide, mercator
+  center_longitude: -180              # Center on Pacific Ocean
+  point_alpha: 0.8
+  point_size_range: [3, 12]
+  legend_position: "right"
+
+bars:
+  orientation: "horizontal"           # vertical or horizontal
+  bar_width: 0.7
+
+identity:
+  binwidth: 1.0
+  show_mean: true
+  show_median: true
+  x_limits: [95, 100]                # Focus on high-identity range
+```
+
+**3. Regenerate plots:**
+
+```bash
+# Regenerate all plots with new settings
+python scripts/regenerate_all.py
+
+# Or regenerate individual plots
+python scripts/regenerate_map.py
+python scripts/regenerate_bars.py
+python scripts/regenerate_identity.py
+```
+
+**4. Find updated plots:**
+
+Regenerated plots are saved to `{organism}_output/visualization/` with `_custom` suffix:
+- `distribution_map_custom.pdf`
+- `distribution_bar_relative_custom.pdf`
+- `identity_distribution_custom.pdf`
+
+### Customization Options
+
+**Colors**: Specify hex colors for each genotype
+**Figure size**: Control width, height, DPI for different journals
+**Map projection**: Robinson, Mollweide, Mercator, PlateCarree
+**Filters**: Include or exclude specific genotypes from plots
+**Bar orientation**: Vertical or horizontal stacking
+**Histogram binning**: Adjust bin width and statistical overlays
+
+### Requirements
+
+All required packages are in the boldgenotyper environment - no additional installation needed!
+- matplotlib, seaborn (plotting)
+- geopandas, cartopy (maps)
+- pandas (data handling)
+- pyyaml (configuration)
+
+### Advanced Customization and Troubleshooting
+
+For more detailed guidance including:
+- Common YAML syntax errors and solutions
+- 5+ example configurations (publication-quality, Pacific-focused, filtered genotypes, etc.)
+- Complete parameter reference for all settings
+- Three methods to regenerate plots (CLI, Python module, individual functions)
+- Troubleshooting guide
+
+See the **interactive tutorial**: `notebooks/06_plot_customization_tutorial.ipynb`
+
+---
+
+### Advanced Command Outputs
+
+#### Parameter Sweep Output (`parameter_sweep/`)
+
+```
+parameter_sweep/
+├── sweep_summary.csv              # Metrics for all tested thresholds
+├── threshold_stability.pdf        # Multi-panel stability visualization
+├── elbow_plot.pdf                # Optimal threshold detection plot
+├── group_membership_tracking.csv  # Sample clustering stability across thresholds
+├── recommendations.txt            # Detailed recommendations and rationale
+├── README.md                      # Interpretation guide
+└── runs/                          # Full outputs for each threshold (if --keep-intermediates)
+    ├── threshold_0_010/
+    ├── threshold_0_015/
+    └── ...
+```
+
+**Key files**:
+- `sweep_summary.csv`: Number of groups, assignment rates, mean identity for each threshold
+- `elbow_plot.pdf`: Visualizes elbow point for optimal threshold selection
+- `group_membership_tracking.csv`: Tracks which samples cluster together across thresholds (uses Jaccard similarity, not arbitrary group names)
+- `recommendations.txt`: Data-driven threshold recommendation with biological interpretation
+
+See `parameter_sweep/README.md` for detailed interpretation guide.
+
+#### Comparative Analysis Output (`comparative_analysis/`)
+
+```
+comparative_analysis/
+├── comparison_summary.csv         # High-level comparison metrics
+├── genotype_crosswalk.csv        # Mapping of species groups to family groups
+├── sample_reassignments.csv      # Sample-level reassignment recommendations
+├── methods_text.md               # Publication-ready methods section
+└── README.md                     # Interpretation guide
+```
+
+**Key files**:
+- `comparison_summary.csv`: Total samples, consensus groups, species detected, identity metrics, contamination signals
+- `genotype_crosswalk.csv`: Shows how species-level genotypes map to family-level genotypes
+- `sample_reassignments.csv` (if `--generate-reassignment-table`): Detailed sample-level analysis identifying potential contamination
+- `methods_text.md`: Ready-to-paste methods text for publications
+
+**Interpretation**: Samples that cluster with unexpected species at the family level may represent contamination, mislabeling, or introgression.
+
+
+#### Population Genetics Exports (`exports/`)
+
+When using `--export-format`, genotypes are exported to formats compatible with population genetics software:
+
+```
+exports/
+├── README.md                      # Format descriptions and usage
+├── arlequin/
+│   ├── {organism}.arp            # Arlequin project file
+│   └── populations.txt           # Population definitions
+├── popart/
+│   ├── {organism}.nexus          # NEXUS alignment with traits
+│   └── populations.csv           # Population mapping
+├── dnasp/
+│   └── {organism}.fas            # FASTA with population labels
+└── generic/
+    ├── alignment.fasta           # Consensus sequences
+    ├── genotype_membership.csv   # Sample-to-genotype mapping
+    └── haplotypes.csv            # Haplotype summary table
+```
+
+See [`docs/guides/POPGEN_EXPORT_GUIDE.md`](docs/guides/POPGEN_EXPORT_GUIDE.md) for detailed format specifications and usage examples.
+
+---
+
 ## Biological Context for Threshold Selection
 
-### Understanding Clustering Threshold
+### Understanding Haplotype Discovery (ESV Approach)
 
-The **clustering threshold** determines how genetically similar sequences must be to group into the same consensus genotype.
+BOLDGenotyper uses the **Exact Sequence Variant (ESV)** approach (Porter & Hajibabaei 2020) for haplotype discovery. Each unique sequence from the core alignment region is treated as a distinct haplotype — no clustering threshold is required.
 
 **COI as a Molecular Marker**:
 - COI is typically conserved within species (>97% identity)
 - Can vary between populations (1-5% divergence)
 - Varies significantly between species (>5-10% divergence)
 
-**Choosing Your Threshold**:
-
-| Research Question | Recommended Threshold | Rationale |
-|------------------|----------------------|-----------|
-| **Within-species population structure** | 0.005-0.01 (99-99.5%) | Capture fine-scale haplotype variation |
-| **Species delimitation** | 0.03-0.05 (95-97%) | Standard COI barcoding gap |
-| **Genus-level diversity** | 0.05-0.10 (90-95%) | Group closely related species |
-| **Species complex** | 0.05-0.10 (90-95%) | Handle cryptic species |
-
-**Example**: For *Sphyrna lewini* population study across ocean basins, `--clustering-threshold 0.03` captures intraspecific genotypes while avoiding oversplitting due to sequencing errors.
+**Error Filtering**: Singletons within 1 substitution of a larger haplotype are flagged as probable sequencing errors. Use `boldgenotyper-sweep` to empirically test singleton thresholds for your dataset.
 
 ### Understanding Similarity Threshold
 
-The **similarity threshold** determines the minimum identity required for a sample to be assigned to a genotype.
-
-**Why Different from Clustering?**:
-- Consensus sequences may not exactly match any individual sequence
-- Allows for within-cluster variation
-- Should be lower than clustering threshold
+The **similarity threshold** determines the minimum identity required for a sample to be assigned to a haplotype.
 
 **Recommended Values**:
 - **Conservative (0.85-0.95)**: High-confidence assignments, willing to exclude ambiguous samples
@@ -799,14 +1270,14 @@ The **similarity threshold** determines the minimum identity required for a samp
 
 ### Guidelines by Taxonomic Group
 
-| Taxonomic Group | Clustering | Similarity | Notes |
-|----------------|------------|-----------|-------|
-| **Elasmobranchs (sharks, rays)** | 0.02-0.03 | 0.80-0.90 | Slow molecular evolution, lower divergence |
-| **Teleost fish** | 0.03-0.05 | 0.80-0.90 | Standard barcoding thresholds |
-| **Marine invertebrates** | 0.03-0.05 | 0.70-0.85 | Higher COI variation |
-| **Cephalopods (squid, octopus)** | 0.03-0.05 | 0.80-0.90 | Similar to fish |
-| **Crustaceans** | 0.05-0.10 | 0.70-0.85 | Often more divergent |
-| **Marine mammals** | 0.01-0.03 | 0.85-0.95 | Low COI variation |
+| Taxonomic Group | Similarity Threshold | Notes |
+|----------------|---------------------|-------|
+| **Elasmobranchs (sharks, rays)** | 0.80-0.90 | Slow molecular evolution, lower divergence |
+| **Teleost fish** | 0.80-0.90 | Standard barcoding thresholds |
+| **Marine invertebrates** | 0.70-0.85 | Higher COI variation |
+| **Cephalopods (squid, octopus)** | 0.80-0.90 | Similar to fish |
+| **Crustaceans** | 0.70-0.85 | Often more divergent |
+| **Marine mammals** | 0.85-0.95 | Low COI variation |
 
 **Literature Support**:
 - Ward et al. (2005): 97-98% threshold for fish species delimitation
@@ -842,13 +1313,17 @@ Understanding these assumptions is critical for interpreting results and plannin
 
 #### 4. Geographic Coordinate Quality
 - **Assumption**: Country-level coordinates introduce ambiguity for multi-basin countries
-- **Pipeline behavior**: Excludes:
+- **Pipeline behavior**: **Marks** (not excludes) samples with:
   - Missing lat/lon (NaN, empty)
-  - Samples with "country centroid" in metadata
-  - Country-level coordinates without "precise" indicator
-- **Rationale**: A centroid for Mexico could fall in Pacific or Atlantic
-- **Implication**: Conservative approach prioritizes accuracy over sample size
-- **Override**: Not currently possible via CLI (feature request welcome)
+  - Centroid coordinates (coord_source contains "centroid")
+  - Invalid coordinates ([0, 0] or out of range)
+- **Key Distinction**:
+  - Samples with centroid/missing coordinates **ARE INCLUDED** in clustering and genotyping
+  - These samples **ARE EXCLUDED** from ocean basin assignment (marked as "Unknown")
+  - Users can see which samples have coordinate quality issues via marker columns
+- **Rationale**: A centroid for Mexico could fall in Pacific or Atlantic, but the sequence is still valid for genotyping
+- **Implication**: Maximizes samples for genotype identification while maintaining geographic accuracy
+- **Quality Markers**: Added columns include `has_centroid_coords`, `has_missing_coords`, `is_geographic_quality`
 
 #### 5. Ocean Basin Boundaries
 - **Assumption**: GOaS polygon definitions are accurate and appropriate
@@ -867,17 +1342,21 @@ Understanding these assumptions is critical for interpreting results and plannin
 
 ### Limitations
 
-#### 1. Marine Organisms Only (v1.0)
-- **Current**: Geographic analysis designed for marine taxa using GOaS
-- **Limitation**: No terrestrial or freshwater basin/region definitions
-- **Workaround**: Use `--no-geo` flag for non-marine organisms
-- **Planned**: Future versions will support terrestrial/freshwater environments
+#### 1. Custom Geographic Regions Supported
+- **Default**: Geographic analysis uses GOaS (Global Oceans and Seas) shapefile for marine taxa
+- **Custom shapefiles**: Use `--custom-shp` to apply any polygon shapefile (freshwater basins, ecoregions, biomes, etc.)
+- **Examples**: HydroBASINS for freshwater organisms, WWF ecoregions for terrestrial species, custom study area boundaries
+- **No geographic analysis needed**: Use `--no-geo` flag to skip geographic analysis entirely
 
 #### 2. Coordinate Precision Requirements
 - **Requirement**: Geographic analysis requires precise GPS coordinates
 - **Problem**: Many BOLD records have country-level or imprecise coordinates
-- **Impact**: Samples with low-quality coordinates excluded from basin assignment
-- **Quantification**: Check HTML report for "samples excluded by coordinate filter"
+- **Impact**: Samples with low-quality coordinates are:
+  - **Included in genotyping and clustering** (sequences are still valid)
+  - **Marked as "Unknown" for ocean basin** (geographic location uncertain)
+  - Flagged with quality markers (`has_centroid_coords`, `has_missing_coords`)
+- **Benefit**: Maximizes samples for genotype identification while maintaining geographic accuracy
+- **Quantification**: Check HTML report for samples with "Unknown" ocean basin and coordinate quality markers
 
 #### 3. Single-Locus Limitation
 - **Current**: Pipeline designed for single-locus data (COI)
@@ -898,7 +1377,7 @@ Understanding these assumptions is critical for interpreting results and plannin
   - Nucleotide diversity (π), haplotype diversity (Hd)
   - Tajima's D, Fu's Fs
 - **Rationale**: Focused on genotype identification and biogeography, not population genetics
-- **Workaround**: Export data and use dedicated tools (Arlequin, DnaSP, MEGA)
+- **Workaround**: Use `--export-format all` to export directly to Arlequin, DnaSP, and PopART formats
 
 #### 6. No Outgroup Specification (Yet)
 - **Current**: Trees unrooted or midpoint-rooted
@@ -931,15 +1410,14 @@ See [GitHub Issues](https://github.com/SymbioSeas/BOLDGenotyper/issues) for:
 - Planned enhancements
 - Community contributions
 
-**Top feature requests** (as of v0.1.0):
-1. Outgroup specification for tree rooting
-2. Terrestrial/freshwater geographic modules
-3. Haplotype network construction
-4. Population genetics statistics integration
-5. Multi-locus support
-6. Docker containerization
-7. Galaxy tool integration
-8. Web interface
+**Top feature requests** (as of v1.0.0):
+1. Haplotype network construction (TCS, median-joining)
+2. Haplotype network construction
+3. Population genetics statistics integration
+4. Multi-locus support
+5. Docker containerization
+6. Galaxy tool integration
+7. Web interface
 
 ---
 
@@ -1014,21 +1492,19 @@ head -1 data/my_species.tsv
 # Option 2: Use sed/awk to rename headers
 ```
 
-**Problem**: `No consensus sequences generated`
+**Problem**: `No haplotypes identified`
 
 ```bash
-# Check that input sequences exist
-grep -c ">" data/my_species.fasta  # (if FASTA exists)
-
 # Check log file for details
 tail -100 {organism}_output/{organism}_pipeline.log
 
 # Possible causes:
-# 1. All sequences too short (<400bp) or too many Ns (>10%)
-# 2. MAFFT/trimAl failed
-# 3. All sequences filtered after trimming
+# 1. All sequences too short (<200bp) or too many Ns (>10%)
+# 2. MAFFT alignment failed
+# 3. No sequences passed quality control
 
-# Try more permissive settings (edit config or future CLI flags)
+# Check sequence quality
+grep -c ">" data/my_species.fasta  # (if FASTA exists)
 ```
 
 **Problem**: `Most samples unassigned`
@@ -1040,11 +1516,11 @@ less {organism}_output/genotype_assignments/{organism}_diagnostics.csv
 # Look at identity scores - are they all low?
 cut -d',' -f3 {organism}_output/genotype_assignments/{organism}_diagnostics.csv | sort -n
 
-# If identities are 0.4-0.6, consensus sequences may not represent data well
+# If identities are 0.4-0.6, haplotypes may not represent data well
 # Solutions:
-# 1. Adjust clustering threshold (e.g., --clustering-threshold 0.05)
-# 2. Lower similarity threshold (e.g., --similarity-threshold 0.40)
-# 3. Check if sequences are actually from the same marker/region
+# 1. Lower similarity threshold (e.g., --similarity-threshold 0.40)
+# 2. Check if sequences are actually from the same marker/region
+# 3. Run parameter sweep to assess haplotype structure
 ```
 
 **Problem**: `FastTree failed` (if using `--build-tree`)
@@ -1056,8 +1532,8 @@ fasttree 2>&1 | head -1
 # Install if missing
 conda install -c bioconda fasttree
 
-# Check that consensus sequences exist
-ls {organism}_output/intermediate/dereplication/
+# Check that haplotype sequences exist
+ls {organism}_output/haplotypes/
 
 # Try running pipeline without tree first
 boldgenotyper data/my_species.tsv  # omit --build-tree
@@ -1065,22 +1541,26 @@ boldgenotyper data/my_species.tsv  # omit --build-tree
 
 ### Data Quality Issues
 
-**Problem**: Too many genotypes (oversplitting)
+**Problem**: Too many haplotypes (many singletons)
 
 ```bash
-# Increase clustering threshold to group more sequences
-boldgenotyper data/my_species.tsv --clustering-threshold 0.05
+# Check the log for singleton filtering statistics
+tail -50 {organism}_output/{organism}_pipeline.log
 
-# This creates fewer, larger genotype clusters
+# Run parameter sweep to find optimal singleton threshold
+boldgenotyper-sweep data/my_species.tsv \
+  --thresholds 0.01,0.015,0.02,0.03,0.05 \
+  --output parameter_sweep/
 ```
 
-**Problem**: Too few genotypes (undersplitting)
+**Problem**: Too few haplotypes (expected more diversity)
 
 ```bash
-# Decrease clustering threshold for finer resolution
-boldgenotyper data/my_species.tsv --clustering-threshold 0.01
+# Inspect haplotype sequences and suspect flags
+ls {organism}_output/haplotypes/
 
-# This creates more, smaller genotype clusters
+# Check if suspect haplotypes were filtered; review log
+grep -i "suspect\|flagged" {organism}_output/{organism}_pipeline.log
 ```
 
 **Problem**: Many samples flagged as ties
@@ -1093,16 +1573,25 @@ boldgenotyper data/my_species.tsv --tie-margin 0.001
 # Option 3: Manual review - inspect diagnostics file
 ```
 
-**Problem**: No samples in certain ocean basins
+**Problem**: Many samples marked as "Unknown" ocean basin
 
 ```bash
-# Check if GOaS assignment worked
+# Check how many samples have "Unknown" basin
 grep -c "Unknown" {organism}_output/{organism}_annotated.csv
 
-# If many "Unknown", check:
-# 1. Coordinate quality (might be filtered out)
-# 2. Sample actually in ocean (could be land-based)
-# 3. GOaS shapefile loaded correctly
+# If many "Unknown", check coordinate quality markers in annotated CSV:
+# - has_centroid_coords: True if coordinates are centroids (common in BOLD)
+# - has_missing_coords: True if lat/lon is missing
+# - has_zero_coords: True if coordinates are [0, 0]
+# - is_geographic_quality: False means one of the above issues
+
+# Note: Samples with "Unknown" basin are STILL INCLUDED in genotyping!
+# They're only excluded from geographic distribution analysis.
+
+# Other potential causes:
+# 1. Sample coordinates in ocean (correctly assigned)
+# 2. Coordinates on land (no basin to assign)
+# 3. GOaS shapefile not loaded correctly
 ```
 
 ### Performance Issues
@@ -1157,6 +1646,70 @@ cut -d',' -f<ocean_basin_column> {organism}_output/{organism}_annotated.csv | so
 # Check browser console for errors (F12)
 ```
 
+### Advanced Command Troubleshooting
+
+**Problem**: `boldgenotyper-sweep` - How do I interpret the elbow plot?
+
+```bash
+# The elbow plot shows metrics vs. threshold
+# Look for the "elbow point" where curves level off
+# This indicates where adding more groups provides diminishing returns
+
+# Check the recommendations file:
+cat parameter_sweep/recommendations.txt
+
+# Examine stability plot:
+open parameter_sweep/threshold_stability.pdf
+```
+
+**Problem**: `boldgenotyper-sweep` - Samples have high `n_changes` in group membership tracking
+
+```bash
+# High n_changes indicates unstable clustering
+# These samples may be:
+# 1. Intermediates between genotypes
+# 2. Low-quality sequences
+# 3. Potential contamination
+
+# Review samples with n_changes > 2:
+# Sort by n_changes descending
+head -20 parameter_sweep/group_membership_tracking.csv
+
+# Consider excluding or manually reviewing these samples
+```
+
+**Problem**: `compare_analyses.py` - No contamination detected but I expected some
+
+```bash
+# Check that you're comparing the right datasets:
+# 1. Species-level should be a subset of family-level
+# 2. Both analyses should use same or similar parameters
+
+# Review the comparison summary:
+cat comparative_analysis/comparison_summary.csv
+
+# Check if samples are genuinely clean or majority-threshold is too permissive
+```
+
+**Problem**: Custom shapefile not working
+
+```bash
+# Verify shapefile has all required components (.shp, .shx, .dbf, .prj)
+ls -la path/to/shapefile.*
+
+# Check shapefile field names:
+# Use QGIS, ogrinfo, or GeoPandas to inspect
+ogrinfo -al -so path/to/shapefile.shp | grep -A 20 "Layer name"
+
+# Verify the field name matches your --shp-field argument
+# Field names are case-sensitive
+
+# Check coordinate reference system (CRS):
+# Shapefiles should use WGS84 (EPSG:4326) or will be reprojected automatically
+
+# Verify column names match exactly (case-sensitive)
+```
+
 ### Getting Help
 
 1. **Check the log file**: `{organism}_output/{organism}_pipeline.log`
@@ -1203,7 +1756,7 @@ data/Sphyrna_lewini/
 ### Key Findings from Example
 
 - **Input**: 937 *Sphyrna lewini* COI sequences from BOLD
-- **Genotypes**: 26 consensus genotypes identified (clustering threshold: 0.03)
+- **Haplotypes**: 26 ESV haplotypes identified
 - **Assignment Rate**: ~85% of samples assigned to genotypes
 - **Geographic Distribution**: Samples from North Atlantic, South Atlantic, North Pacific, South Pacific, and Indian Oceans
 - **Biogeographic Pattern**: Distinct genotypes show basin-specific distributions, supporting ocean basin-scale population structure
@@ -1229,7 +1782,7 @@ If you use BOLDGenotyper in your research, please cite:
   author = {Smith, Steph},
   title = {BOLDGenotyper: Automated COI Sequence Genotyping and Biogeographic Analysis},
   year = {2025},
-  version = {0.1.0},
+  version = {1.0.0},
   url = {https://github.com/SymbioSeas/BOLDGenotyper},
   doi = {10.5281/zenodo.XXXXXXX}
 }
@@ -1317,7 +1870,6 @@ flake8 boldgenotyper/
 
 ### Areas Needing Contribution
 
-- **Terrestrial/freshwater modules** for non-marine organisms
 - **Haplotype network construction** using TCS or median-joining methods
 - **Population genetics statistics** (Fst, AMOVA, diversity indices)
 - **Performance optimization** for large datasets (>50,000 sequences)
@@ -1334,15 +1886,15 @@ flake8 boldgenotyper/
 
 - **Documentation**: You're reading it! Check [Usage Guide](#usage-guide) and [Troubleshooting](#troubleshooting)
 - **GitHub Issues**: [Report bugs or ask questions](https://github.com/SymbioSeas/BOLDGenotyper/issues)
-- **Email**: Steph Smith (steph.smith@unc.edu)
+- **Email**: Steph Smith (symbioseas@outlook.com)
 
 ### Frequently Asked Questions
 
 **Q: Can I use BOLDGenotyper for non-COI markers?**
-A: Yes, but you may need to adjust thresholds. The default clustering threshold (0.03) is COI-specific. For more variable markers, increase the threshold; for more conserved markers, decrease it.
+A: Yes. The ESV-based haplotype discovery requires no clustering threshold and works for any aligned marker. You may need to adjust the similarity threshold (`--similarity-threshold`) for assignment based on the expected divergence range of your marker.
 
 **Q: How do I analyze terrestrial or freshwater organisms?**
-A: Use the `--no-geo` flag to skip ocean basin assignment. Geographic modules for terrestrial environments are planned for v0.2.0.
+A: Use `--custom-shp` to supply any polygon shapefile for geographic analysis (e.g., HydroBASINS for freshwater, WWF Ecoregions for terrestrial). Use `--no-geo` if you don't need geographic analysis at all.
 
 **Q: Can I combine data from multiple BOLD downloads?**
 A: Yes, concatenate TSV files (keeping headers from first file) before running the pipeline.
@@ -1386,49 +1938,38 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ## Version History
 
-### v0.1.0 (2025-01-20) - Initial Release
+### v1.0.0 (2025) - Publication Release
+
+**New in v1.0.0**:
+- Outgroup rooting: `--phylo-outgroup-fasta`, `--phylo-outgroup-label`, `--phylo-outgroup-taxon`
+- Custom shapefile support: `--custom-shp` for freshwater basins, ecoregions, or any polygon shapefile
+- Metadata analysis module: haplotype-metadata associations, chi-square tests, temporal analysis
+- Population genetics export: Arlequin, PopART/NEXUS, DnaSP, generic CSV/FASTA (`--export-format`)
+- Plot customization: YAML-configured regeneration from exported data
+- Haplotype query tool: `boldgenotyper-query` for assigning new sequences to existing haplotypes
+- Parameter sweep tool: `boldgenotyper-sweep` for optimizing singleton filtering thresholds
 
 **Core Features**:
 - Complete unified pipeline from BOLD TSV to annotated results
-- Automated sequence dereplication and consensus generation
-- Edit distance-based genotype assignment with diagnostics
-- Geographic analysis with GOaS ocean basin integration
-- Optional phylogenetic tree building with FastTree
-- Comprehensive interactive HTML reports
-- Publication-ready visualizations (PNG/PDF)
-- Multi-threaded processing support
-
-**Modules**:
-- `boldgenotyper.cli`: Command-line interface
-- `boldgenotyper.metadata`: TSV parsing and coordinate filtering
-- `boldgenotyper.dereplication`: Sequence clustering and consensus generation
-- `boldgenotyper.genotype_assignment`: Sample-to-genotype matching
-- `boldgenotyper.geographic`: Ocean basin assignment
-- `boldgenotyper.phylogenetics`: Tree construction and visualization
-- `boldgenotyper.visualization`: Distribution maps and abundance charts
-- `boldgenotyper.reports`: HTML report generation
-- `boldgenotyper.config`: Configuration management
+- Automated haplotype discovery using Exact Sequence Variants (ESVs)
+- Edit distance-based haplotype assignment with tie detection and confidence scoring
+- Geographic analysis with any polygon shapefile (GOaS ocean basins, HydroBASINS, Ecoregions2017, etc.)
+- Phylogenetic tree building with FastTree (GTR+Gamma), outgroup rooting, MSA visualization
+- Comprehensive interactive HTML reports with Plotly.js
+- Publication-ready visualizations (PDF/SVG)
 
 **Known Limitations**:
-- Marine organisms only (GOaS-based)
-- No terrestrial/freshwater support
-- No outgroup specification for tree rooting
-- No haplotype network construction
-- No population genetics statistics
+- No haplotype network construction (TCS, median-joining)
+- No population genetics statistics (Fst, AMOVA, diversity indices)
+- Single-locus only (COI)
 
 ---
 
-**Planned Features** (v0.2.0 and beyond):
-1. Terrestrial and freshwater organism support with appropriate reference datasets
-2. Outgroup specification for phylogenetic tree rooting (`--outgroup` flag)
-3. Haplotype network construction (TCS, median-joining)
-4. Population genetics statistics (Fst, AMOVA, diversity indices)
-5. Multi-locus support for concatenated/combined markers
-6. Performance optimizations for datasets >50,000 sequences
-7. Docker container for reproducibility and portability
-8. Galaxy tool integration for workflow platforms
-9. Web interface for browser-based analysis
-10. Additional export formats (BEAST, Arlequin, STRUCTURE)
+**Planned Features**:
+1. Haplotype network construction (TCS, median-joining)
+2. Population genetics statistics (Fst, AMOVA, diversity indices)
+3. Multi-locus support for concatenated/combined markers
+4. Docker container for reproducibility and portability
 
 ---
 
@@ -1438,5 +1979,5 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 **Questions or feedback?**
 - GitHub: https://github.com/SymbioSeas/BOLDGenotyper
-- Email: steph.smith@unc.edu
+- Email: symbioseas@outlook.com
 - Issues: https://github.com/SymbioSeas/BOLDGenotyper/issues

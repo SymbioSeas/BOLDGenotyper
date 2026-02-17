@@ -4,7 +4,7 @@ Unit tests for geographic.py module.
 Tests ocean basin assignment, coordinate validation, and spatial operations
 using mocked GeoPandas functionality to avoid dependency on actual shapefiles.
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import unittest

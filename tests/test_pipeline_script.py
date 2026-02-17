@@ -19,7 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from boldgenotyper import utils, config, metadata, geographic
-from boldgenotyper import dereplication, genotype_assignment
+from boldgenotyper import dereplication
+from boldgenotyper import haplotype_assignment
 import pandas as pd
 import logging
 
@@ -358,14 +359,14 @@ def main():
         diagnostics_csv = OUTPUT_DIR / f"{organism}_diagnostics.csv"
     
         # Call the library API (paths in, files out; returns stats dict)
-        stats = genotype_assignment.assign_genotypes(
-            metadata_path=str(filtered_tsv),         # <-- path to the filtered TSV you already saved in Step 3
-            fasta_path=str(fasta_path),              # raw reads FASTA from Step 5
-            consensus_path=str(consensus_path),      # consensus FASTA from Step 6
-            output_path=str(annotated_tsv),          # where to write updated metadata with 'consensus_group'
+        stats = haplotype_assignment.assign_haplotypes(
+            metadata_path=str(filtered_tsv),
+            fasta_path=str(fasta_path),
+            consensus_path=str(consensus_path),
+            output_path=str(annotated_tsv),
             min_identity=cfg.genotype_assignment.min_identity,
             n_processes=cfg.n_threads,
-            diagnostics_path=str(diagnostics_csv)    # set None to skip diagnostics file
+            diagnostics_path=str(diagnostics_csv)
         )
     
         # Load the outputs for downstream use in Step 8

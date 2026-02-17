@@ -1141,3 +1141,6 @@ Illegal character e
 [2025-11-04 10:58:05] INFO:     - Ties (ambiguous): 39
 [2025-11-04 10:58:05] INFO:     - Low confidence: 0
 [2025-11-04 10:58:05] INFO: ======================================================================
+[2026-02-06 13:31:24] INFO: Logging to file: tests/test_run.log
+[2026-02-06 13:31:24] INFO: Classifying coordinates (policy: snap)
+[2026-02-06 13:31:24] INFO: Loading Natural Earth land geometries (resolution: 110m)

@@ -35,7 +35,6 @@ sys.modules['cartopy.mpl'] = MagicMock()
 sys.modules['cartopy.mpl.ticker'] = MagicMock()
 
 from boldgenotyper import metadata, geographic, utils
-from boldgenotyper.dereplication import dereplicate_from_fasta
 
 
 class TestMissingMetadata(unittest.TestCase):
@@ -425,40 +424,6 @@ class TestFASTASequenceValidation(unittest.TestCase):
         is_valid, error_msg = utils.validate_sequence(seq.upper(), min_length=100)
 
         self.assertTrue(is_valid, "Lowercase nucleotides should be valid when uppercased")
-
-    def test_dereplicate_skips_invalid_sequences(self):
-        """Test that dereplication skips sequences with invalid characters."""
-        fasta_path = Path(self.tmpdir) / "invalid_sequences.fasta"
-
-        # Create FASTA with mix of valid and invalid sequences
-        fasta_content = """>VALID001
-ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
->INVALID001
-ACGTACGTXYZACGTACGTACGTACGTACGTACGTACGT
->VALID002
-ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
-"""
-        fasta_path.write_text(fasta_content)
-
-        # Mock external tools
-        with patch('boldgenotyper.utils.check_external_tool', return_value=True):
-            with patch('boldgenotyper.utils.run_mafft', return_value=fasta_path):
-                with patch('boldgenotyper.utils.run_trimal', return_value=fasta_path):
-                    # Should log warnings about invalid sequences
-                    with self.assertLogs('boldgenotyper.dereplication', level='WARNING') as log_context:
-                        result = dereplicate_from_fasta(
-                            str(fasta_path),
-                            str(Path(self.tmpdir) / "output.fasta"),
-                            threshold=0.01,
-                            min_cluster_size=1
-                        )
-
-                    log_output = ' '.join(log_context.output)
-                    # Should have warning about invalid characters
-                    self.assertTrue(
-                        'invalid' in log_output.lower() or 'skip' in log_output.lower(),
-                        "Should log warning about invalid sequences"
-                    )
 
     def test_empty_sequence_rejected(self):
         """Test that empty sequences are rejected."""

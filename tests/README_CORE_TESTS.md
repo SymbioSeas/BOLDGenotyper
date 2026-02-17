@@ -339,7 +339,7 @@ mock_obj = expected_value  # This replaces the mock
 ## Contact
 
 For questions about the test suite:
-- **Author**: Steph Smith (steph.smith@unc.edu)
+- **Author**: Steph Smith (symbioseas@outlook.com)
 - **Repository**: https://github.com/SymbioSeas/BOLDGenotyper
 - **Issues**: https://github.com/SymbioSeas/BOLDGenotyper/issues
 
