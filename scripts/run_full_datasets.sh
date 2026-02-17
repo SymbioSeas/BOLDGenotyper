@@ -88,7 +88,7 @@ run_dataset "Pieridae" \
     --output "${OUTPUT_DIR}/Pieridae_full" \
     --organism Pieridae \
     --build-tree \
-    --custom-shp Ecoregions2017/Ecoregions2017.shp \
+    --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
     --shp-field ECO_NAME \
     --geo-category ecoregion \
     --threads "${THREADS}"

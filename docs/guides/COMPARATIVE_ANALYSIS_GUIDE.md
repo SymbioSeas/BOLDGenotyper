@@ -118,7 +118,7 @@ boldgenotyper data/Sphyrnidae.tsv \
 ### Step 2: Run Comparative Analysis
 
 ```bash
-boldgenotyper-compare \
+python scripts/compare_analyses.py \
   --species-level Sphyrna_lewini_output/ \
   --family-level Sphyrnidae_output/ \
   --output comparative_analysis/
@@ -127,7 +127,7 @@ boldgenotyper-compare \
 With detailed reassignment table:
 
 ```bash
-boldgenotyper-compare \
+python scripts/compare_analyses.py \
   --species-level Sphyrna_lewini_output/ \
   --family-level Sphyrnidae_output/ \
   --generate-reassignment-table \
@@ -280,7 +280,7 @@ Auto-generated methods section ready for publication:
 
 To assess data quality and detect potential contamination, we performed
 comparative analysis between species-level (Sphyrna lewini, n=617) and
-family-level (Sphyrnidae, n=995) genotyping using the boldgenotyper-compare
+family-level (Sphyrnidae, n=995) genotyping using the python scripts/compare_analyses.py
 command (Smith, 2025).
 
 [... detailed methods with parameter values ...]
@@ -319,7 +319,7 @@ discordant clustering patterns and were flagged for further review...
 ```bash
 boldgenotyper data/Sphyrna_lewini.tsv --output species/
 boldgenotyper data/Sphyrnidae.tsv --output family/
-boldgenotyper-compare --species-level species/ --family-level family/ --output compare/
+python scripts/compare_analyses.py --species-level species/ --family-level family/ --output compare/
 ```
 
 **Results** (`comparison_summary.csv`):
@@ -596,15 +596,14 @@ Data Quality Assessment
 
 To assess data quality and detect potential sample contamination or
 mislabeling, we performed comparative taxonomic analysis using the
-boldgenotyper-compare command (Smith, 2025). This approach compares
-genotyping results obtained at different taxonomic levels to identify
+compare_analyses.py utility (Smith, 2025). This approach compares
+haplotype assignment results obtained at different taxonomic levels to identify
 samples that cluster inconsistently with their taxonomic designation.
 
 We first analyzed COI sequences from Sphyrna lewini (n=617) independently
-using a clustering threshold of 0.020 (≥98% sequence identity), which
-generated 10 consensus genotypes. Subsequently, we analyzed a broader
-dataset containing all Sphyrnidae species (n=995) using a clustering
-threshold of 0.030 (≥97% identity), generating 17 consensus genotypes.
+using the ESV haplotype discovery approach, which generated 10 consensus
+haplotypes. Subsequently, we analyzed a broader dataset containing all
+Sphyrnidae species (n=995), generating 17 consensus haplotypes.
 
 For the 617 samples present in both analyses, we compared species-level
 and family-level genotype assignments. Samples were flagged as potentially
@@ -701,7 +700,7 @@ For questions about comparative analysis:
 1. **Check this guide**: Review interpretation sections
 2. **Examine outputs**: methods_text.md often provides context-specific guidance
 3. **GitHub Issues**: https://github.com/SymbioSeas/BOLDGenotyper/issues
-4. **Email**: steph.smith@unc.edu
+4. **Email**: symbioseas@outlook.com
 
 When reporting issues, include:
 - Command used

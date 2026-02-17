@@ -17,7 +17,7 @@ and sample-level metrics, and produces:
 - elbow_plot.pdf              optimal-threshold detection
 - recommendations.txt         automated interpretation
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations

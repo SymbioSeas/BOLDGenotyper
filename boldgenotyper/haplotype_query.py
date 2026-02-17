@@ -27,7 +27,7 @@ Dependencies:
 - pandas (for data management)
 - pathlib (for file operations)
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from typing import Dict, List, Tuple, Optional, Any

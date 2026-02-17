@@ -5,14 +5,17 @@ This module enhances geographic analysis by providing better transparency about
 data coverage, quality, and limitations. It helps users understand what geographic
 interpretations are well-supported by their data.
 
+Works with any geographic category (ocean basins, freshwater basins, ecoregions,
+watersheds, etc.) via the ``geo_category`` parameter.
+
 Key Features:
 - Geographic coverage assessment per haplotype
-- Basin assignment confidence levels
+- Region assignment confidence levels
 - Missing data transparency reports
 - Coordinate quality evaluation
 - Geographic limitations documentation
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -72,16 +75,16 @@ def assess_geographic_coverage(
 
         # Count samples with different levels of geographic data
         has_lat_lon = 0
-        has_ocean_basin = 0
+        has_region = 0
         has_country = 0
 
         if 'lat' in group_df.columns and 'lon' in group_df.columns:
             has_lat_lon = group_df[['lat', 'lon']].notna().all(axis=1).sum()
 
         if geo_category in group_df.columns:
-            has_ocean_basin = group_df[geo_category].notna().sum()
+            has_region = group_df[geo_category].notna().sum()
             # Exclude "Unknown" regions
-            has_ocean_basin = (
+            has_region = (
                 (group_df[geo_category].notna()) &
                 (group_df[geo_category] != 'Unknown') &
                 (group_df[geo_category] != '')
@@ -92,29 +95,30 @@ def assess_geographic_coverage(
 
         # Calculate percentages
         pct_lat_lon = (has_lat_lon / n_total * 100) if n_total > 0 else 0
-        pct_basin = (has_ocean_basin / n_total * 100) if n_total > 0 else 0
+        pct_region = (has_region / n_total * 100) if n_total > 0 else 0
         pct_country = (has_country / n_total * 100) if n_total > 0 else 0
 
         # Assess representativeness
-        if pct_basin > 50:
+        if pct_region > 50:
             representativeness = 'excellent'
-        elif pct_basin >= 25:
+        elif pct_region >= 25:
             representativeness = 'good'
-        elif pct_basin >= 10 or pct_lat_lon >= 50:
+        elif pct_region >= 10 or pct_lat_lon >= 50:
             representativeness = 'moderate'
         elif pct_lat_lon >= 10:
             representativeness = 'poor'
         else:
             representativeness = 'very_poor'
 
+        geo_label = geo_category.replace('_', ' ')
         coverage_data.append({
             'genotype': group,
             'species': species,
             'total_samples': n_total,
             'with_lat_lon': has_lat_lon,
             'pct_with_coords': pct_lat_lon,
-            'with_ocean_basin': has_ocean_basin,
-            'pct_with_basin': pct_basin,
+            f'with_{geo_category}': has_region,
+            'pct_with_region': pct_region,
             'with_country': has_country,
             'pct_with_country': pct_country,
             'representativeness': representativeness
@@ -258,10 +262,13 @@ def generate_missing_data_report(
     """
     logger.info("  Generating missing data report...")
 
+    geo_label = geo_category.replace('_', ' ').title()
+    region_col = f'with_{geo_category}'
+
     # Overall statistics
     n_total = len(df)
     n_with_coords = df[['lat', 'lon']].notna().all(axis=1).sum()
-    n_with_basin = ((df[geo_category].notna()) &
+    n_with_region = ((df[geo_category].notna()) &
                     (df[geo_category] != 'Unknown') &
                     (df[geo_category] != '')).sum() if geo_category in df.columns else 0
     n_with_country = df['country'].notna().sum() if 'country' in df.columns else 0
@@ -270,7 +277,7 @@ def generate_missing_data_report(
                 (~df['country'].notna())).sum() if geo_category in df.columns and 'country' in df.columns else n_total - n_with_coords
 
     pct_coords = (n_with_coords / n_total * 100) if n_total > 0 else 0
-    pct_basin = (n_with_basin / n_total * 100) if n_total > 0 else 0
+    pct_region = (n_with_region / n_total * 100) if n_total > 0 else 0
     pct_country = (n_with_country / n_total * 100) if n_total > 0 else 0
     pct_no_geo = (n_no_geo / n_total * 100) if n_total > 0 else 0
 
@@ -280,11 +287,12 @@ def generate_missing_data_report(
 
 Dataset: {organism}
 Total Samples: {n_total}
+Geographic Category: {geo_label}
 
 Overall Coverage:
 -----------------
 With Coordinates: {n_with_coords} ({pct_coords:.1f}%)
-With Ocean Basin: {n_with_basin} ({pct_basin:.1f}%)
+With {geo_label}: {n_with_region} ({pct_region:.1f}%)
 With Country Only: {n_with_country} ({pct_country:.1f}%)
 No Geographic Data: {n_no_geo} ({pct_no_geo:.1f}%)
 
@@ -297,27 +305,29 @@ By Genotype:
         genotype = row['genotype']
         n_samples = row['total_samples']
         n_coords = row['with_lat_lon']
-        n_basin = row['with_ocean_basin']
+        n_region = row.get(region_col, row.get('with_ocean_basin', 0))
         n_country = row['with_country']
         representativeness = row['representativeness']
 
+        pct_with_region = row.get('pct_with_region', row.get('pct_with_basin', 0))
+
         report += f"\n{genotype} (n={n_samples}):\n"
         if n_coords > 0:
-            report += f"  ✓ Coordinates: {n_coords} ({row['pct_with_coords']:.1f}%)\n"
+            report += f"  + Coordinates: {n_coords} ({row['pct_with_coords']:.1f}%)\n"
         else:
-            report += f"  ✗ Coordinates: 0 (0.0%)\n"
+            report += f"  - Coordinates: 0 (0.0%)\n"
 
-        if n_basin > 0:
-            report += f"  ✓ Ocean Basin: {n_basin} ({row['pct_with_basin']:.1f}%)\n"
+        if n_region > 0:
+            report += f"  + {geo_label}: {n_region} ({pct_with_region:.1f}%)\n"
         else:
-            report += f"  ✗ Ocean Basin: 0 (0.0%)\n"
+            report += f"  - {geo_label}: 0 (0.0%)\n"
 
         if n_country > 0:
-            report += f"  ⚠ Country Only: {n_country} ({row['pct_with_country']:.1f}%)\n"
+            report += f"  ~ Country Only: {n_country} ({row['pct_with_country']:.1f}%)\n"
         else:
-            report += f"  ✗ Country Only: 0 (0.0%)\n"
+            report += f"  - Country Only: 0 (0.0%)\n"
 
-        report += f"  → Representativeness: {representativeness.upper()}\n"
+        report += f"  -> Representativeness: {representativeness.upper()}\n"
 
     # Add limitations section
     report += f"""
@@ -325,16 +335,16 @@ Limitations:
 ------------
 """
 
-    if pct_basin < 25:
-        report += f"1. Ocean basin assignments available for only {pct_basin:.1f}% of samples\n"
+    if pct_region < 25:
+        report += f"1. {geo_label} assignments available for only {pct_region:.1f}% of samples\n"
 
     if pct_coords < 50:
         report += f"2. Coordinate-based visualizations rely on {pct_coords:.1f}% of samples\n"
 
-    if pct_country < 80 and pct_basin < 25:
-        report += "3. Country-level data insufficient for multi-basin countries\n"
+    if pct_country < 80 and pct_region < 25:
+        report += "3. Country-level data insufficient for multi-region countries\n"
 
-    if pct_basin < 25 or pct_coords < 50:
+    if pct_region < 25 or pct_coords < 50:
         report += "4. Geographic interpretations should be considered preliminary\n"
 
     # Add recommendations
@@ -343,13 +353,13 @@ Recommendations:
 ----------------
 """
 
-    if pct_basin < 25:
-        report += "1. Present ocean basin data as supplemental (not primary findings)\n"
+    if pct_region < 25:
+        report += f"1. Present {geo_label.lower()} data as supplemental (not primary findings)\n"
 
     if pct_coords >= 25:
         report += "2. Rely primarily on coordinate-based maps for geographic patterns\n"
 
-    if pct_basin < 50 or pct_coords < 50:
+    if pct_region < 50 or pct_coords < 50:
         report += "3. Acknowledge coverage limitations in methods/discussion\n"
         report += "4. Consider contacting depositors for missing coordinates\n"
 
@@ -363,7 +373,7 @@ Data Quality Notes:
 
     if 'basin_confidence' in df.columns:
         confidence_counts = df['basin_confidence'].value_counts()
-        report += "Basin Assignment Confidence:\n"
+        report += "Region Assignment Confidence:\n"
         for conf, count in confidence_counts.items():
             pct = (count / n_total * 100) if n_total > 0 else 0
             report += f"  - {conf}: {count} ({pct:.1f}%)\n"
@@ -486,7 +496,7 @@ def enhance_geographic_analysis(
     overall_pct_coords = (n_with_coords / n_total * 100) if n_total > 0 else 0
 
     results['overall_stats'] = {
-        'pct_basin': overall_pct_basin,
+        'pct_region': overall_pct_basin,
         'pct_coords': overall_pct_coords
     }
 

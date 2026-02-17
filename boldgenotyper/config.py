@@ -15,15 +15,13 @@ Configuration Structure:
 - QCConfig: Dynamic quality control filtering parameters
 - CoreRegionConfig: Core shared region extraction and masking
 - HaplotypeConfig: Haplotype (ESV) discovery and flagging
-- OutlierConfig: Distance-based outlier detection
-- DistanceConfig: Distance metric configuration
-- DelimitationConfig: Species delimitation tool parameters
-- DereplicationConfig: Sequence clustering parameters (legacy/compatibility)
+- DereplicationConfig: Sequence alignment and ESV discovery parameters
 - GenotypeAssignmentConfig: Sample-to-haplotype matching parameters
-- GeographicConfig: Coordinate filtering and ocean basin assignment
+- GeographicConfig: Coordinate filtering and geographic region assignment
 - VisualizationConfig: Plot styling and output parameters
 - PhylogeneticConfig: Phylogenetic tree construction parameters
 - TaxonomyConfig: Sequence-based species assignment thresholds and majority rules
+- MSAConfig: Multiple sequence alignment visualization
 - PipelineConfig: Master configuration combining all components
 
 Key Design Principles:
@@ -37,19 +35,19 @@ Example Usage:
     >>>
     >>> # Use defaults
     >>> config = get_default_config()
-    >>> print(config.dereplication.clustering_threshold)
-    0.01
+    >>> print(config.dereplication.mafft_algorithm)
+    auto
     >>>
     >>> # Load from file
     >>> config = load_config_from_file("my_analysis.yaml")
     >>>
     >>> # Update specific parameters
     >>> custom_config = config.update(
-    ...     dereplication__clustering_threshold=0.005,
+    ...     dereplication__mafft_algorithm="linsi",
     ...     geographic__min_coordinate_quality="high"
     ... )
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from dataclasses import dataclass, field, asdict, replace
@@ -235,8 +233,8 @@ class CoreRegionConfig:
         while preserving legitimate sequence variation.
 
     codon_aware_alignment : bool
-        Whether to use codon-aware alignment (default: True).
-        Maintains reading frame integrity for protein-coding sequences.
+        Whether to use codon-aware alignment (default: False).
+        When enabled, maintains reading frame integrity for protein-coding sequences.
 
     Notes
     -----
@@ -346,244 +344,43 @@ class HaplotypeConfig:
 
 
 # ============================================================================
-# Outlier Configuration
-# ============================================================================
-
-@dataclass(frozen=True)
-class OutlierConfig:
-    """
-    Configuration for distance-based outlier detection.
-
-    Identifies haplotypes that are unusually divergent from their
-    nearest neighbors, which may indicate contamination or misidentification.
-
-    Attributes
-    ----------
-    distance_outlier_min_abs : float
-        Absolute minimum nearest-neighbor distance for outlier flag (default: 0.10).
-        Haplotypes >10% divergent are candidates for outlier status.
-
-    distance_outlier_quantile : float
-        Quantile threshold for outlier detection (default: 0.95).
-        Haplotypes in top 5% of nearest-neighbor distances are outliers.
-
-    Notes
-    -----
-    A haplotype is flagged as an outlier if:
-    nearest_neighbor_distance >= min_abs AND
-    nearest_neighbor_distance >= quantile(all_distances, distance_outlier_quantile)
-
-    This catches both absolutely divergent sequences and relative outliers
-    within the dataset.
-    """
-    distance_outlier_min_abs: float = 0.10
-    distance_outlier_quantile: float = 0.95
-
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        if not 0 < self.distance_outlier_min_abs <= 1:
-            raise ValueError("distance_outlier_min_abs must be between 0 and 1")
-        if not 0 < self.distance_outlier_quantile <= 1:
-            raise ValueError("distance_outlier_quantile must be between 0 and 1")
-
-
-# ============================================================================
-# Distance Configuration
-# ============================================================================
-
-@dataclass(frozen=True)
-class DistanceConfig:
-    """
-    Configuration for genetic distance calculations.
-
-    Controls which distance metrics are computed for haplotype comparisons.
-
-    Attributes
-    ----------
-    distance_metric_primary : str
-        Primary distance metric to use (default: "p").
-        Options: "p" (p-distance), "k2p" (Kimura 2-parameter)
-
-    compute_k2p : bool
-        Whether to also compute K2P distances (default: False).
-        K2P corrects for multiple substitutions but is computationally slower.
-
-    Notes
-    -----
-    P-distance (uncorrected) is recommended for closely related sequences
-    and is faster to compute. K2P is more appropriate for deeper divergences
-    but may overcorrect for COI barcoding distances.
-
-    References
-    ----------
-    Collins et al. (2012). Barcoding's next top model: an evaluation of
-    nucleotide substitution models for specimen identification.
-    """
-    distance_metric_primary: str = "p"
-    compute_k2p: bool = False
-
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        if self.distance_metric_primary not in ["p", "k2p"]:
-            raise ValueError("distance_metric_primary must be 'p' or 'k2p'")
-
-
-# ============================================================================
-# Species Delimitation Configuration
-# ============================================================================
-
-@dataclass(frozen=True)
-class DelimitationConfig:
-    """
-    Configuration for species delimitation methods.
-
-    Controls which automated species delimitation tools are run and
-    their parameters.
-
-    Attributes
-    ----------
-    enable_simple_clustering : bool
-        Enable simple distance-based clustering (default: True).
-        Fast hierarchical clustering at fixed threshold.
-
-    simple_clustering_threshold : float
-        Distance threshold for simple clustering (default: 0.03).
-        Commonly used 3% threshold for COI species delimitation.
-
-    run_abgd : bool
-        Run ABGD (Automatic Barcode Gap Discovery) (default: False).
-        Requires external ABGD installation.
-
-    run_asap : bool
-        Run ASAP (Assemble Species by Automatic Partitioning) (default: False).
-        Requires external ASAP installation.
-
-    run_gmyc : bool
-        Run GMYC (General Mixed Yule Coalescent) (default: False).
-        Requires R with splits package and ultrametric tree.
-
-    run_ptp : bool
-        Run PTP (Poisson Tree Processes) (default: False).
-        Requires external PTP installation.
-
-    Notes
-    -----
-    Simple clustering is always available and provides baseline delimitation.
-    Other methods require external tools and are currently placeholders for
-    future implementation.
-
-    References
-    ----------
-    Puillandre et al. (2012). ABGD, Automatic Barcode Gap Discovery...
-    Puillandre et al. (2021). ASAP: assemble species by automatic partitioning.
-    """
-    enable_simple_clustering: bool = True
-    simple_clustering_threshold: float = 0.03
-    run_abgd: bool = False
-    run_asap: bool = False
-    run_gmyc: bool = False
-    run_ptp: bool = False
-
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        if not 0 < self.simple_clustering_threshold <= 1:
-            raise ValueError("simple_clustering_threshold must be between 0 and 1")
-
-
-# ============================================================================
 # Dereplication Configuration
 # ============================================================================
 
 @dataclass(frozen=True)
 class DereplicationConfig:
     """
-    Configuration for sequence dereplication and clustering.
+    Configuration for sequence alignment and ESV discovery.
 
-    Parameters control how COI sequences are aligned, clustered, and converted
-    to consensus sequences representing distinct genotypes.
+    Controls how COI sequences are aligned and processed to identify
+    exact sequence variants (ESVs) as distinct haplotypes.
 
     Attributes
     ----------
-    clustering_threshold : float
-        Maximum distance for sequences to cluster together (default: 0.03).
-        This corresponds to 97% sequence identity threshold for
-        COI-based species/genotype delimitation.
-
-    clustering_method : str
-        Hierarchical clustering linkage method (default: "average").
-        Options: "average" (UPGMA), "single", "complete", "ward"
-
-    consensus_frequency_cutoff : float
-        Minimum fraction of sequences that must share a base for consensus
-        calling (default: 0.7). Positions below this threshold are marked
-        as ambiguous (N).
-
     mafft_algorithm : str
         MAFFT alignment algorithm (default: "auto").
         Options: "auto", "linsi", "ginsi", "einsi", "fftns", "fftnsi"
 
-    trim_alignment : bool
-        Whether to trim alignment with trimAl (default: True)
-
-    trimal_method : str
-        trimAl automated method (default: "automated1")
-
     min_sequence_length : int
-        Minimum sequence length to include before alignment (default: 400 bp)
+        Minimum sequence length to include before alignment (default: 200 bp)
 
     max_n_content : float
         Maximum fraction of ambiguous bases (N) allowed (default: 0.1 = 10%)
 
-    min_post_trim_length : int
-        Minimum ungapped sequence length after trimming (default: 300 bp)
-        Sequences that become too short after trimAl are removed before clustering
-        to prevent fragment-based spurious genotypes.
-
-    min_consensus_length_ratio : float
-        Minimum consensus length as fraction of median consensus length (default: 0.75)
-        Consensus sequences shorter than this ratio relative to the median are filtered out.
-        Set to 0.0 to disable consensus length filtering.
-
     Notes
     -----
-    The default clustering threshold of 0.03 (97% identity) allows for
-    greater intraspecific variation while maintaining distinct genotype groups.
-
-    Three-stage length filtering prevents fragment-based spurious genotypes:
-    1. Pre-alignment: Remove sequences <400bp (configurable)
-    2. Post-trimming: Remove sequences <300bp ungapped after trimAl
-    3. Post-consensus: Remove consensus sequences <75% of median length
+    The ESV (Exact Sequence Variant) approach (Porter & Hajibabaei 2020) is used
+    for high-resolution COI haplotype discovery without clustering thresholds.
+    Haplotypes are defined as unique exact sequences from a core alignment region.
     """
-    clustering_threshold: float = 0.03
-    clustering_method: str = "average"
-    consensus_frequency_cutoff: float = 0.7
     mafft_algorithm: str = "auto"
-    trim_alignment: bool = True
-    trimal_method: str = "automated1"
     min_sequence_length: int = 200
     max_n_content: float = 0.1
-    min_post_trim_length: int = 100
-    min_consensus_length_ratio: float = 0.75
 
     def __post_init__(self):
         """Validate configuration parameters."""
-        if not 0 < self.clustering_threshold < 1:
-            raise ValueError("clustering_threshold must be between 0 and 1")
-        if not 0 < self.consensus_frequency_cutoff <= 1:
-            raise ValueError("consensus_frequency_cutoff must be between 0 and 1")
-        if self.clustering_method not in ["average", "single", "complete", "ward"]:
-            raise ValueError(f"Invalid clustering_method: {self.clustering_method}")
         if self.min_sequence_length < 100:
             raise ValueError("min_sequence_length must be at least 100")
-        if self.min_post_trim_length < 100:
-            raise ValueError("min_post_trim_length must be at least 100")
-        if not 0 <= self.min_consensus_length_ratio <= 1:
-            raise ValueError("min_consensus_length_ratio must be between 0 and 1")
-        if self.min_post_trim_length > self.min_sequence_length:
-            logger.warning(
-                f"min_post_trim_length ({self.min_post_trim_length}) is greater than "
-                f"min_sequence_length ({self.min_sequence_length}). This is unusual but allowed."
-            )
 
 
 # ============================================================================
@@ -593,26 +390,18 @@ class DereplicationConfig:
 @dataclass(frozen=True)
 class GenotypeAssignmentConfig:
     """
-    Configuration for assigning samples to genotype groups.
+    Configuration for assigning samples to haplotype groups.
 
-    Controls how raw sequences are matched to consensus genotypes using
-    edit distance calculations.
+    Controls how raw sequences are matched to haplotype sequences using
+    edit distance calculations with target-based identity scoring.
 
     Attributes
     ----------
     min_identity : float
-        Minimum sequence identity for genotype assignment (default: 0.5).
+        Minimum sequence identity for haplotype assignment (default: 0.5).
         Samples below this threshold are flagged as unassigned.
-
-    identity_method : str
-        Method for calculating sequence identity (default: "target_based").
-        Options:
-        - "target_based": matches / consensus_length
-          More robust to length differences and noisy 5'/3' ends.
-          Recommended for COI barcoding where consensus length is canonical.
-        - "classic": 1 - (edit_distance / max_length)
-          Original method for backwards compatibility.
-          May penalize samples with noisy ends.
+        Identity is calculated as matches / haplotype_length (target-based),
+        which is robust to variable-length 5'/3' ends.
 
     use_edlib : bool
         Prefer edlib for fast edit distance if available (default: True)
@@ -631,22 +420,13 @@ class GenotypeAssignmentConfig:
         Minimum best identity required to consider tie detection (default: 0.95).
         Prevents flagging low-quality matches as ties.
 
-    tie_difference_threshold : float
-        DEPRECATED: Use tie_margin instead. (default: 0.01)
-
     Notes
     -----
     The default minimum identity of 0.5 (50%) provides a permissive threshold
-    for genotype assignment, allowing for:
+    for haplotype assignment, allowing for:
     - Greater intraspecific variation
     - Degraded or low-quality sequences
-    - Differences between consensus and raw sequences
-
-    Identity Method Selection:
-    - Use "target_based" (default) when consensus sequences are canonical
-      references and samples may have variable quality at 5'/3' ends
-    - Use "classic" for backwards compatibility or when sequences are
-      expected to have uniform length and quality
+    - Differences between haplotype and raw sequences
 
     Tie Detection:
     - tie_margin: Controls sensitivity of tie detection (default 0.003 = 0.3%)
@@ -655,13 +435,11 @@ class GenotypeAssignmentConfig:
       (best_identity - runner_up_identity) < tie_margin
     """
     min_identity: float = 0.5
-    identity_method: str = "target_based"
     use_edlib: bool = True
     n_threads: int = 1
     report_ties: bool = True
     tie_margin: float = 0.003
     tie_threshold: float = 0.95
-    tie_difference_threshold: float = 0.01  # Deprecated
 
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -669,11 +447,6 @@ class GenotypeAssignmentConfig:
             raise ValueError("min_identity must be between 0 and 1")
         if self.n_threads < 1:
             raise ValueError("n_threads must be at least 1")
-        if self.identity_method not in ["target_based", "classic"]:
-            raise ValueError(
-                f"identity_method must be 'target_based' or 'classic', "
-                f"got '{self.identity_method}'"
-            )
             
             
 # ============================================================================
@@ -725,7 +498,7 @@ class TaxonomyConfig:
     majority_species_threshold: float = 0.70
     allow_ambiguous_N_pct: float = 2.0
     classifier: str = "blastn"
-    db_name: str = "BOLD_COI_2025-10-01"
+    db_name: str = "BOLD_COI"
     locus: Optional[str] = "COI-5P"
 
     def __post_init__(self):
@@ -750,19 +523,26 @@ class TaxonomyConfig:
 @dataclass(frozen=True)
 class GeographicConfig:
     """
-    Configuration for geographic data processing and ocean basin assignment.
+    Configuration for geographic data processing and region assignment.
 
-    Controls coordinate filtering, validation, and spatial analysis using
-    the Global Oceans and Seas (GOaS) dataset.
+    Controls coordinate filtering, validation, and spatial analysis.
+    Supports any polygon shapefile for region assignment (ocean basins,
+    freshwater basins, ecoregions, watersheds, biomes, etc.). Built-in
+    defaults are provided for marine datasets using the GOaS (Global
+    Oceans and Seas) shapefile.
+
+    For custom shapefiles, use the ``--custom-shp``, ``--shp-field``,
+    and ``--geo-category`` CLI flags instead of the GOaS defaults here.
 
     Attributes
     ----------
     goas_shapefile_path : Optional[Path]
-        Path to GOaS shapefile for ocean basin assignment.
-        Default: looks for GOaS_v1_20211214/goas_v01.shp in package directory
+        Path to GOaS shapefile for marine ocean basin assignment.
+        Default: looks for shapefiles/GOaS_v1_20211214/goas_v01.shp in package directory.
+        Only used when no custom shapefile is provided via --custom-shp.
 
     exclude_centroids : bool
-        Exclude samples with centroid coordinates (default: True)
+        Exclude samples with centroid coordinates (default: True).
         Critical for accurate biogeographic analysis.
 
     exclude_zero_coords : bool
@@ -772,14 +552,16 @@ class GeographicConfig:
         Minimum decimal places for coordinates (default: None)
 
     validate_marine : bool
-        Validate that coordinates fall in marine areas (default: False)
+        Validate that coordinates fall in marine areas (default: False).
+        Marine-specific; not applicable to freshwater/terrestrial datasets.
 
     ocean_basins : List[str]
-        List of ocean basin names to recognize
+        List of ocean basin names to recognize.
+        Marine-specific; used only with GOaS default path.
 
     Notes
     -----
-    Coordinate filtering is CRITICAL for accurate ocean basin assignment.
+    Coordinate filtering is CRITICAL for accurate region assignment.
     Many BOLD records contain country-level centroids rather than actual
     collection locations, which can lead to incorrect biogeographic conclusions.
 
@@ -812,7 +594,7 @@ class GeographicConfig:
         if self.goas_shapefile_path is None:
             # Look for GOaS data in package directory
             package_dir = Path(__file__).parent.parent
-            default_path = package_dir / "GOaS_v1_20211214" / "goas_v01.shp"
+            default_path = package_dir / "shapefiles" / "GOaS_v1_20211214" / "goas_v01.shp"
             object.__setattr__(self, 'goas_shapefile_path', default_path)
 
 
@@ -1025,7 +807,7 @@ class PhylogeneticConfig:
 
     tree_algorithm : str
         Tree building method (default: "fasttree")
-        Options: "phyml", "fasttree", "raxml"
+        Options: "fasttree"
 
     midpoint_root : bool
         Use midpoint rooting if no outgroup (default: True)
@@ -1084,8 +866,8 @@ class PhylogeneticConfig:
             object.__setattr__(self, 'outgroup_fasta', Path(self.outgroup_fasta))
         if self.n_bootstrap < 0:
             raise ValueError("n_bootstrap must be non-negative")
-        if self.tree_algorithm not in ["phyml", "fasttree", "raxml"]:
-            raise ValueError(f"Invalid tree_algorithm: {self.tree_algorithm}")
+        if self.tree_algorithm not in ["fasttree"]:
+            raise ValueError(f"Invalid tree_algorithm: {self.tree_algorithm}. Only 'fasttree' is supported.")
 
 
 # ============================================================================
@@ -1213,23 +995,14 @@ class PipelineConfig:
     haplotype : HaplotypeConfig
         Haplotype (ESV) discovery and flagging configuration
 
-    outlier : OutlierConfig
-        Distance-based outlier detection configuration
-
-    distance : DistanceConfig
-        Distance metric configuration
-
-    delimitation : DelimitationConfig
-        Species delimitation configuration
-
     dereplication : DereplicationConfig
-        Sequence clustering configuration (legacy/compatibility)
+        Sequence alignment and ESV discovery configuration
 
     genotype_assignment : GenotypeAssignmentConfig
         Sample-to-haplotype matching configuration
 
     geographic : GeographicConfig
-        Coordinate filtering and ocean basin configuration
+        Coordinate filtering and geographic region configuration
 
     visualization : VisualizationConfig
         Figure generation configuration
@@ -1262,9 +1035,6 @@ class PipelineConfig:
     qc: QCConfig = field(default_factory=QCConfig)
     core_region: CoreRegionConfig = field(default_factory=CoreRegionConfig)
     haplotype: HaplotypeConfig = field(default_factory=HaplotypeConfig)
-    outlier: OutlierConfig = field(default_factory=OutlierConfig)
-    distance: DistanceConfig = field(default_factory=DistanceConfig)
-    delimitation: DelimitationConfig = field(default_factory=DelimitationConfig)
     dereplication: DereplicationConfig = field(default_factory=DereplicationConfig)
     genotype_assignment: GenotypeAssignmentConfig = field(default_factory=GenotypeAssignmentConfig)
     geographic: GeographicConfig = field(default_factory=GeographicConfig)
@@ -1298,13 +1068,13 @@ class PipelineConfig:
         Create a new configuration with updated values.
 
         Supports nested updates using double underscore notation:
-        config.update(dereplication__clustering_threshold=0.005)
+        config.update(dereplication__mafft_algorithm="linsi")
 
         Parameters
         ----------
         **kwargs
             Configuration parameters to update. Use double underscore
-            for nested parameters (e.g., dereplication__clustering_threshold)
+            for nested parameters (e.g., dereplication__mafft_algorithm)
 
         Returns
         -------
@@ -1316,7 +1086,7 @@ class PipelineConfig:
         >>> config = get_default_config()
         >>> new_config = config.update(
         ...     n_threads=4,
-        ...     dereplication__clustering_threshold=0.005,
+        ...     dereplication__mafft_algorithm="linsi",
         ...     visualization__figure_dpi=600
         ... )
         """
@@ -1423,8 +1193,8 @@ def get_default_config() -> PipelineConfig:
     Examples
     --------
     >>> config = get_default_config()
-    >>> print(config.dereplication.clustering_threshold)
-    0.01
+    >>> print(config.dereplication.mafft_algorithm)
+    auto
     """
     return PipelineConfig()
 
@@ -1534,28 +1304,24 @@ def _dict_to_config(config_dict: Dict[str, Any]) -> PipelineConfig:
     # Extract nested configurations
     nested_configs = {}
 
-    if 'dereplication' in config_dict:
-        nested_configs['dereplication'] = DereplicationConfig(**config_dict.pop('dereplication'))
+    # Map section names to their config classes
+    section_map = {
+        'coi_validation': COIValidationConfig,
+        'qc': QCConfig,
+        'core_region': CoreRegionConfig,
+        'haplotype': HaplotypeConfig,
+        'dereplication': DereplicationConfig,
+        'genotype_assignment': GenotypeAssignmentConfig,
+        'geographic': GeographicConfig,
+        'visualization': VisualizationConfig,
+        'phylogenetic': PhylogeneticConfig,
+        'taxonomy': TaxonomyConfig,
+        'msa': MSAConfig,
+    }
 
-    if 'genotype_assignment' in config_dict:
-        nested_configs['genotype_assignment'] = GenotypeAssignmentConfig(
-            **config_dict.pop('genotype_assignment')
-        )
-
-    if 'geographic' in config_dict:
-        nested_configs['geographic'] = GeographicConfig(**config_dict.pop('geographic'))
-
-    if 'visualization' in config_dict:
-        nested_configs['visualization'] = VisualizationConfig(**config_dict.pop('visualization'))
-
-    if 'phylogenetic' in config_dict:
-        nested_configs['phylogenetic'] = PhylogeneticConfig(**config_dict.pop('phylogenetic'))
-
-    if 'taxonomy' in config_dict:
-        nested_configs['taxonomy'] = TaxonomyConfig(**config_dict.pop('taxonomy'))
-
-    if 'msa' in config_dict:
-        nested_configs['msa'] = MSAConfig(**config_dict.pop('msa'))
+    for section, cls in section_map.items():
+        if section in config_dict:
+            nested_configs[section] = cls(**config_dict.pop(section))
 
     # Create pipeline config
     return PipelineConfig(**nested_configs, **config_dict)
@@ -1594,70 +1360,6 @@ def _convert_strings_to_paths(obj: Any) -> Any:
         return [_convert_strings_to_paths(item) for item in obj]
     else:
         return obj
-
-
-def load_config_from_env() -> Dict[str, Any]:
-    """
-    Load configuration overrides from environment variables.
-
-    Environment variables should be prefixed with BOLDGENOTYPER_
-    and use double underscores for nesting:
-
-    BOLDGENOTYPER_DEREPLICATION__CLUSTERING_THRESHOLD=0.005
-    BOLDGENOTYPER_N_THREADS=4
-
-    Returns
-    -------
-    Dict[str, Any]
-        Configuration overrides from environment
-
-    Examples
-    --------
-    >>> import os
-    >>> os.environ['BOLDGENOTYPER_N_THREADS'] = '4'
-    >>> env_config = load_config_from_env()
-    >>> config = get_default_config().update(**env_config)
-    """
-    prefix = "BOLDGENOTYPER_"
-    overrides = {}
-
-    for key, value in os.environ.items():
-        if key.startswith(prefix):
-            # Remove prefix and convert to lowercase
-            config_key = key[len(prefix):].lower()
-
-            # Try to parse value
-            parsed_value = _parse_env_value(value)
-            overrides[config_key] = parsed_value
-
-    if overrides:
-        logger.debug(f"Loaded {len(overrides)} configuration overrides from environment")
-
-    return overrides
-
-
-def _parse_env_value(value: str) -> Any:
-    """Parse environment variable value to appropriate type."""
-    # Boolean
-    if value.lower() in ['true', 'yes', '1']:
-        return True
-    if value.lower() in ['false', 'no', '0']:
-        return False
-
-    # Integer
-    try:
-        return int(value)
-    except ValueError:
-        pass
-
-    # Float
-    try:
-        return float(value)
-    except ValueError:
-        pass
-
-    # String
-    return value
 
 
 def validate_config(config: PipelineConfig) -> List[str]:
@@ -1700,19 +1402,6 @@ def validate_config(config: PipelineConfig) -> List[str]:
                 f"Outgroup FASTA not found: {config.phylogenetic.outgroup_fasta}"
             )
 
-    # Check for unusual clustering threshold
-    if config.dereplication.clustering_threshold > 0.05:
-        warnings.append(
-            f"Clustering threshold ({config.dereplication.clustering_threshold}) is quite high. "
-            "This may result in very broad genotype groups."
-        )
-
-    if config.dereplication.clustering_threshold < 0.001:
-        warnings.append(
-            f"Clustering threshold ({config.dereplication.clustering_threshold}) is very low. "
-            "This may result in excessive splitting of genotypes."
-        )
-
     # Check for low minimum identity
     if config.genotype_assignment.min_identity < 0.80:
         warnings.append(
@@ -1740,7 +1429,7 @@ def validate_config(config: PipelineConfig) -> List[str]:
         )
     if tx.majority_species_threshold < 0.6:
         warnings.append(
-            f"Majority treshold ({tx.majority_species_threshold}) is lenient; "
+            f"Majority threshold ({tx.majority_species_threshold}) is lenient; "
             "consider 0.7 for conservative metadata-majority species naming."
         )
 

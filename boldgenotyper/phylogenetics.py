@@ -85,7 +85,7 @@ Geographic Analysis Note:
     NOT the filtered subset used for phylogenetics. This ensures complete
     biogeographic coverage while maintaining phylogenetic quality.
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from typing import Optional, List, Tuple

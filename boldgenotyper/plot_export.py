@@ -8,10 +8,10 @@ the entire analysis.
 Key Features:
 - Export plot data to CSV files
 - Generate plot_config.yaml with all styling parameters
-- Create R scripts for plot regeneration
-- Provide examples and documentation
+- Create Python scripts for plot regeneration
+- Provide README documentation for users
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -349,7 +349,7 @@ def create_plot_config(
             # Fallback: write manual YAML format
             with open(path, 'w') as f:
                 f.write("# Plot Configuration for BOLDGenotyper\n")
-                f.write("# Edit values to customize plots, then run regenerate_all.sh\n\n")
+                f.write("# Edit values to customize plots, then run: python scripts/regenerate_all.py\n\n")
 
                 def write_dict(d, indent=0):
                     """Recursively write dictionary in YAML format."""
@@ -670,48 +670,55 @@ def create_readme(output_dir: Path, organism: str, exported_files: Dict[str, Pat
 
 ## Overview
 
-This directory contains raw data and scripts to regenerate all plots with custom
-styling for publication. You can modify colors, labels, sizes, and formats without
-rerunning the entire BOLDGenotyper analysis.
+This directory contains raw data and Python scripts to regenerate all plots with
+custom styling for publication. You can modify colors, labels, sizes, and formats
+without rerunning the entire BOLDGenotyper analysis.
 
 ## Directory Structure
 
 ```
 plots/
-├── README.md                   # This file
-├── plot_config.yaml           # All plotting parameters
-├── data/                      # Raw data for each plot
+├── README.md                        # This file
+├── plot_config.yaml                 # All plotting parameters (edit this)
+├── data/                            # Raw data for each plot
 {file_list}
-├── scripts/                   # R regeneration scripts
-│   ├── regenerate_all.sh
-│   ├── regenerate_map.R
-│   ├── regenerate_bars.R
-│   ├── regenerate_identity.R
-│   └── requirements.txt
-└── examples/                  # Example modifications (TODO)
+└── scripts/                         # Python regeneration scripts
+    ├── regenerate_all.py            # Regenerate all plots at once
+    ├── regenerate_map.py            # Regenerate distribution map only
+    ├── regenerate_bars.py           # Regenerate bar charts only
+    └── regenerate_identity.py       # Regenerate identity histogram only
 ```
 
 ## Quick Start
 
-1. **Install R and required packages:**
-   ```R
-   install.packages(c("ggplot2", "dplyr", "yaml", "sf", "rnaturalearth"))
+1. **Activate the boldgenotyper environment:**
+   ```bash
+   conda activate boldgenotyper
    ```
 
 2. **Modify `plot_config.yaml`** to customize:
-   - Colors for each genotype
+   - Colors for each haplotype
    - Figure dimensions and DPI
    - Map projection and styling
-   - Bar chart layout
-   - Histogram binning
+   - Bar chart layout and orientation
+   - Histogram binning and overlays
+   - Haplotype filters (include/exclude specific haplotypes)
 
 3. **Regenerate plots:**
    ```bash
    cd scripts/
-   bash regenerate_all.sh
+   python regenerate_all.py
    ```
 
-4. **Find updated plots** in `../visualization/`
+   Or regenerate individual plot types:
+   ```bash
+   python regenerate_map.py
+   python regenerate_bars.py
+   python regenerate_identity.py
+   ```
+
+4. **Find updated plots** in the parent `visualization/` directory
+   (saved as `*_custom.pdf`, `*_custom.png`, etc.)
 
 ## Customization Examples
 
@@ -738,8 +745,16 @@ general:
 
 ```yaml
 map:
-  projection: "mollweide"  # or "mercator", "robinson"
+  projection: "mollweide"  # or "mercator", "robinson", "platecarree"
   center_longitude: -180   # Center on Pacific
+```
+
+### Filter Haplotypes
+
+```yaml
+filters:
+  include_genotypes: []              # Leave empty to include all
+  exclude_genotypes: ["Consensus_10"] # Hide specific haplotypes
 ```
 
 ## Data Files
@@ -751,7 +766,8 @@ map:
 - All data files are in CSV format for easy editing
 - Tree data is in Newick format
 - Consensus sequences are in FASTA format
-- Original plots remain unchanged until you regenerate
+- Regenerated plots are saved with `_custom` suffix alongside originals
+- All required packages are included in the boldgenotyper conda environment
 
 ## Support
 

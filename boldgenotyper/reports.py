@@ -4125,10 +4125,20 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
     # 6. Geographic Analysis (if applicable)
     html += '<div id="methods-geographic" class="subtab-content">\n'
     if metrics['samples_with_coords'] or metrics['ocean_basin_assigned']:
+        geo_cat = params.get('geo_category', 'ocean_basin')
+        custom_shp = params.get('custom_shapefile')
+        geo_label = geo_cat.replace('_', ' ').title()
+
         html += '<h3>6. Geographic Analysis</h3>\n'
         html += '<table class="data-table">\n'
         html += '<tbody>\n'
-        html += '<tr><td><strong>Reference dataset</strong></td><td>GOaS v1 (Global Oceans and Seas)</td></tr>\n'
+
+        if custom_shp:
+            shp_name = Path(custom_shp).stem
+            html += f'<tr><td><strong>Reference dataset</strong></td><td>Custom shapefile ({shp_name})</td></tr>\n'
+            html += f'<tr><td><strong>Geographic category</strong></td><td>{geo_label}</td></tr>\n'
+        else:
+            html += '<tr><td><strong>Reference dataset</strong></td><td>GOaS v1 (Global Oceans and Seas)</td></tr>\n'
 
         if metrics['samples_with_coords'] and metrics['samples_for_assignment']:
             pct = (metrics['samples_with_coords'] / metrics['samples_for_assignment']) * 100
@@ -4136,10 +4146,10 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
 
         if metrics['ocean_basin_assigned'] and metrics['samples_with_coords']:
             pct = (metrics['ocean_basin_assigned'] / metrics['samples_with_coords']) * 100
-            html += f'<tr><td><strong>Ocean basin assignments</strong></td><td>{metrics["ocean_basin_assigned"]:,}/{metrics["samples_with_coords"]:,} ({pct:.1f}%)</td></tr>\n'
+            html += f'<tr><td><strong>{geo_label} assignments</strong></td><td>{metrics["ocean_basin_assigned"]:,}/{metrics["samples_with_coords"]:,} ({pct:.1f}%)</td></tr>\n'
 
         if metrics['outside_basins']:
-            html += f'<tr><td><strong>Outside known basins</strong></td><td>{metrics["outside_basins"]:,}</td></tr>\n'
+            html += f'<tr><td><strong>Outside known regions</strong></td><td>{metrics["outside_basins"]:,}</td></tr>\n'
 
         if metrics['unknown_basin']:
             html += f'<tr><td><strong>Unknown location</strong></td><td>{metrics["unknown_basin"]:,} samples</td></tr>\n'
@@ -4212,7 +4222,13 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
         methods_text += "A phylogenetic tree was constructed using FastTree (Price et al., 2010) with the GTR+Gamma substitution model. "
 
     if metrics.get('ocean_basin_assigned') or metrics.get('samples_with_coords'):
-        methods_text += "Geographic distributions were mapped using coordinates provided in BOLD and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). "
+        geo_cat = params.get('geo_category', 'ocean_basin')
+        custom_shp = params.get('custom_shapefile')
+        if custom_shp:
+            geo_label = geo_cat.replace('_', ' ')
+            methods_text += f"Geographic distributions were mapped using coordinates provided in BOLD and assigned to {geo_label}s using a custom shapefile. "
+        else:
+            methods_text += "Geographic distributions were mapped using coordinates provided in BOLD and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). "
 
     if isinstance(n_assigned, int) and isinstance(n_total, int) and isinstance(n_genotypes, int):
         methods_text += f"{n_assigned:,} sequences ({assign_pct:.1f}%) were successfully assigned to {n_genotypes} consensus genotypes."

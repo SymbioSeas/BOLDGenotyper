@@ -13,7 +13,8 @@ Core functionality includes:
 - Core-region extraction from variable-length sequences
 - Suspect haplotype flagging based on distance and ORF quality
 - Haplotype assignment using sequence similarity
-- Geographic coordinate filtering and ocean basin assignment
+- Geographic region assignment using any polygon shapefile (ocean basins,
+  freshwater basins, ecoregions, watersheds, biomes, etc.)
 - Publication-ready visualization generation
 - Optional phylogenetic analysis with outgroup rooting
 
@@ -21,22 +22,19 @@ Workflow:
 1. Quality Control: Orientation normalization, ORF validation, dynamic filtering
 2. Haplotype Discovery: Align → extract core region → identify ESVs → flag suspects
 3. Haplotype Assignment: Match samples to haplotypes
-4. Geographic Analysis: Filter coordinates, assign ocean basins
+4. Geographic Analysis: Assign samples to regions via shapefile (default: GOaS ocean basins)
 5. Visualization & Phylogenetics: Generate plots and optional trees
 
 This implements the ESV (Exact Sequence Variant) approach recommended by
 Porter & Hajibabaei (2020) for high-resolution COI barcoding.
 
-Developed to support the manuscript: "Ocean basin-scale genetic partitioning
-in Sphyrna lewini revealed through COI sequence analysis"
-
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 Institution: University of North Carolina, Institute of Marine Sciences
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __author__ = "Steph Smith"
-__email__ = "steph.smith@unc.edu"
+__email__ = "symbioseas@outlook.com"
 
 # Import main modules for easy access
 from . import config
@@ -45,19 +43,20 @@ from . import quality_control
 from . import dereplication
 from . import haplotype_assignment
 from . import haplotype_query
-from . import cluster_diagnostics
 from . import metadata
 from . import geographic
+from . import geographic_enhancement
 from . import visualization
 from . import phylogenetics
-from . import comparative_analysis
-from . import parameter_sweep
-from . import metadata_enrichment
-from . import popgen_export
+from . import divergence_analysis
+from . import species_analysis
 from . import metadata_analysis
-
-# Legacy alias for backward compatibility
-from . import haplotype_assignment as genotype_assignment
+from . import reports
+from . import plot_export
+from . import plot_regeneration
+from . import popgen_export
+from . import parameter_sweep
+from . import msa_visualization
 
 __all__ = [
     "config",
@@ -66,15 +65,18 @@ __all__ = [
     "dereplication",
     "haplotype_assignment",
     "haplotype_query",
-    "cluster_diagnostics",
     "metadata",
     "geographic",
+    "geographic_enhancement",
     "visualization",
     "phylogenetics",
-    "comparative_analysis",
-    "parameter_sweep",
-    "metadata_enrichment",
-    "popgen_export",
+    "divergence_analysis",
+    "species_analysis",
     "metadata_analysis",
-    "genotype_assignment",  # Legacy alias
+    "reports",
+    "plot_export",
+    "plot_regeneration",
+    "popgen_export",
+    "parameter_sweep",
+    "msa_visualization",
 ]

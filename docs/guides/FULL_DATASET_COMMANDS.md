@@ -85,7 +85,7 @@ boldgenotyper data/Pieridae.tsv \
   --output output/Pieridae_full \
   --organism Pieridae \
   --build-tree \
-  --shp Ecoregions2017/Ecoregions2017.shp \
+  --shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
   --shp-field ECO_NAME \
   --geo-category ecoregion \
   --threads 8
@@ -111,10 +111,10 @@ boldgenotyper data/Carcharhiniformes.tsv --output output/Carcharhiniformes_full 
 boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panulirus --build-tree --threads 8
 
 # Freshwater dataset (HydroBASINS)
-boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --build-tree --shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp --shp-field HYBAS_ID --geo-category freshwater_basin --threads 8
+boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --build-tree --shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp --shp-field HYBAS_ID --geo-category freshwater_basin --threads 8
 
 # Terrestrial dataset (Ecoregions2017)
-boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --build-tree --shp Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
+boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --build-tree --shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
 ```
 
 ## Expected Outputs
@@ -175,11 +175,11 @@ To confirm shapefiles are correctly configured:
 
 ```bash
 # Check GOaS (should show 'name' field)
-ogrinfo -so GOaS_v1_20211214/goas_v01.shp goas_v01 | grep "name:"
+ogrinfo -so shapefiles/GOaS_v1_20211214/goas_v01.shp goas_v01 | grep "name:"
 
 # Check HydroBASINS (should show 'HYBAS_ID' field)
-ogrinfo -so hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp hybas_pour_lev07_v1 | grep "HYBAS_ID"
+ogrinfo -so shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp hybas_na_lev01-12_v1c | grep "HYBAS_ID"
 
 # Check Ecoregions (should show 'ECO_NAME' field)
-ogrinfo -so Ecoregions2017/Ecoregions2017.shp Ecoregions2017 | grep "ECO_NAME"
+ogrinfo -so shapefiles/Ecoregions2017/Ecoregions2017.shp Ecoregions2017 | grep "ECO_NAME"
 ```

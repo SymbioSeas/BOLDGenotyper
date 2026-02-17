@@ -10,7 +10,7 @@ tags:
   - genotyping
   - biogeography
 authors:
-  - name: Stephanie E. Smith
+  - name: Steph Smith
     orcid: 0000-0000-0000-0000
     affiliation: 1
     corresponding: true
@@ -23,7 +23,7 @@ bibliography: paper.bib
 
 # Summary
 
-BOLDGenotyper is a comprehensive Python pipeline that automates the identification and biogeographic analysis of mitochondrial cytochrome c oxidase subunit I (COI) genotypes from the Barcode of Life Database (BOLD) [@Ratnasingham2007]. The software transforms raw BOLD sequence data into publication-ready analyses through seven integrated phases: data quality control, sequence dereplication, consensus genotype generation, sample-to-genotype assignment, taxonomic validation, phylogenetic reconstruction, and geographic visualization. BOLDGenotyper addresses a critical gap in molecular ecology by providing researchers with a standardized, reproducible workflow for analyzing intraspecific genetic variation and biogeographic patterns from the world's largest DNA barcode repository.
+BOLDGenotyper is a comprehensive Python pipeline that automates the identification and biogeographic analysis of mitochondrial cytochrome c oxidase subunit I (COI) genotypes from the Barcode of Life Database (BOLD) [@Ratnasingham2007]. The software transforms raw BOLD sequence data into publication-ready analyses through eight integrated phases: data quality control, sequence dereplication, consensus genotype generation, sample-to-genotype assignment, taxonomic validation, geographic analysis, metadata analysis, phylogenetic reconstruction, and visualization. BOLDGenotyper addresses a critical gap in molecular ecology by providing researchers with a standardized, reproducible workflow for analyzing intraspecific genetic variation and biogeographic patterns from the world's largest DNA barcode repository.
 
 # Statement of need
 
@@ -33,27 +33,31 @@ Existing tools for COI analysis focus primarily on species delimitation [@Zhang2
 
 BOLDGenotyper fills this gap by providing an end-to-end automated pipeline specifically designed for BOLD data. The software implements rigorous quality control (coordinate filtering, sequence length thresholds, N-content filtering), sophisticated genotype assignment (edit distance-based with tie detection and confidence scoring), and publication-ready visualizations (interactive HTML reports, geographic distribution maps, phylogenetic trees). By automating these steps, BOLDGenotyper enables researchers to focus on biological interpretation rather than data wrangling.
 
-The software has been designed with marine phylogeography in mind but is applicable to any organism with COI barcode data. A key innovation is the integration with the Global Oceans and Seas (GOaS) shapefile dataset [@MarineRegions2021], enabling automatic assignment of samples to ocean basins for biogeographic analyses. This feature is particularly valuable for studying marine species with wide distributions, where ocean basin boundaries may represent significant phylogeographic barriers.
+The software has been designed with marine phylogeography in mind but is applicable to any organism with COI barcode data. A key feature is the integration with the Global Oceans and Seas (GOaS) shapefile dataset [@MarineRegions2021] for automatic ocean basin assignment, with support for any custom polygon shapefile (e.g., HydroBASINS for freshwater organisms, WWF Ecoregions for terrestrial species). This flexibility enables biogeographic analyses across marine, freshwater, and terrestrial systems.
 
 # Design and functionality
 
-BOLDGenotyper is implemented as a Python package with a unified command-line interface and is organized into eight core modules:
+BOLDGenotyper is implemented as a Python package with a unified command-line interface and is organized into ten core modules:
 
 1. **Data ingestion and quality control** (`metadata.py`): Parses BOLD TSV files, validates required fields, and filters samples based on coordinate quality to exclude imprecise country-level centroids that could confound biogeographic analyses.
 
-2. **Sequence dereplication** (`dereplication.py`): Aligns sequences with MAFFT [@Katoh2013], trims alignments with trimAl [@CapellaGutierrez2009], computes pairwise genetic distances, performs hierarchical clustering, and generates consensus sequences representing unique genotypes.
+2. **Haplotype discovery** (`dereplication.py`): Aligns sequences with MAFFT [@Katoh2013], extracts a core alignment region, and identifies Exact Sequence Variants (ESVs) [@Porter2020] as distinct haplotypes — no clustering threshold required.
 
-3. **Genotype assignment** (`genotype_assignment.py`): Assigns individual samples to consensus genotypes using edit distance calculations, implements tie detection for ambiguous assignments, and provides detailed diagnostic outputs for quality assessment.
+3. **Haplotype assignment** (`haplotype_assignment.py`): Assigns individual samples to haplotype sequences using edit distance (target-based identity), implements tie detection for ambiguous assignments, and provides detailed diagnostic outputs for quality assessment.
 
 4. **Taxonomic analysis** (`metadata.py`, `reports.py`): Aggregates species names within genotypes, identifies taxonomy conflicts (genotypes spanning multiple species), and generates species composition tables.
 
-5. **Geographic analysis** (`geographic.py`): Integrates with GOaS shapefile data for ocean basin assignment, handles coordinate transformations, and provides land detection with configurable handling policies.
+5. **Geographic analysis** (`geographic.py`): Assigns samples to geographic regions using any polygon shapefile via spatial joins. Includes built-in support for GOaS ocean basins (marine default), with configurable custom shapefiles for freshwater basins, ecoregions, or any user-defined regions.
 
 6. **Phylogenetic reconstruction** (`phylogenetics.py`): Optionally constructs maximum-likelihood trees using FastTree [@Price2010] with the GTR+Gamma model, generates tree visualizations, and exports Newick format for downstream analyses.
 
-7. **Visualization** (`visualization.py`): Creates publication-quality figures including identity distribution histograms, geographic distribution maps with sample point sizing, ocean basin bar charts showing relative and total abundances, and faceted visualizations for multi-species datasets.
+7. **Metadata analysis** (`metadata_analysis.py`): Analyzes associations between haplotype assignments and specimen metadata fields (sex, life stage, country, habitat, biogeographic realm, ecoregion). Performs coverage assessment, chi-square tests of haplotype–metadata associations, and temporal analysis of collection dates including haplotype emergence timelines. This module is particularly valuable for datasets where geographic coordinates are sparse but other metadata fields are informative.
 
-8. **Interactive reporting** (`reports.py`): Generates comprehensive HTML reports with interactive Plotly.js visualizations, filterable tables, complete methods sections suitable for publication, and export functionality for all plots and data.
+8. **Visualization and plot customization** (`visualization.py`, `plot_export.py`, `plot_regeneration.py`): Creates publication-quality figures including identity distribution histograms, geographic distribution maps with sample point sizing, region abundance bar charts showing relative and total abundances, and faceted visualizations for multi-species datasets. Raw plot data and a YAML configuration file are exported automatically, enabling users to customize colors, dimensions, projections, and haplotype filters and regenerate plots via Python scripts without re-running the full analysis.
+
+9. **Population genetics export** (`popgen_export.py`): Optionally exports haplotype assignments to formats compatible with established population genetics software — Arlequin [@Excoffier2010] (.arp), PopART/NEXUS [@Leigh2015] for haplotype network construction, DnaSP [@Rozas2017] (.fas), and generic CSV/FASTA. Geographic populations are defined automatically from the pipeline's region assignments (ocean basins, drainage basins, ecoregions, or any custom classification), eliminating the manual data formatting step that typically precedes downstream population genetics analyses.
+
+10. **Interactive reporting** (`reports.py`): Generates comprehensive HTML reports with interactive Plotly.js visualizations, filterable tables, complete methods sections suitable for publication, and export functionality for all plots and data.
 
 The pipeline implements several algorithmic innovations for handling BOLD data:
 
@@ -80,10 +84,12 @@ BOLDGenotyper differs from existing tools in several key aspects:
 | Direct BOLD integration | ✓ | ✓ | ✗ | ✗ | ✗ |
 | Automated genotyping | ✓ | ✗ | Manual | Manual | N/A |
 | Geographic analysis | ✓ | Limited | ✗ | ✗ | Manual |
-| Ocean basin assignment | ✓ | ✗ | ✗ | ✗ | Manual |
+| Custom shapefile support | ✓ | ✗ | ✗ | ✗ | ✓ |
+| Metadata–haplotype analysis | ✓ | ✗ | ✗ | ✗ | ✗ |
 | Interactive reports | ✓ | ✗ | ✗ | ✗ | ✗ |
 | Phylogenetic trees | ✓ | ✗ | ✗ | ✓ | ✗ |
 | Publication-ready output | ✓ | Partial | Partial | Partial | ✓ |
+| Pop-gen format export | ✓ | ✗ | ✗ | N/A | ✗ |
 | Reproducible workflow | ✓ | ✗ | Partial | Partial | Partial |
 
 While the BOLD portal [@Ratnasingham2007] provides species identification and basic sequence analysis, it does not support automated genotyping or detailed biogeographic analyses. Population genetics tools like TCS [@Clement2000], PopART [@Leigh2015], and Arlequin [@Excoffier2010] require extensive manual preparation of BOLD data and do not integrate geographic analysis. BOLDGenotyper bridges these gaps by providing an end-to-end automated workflow.
@@ -96,7 +102,7 @@ The software follows best practices for scientific Python software: type hints f
 
 # Availability and implementation
 
-BOLDGenotyper is implemented in Python 3.8+ and distributed under the MIT license. The source code is available on GitHub at https://github.com/SymbioSeas/BOLDGenotyper and will be archived on Zenodo upon publication. The software can be installed via conda or pip and requires external tools (MAFFT, trimAl, FastTree) available through Bioconda. Comprehensive documentation, example data, and usage tutorials are provided in the GitHub repository.
+BOLDGenotyper is implemented in Python 3.9+ and distributed under the MIT license. The source code is available on GitHub at https://github.com/SymbioSeas/BOLDGenotyper and will be archived on Zenodo upon publication. The software can be installed via conda or pip and requires external tools (MAFFT, trimAl, FastTree) available through Bioconda. Comprehensive documentation, example data, and usage tutorials are provided in the GitHub repository.
 
 # Acknowledgments
 

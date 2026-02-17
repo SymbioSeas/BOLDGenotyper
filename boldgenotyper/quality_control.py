@@ -1,7 +1,7 @@
 """
 Quality Control Module for BOLDGenotyper
 
-This module provides comprehensive quality control for COI barcode sequences, including
+This module provides quality control for COI barcode sequences, including
 sequence orientation normalization, ORF validation, dynamic filtering, and contamination
 detection.
 
@@ -21,7 +21,7 @@ Workflow:
 3. Dynamic QC: Apply absolute and median-based length/quality filters
 4. Contamination Detection: Identify mixed-species groups
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -46,11 +46,11 @@ class QualityControlError(Exception):
 
 # Keywords for depositor uncertainty detection
 UNCERTAINTY_KEYWORDS = {
-    'cryptic_species': ['cryptic', 'complex', 'cf. gilberti'],
-    'uncertain_id': ['uncertain', 'tentative', 'probable', 'likely', 'possibly'],
-    'morphology_issues': ['juvenile', 'damaged', 'incomplete', 'poor condition'],
+    'cryptic_species': ['cryptic', 'complex', 'novel', 'undescribed'],
+    'uncertain_id': ['uncertain', 'tentative', 'probable', 'likely', 'possibly', 'unknown', 'unidentified'],
+    'morphology_issues': ['juvenile', 'damaged', 'incomplete', 'poor condition', 'pup', 'decomposed', 'larva', 'nymph', 'egg'],
     'taxonomy_qualifier': ['cf.', 'aff.', 'sp.', 'spp.'],
-    'mixed_sample': ['mixed', 'contamination', 'multiple']
+    'mixed_sample': ['mixed', 'contamination', 'multiple', 'contaminated']
 }
 
 
@@ -518,8 +518,8 @@ def add_contamination_columns(
     - matches_group_majority: Does sample match group majority?
     - potential_misidentification: Likely mislabeled sample?
     - depositor_uncertainty_flag: Has notes indicating uncertainty?
-    - depositor_notes: Full notes field
-    - misidentification_confidence: Confidence level
+    - depositor_notes: Full notes field for reference
+    - misidentification_confidence: Confidence level based on contamination and notes
 
     Parameters
     ----------
@@ -790,6 +790,8 @@ def create_contamination_heatmap(
 
     # Y-axis tick labels: haplotype IDs
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+    for label in ax.get_yticklabels():
+        label.set_fontstyle("italic")
 
     plt.tight_layout()
 
@@ -865,7 +867,7 @@ def generate_quality_control_report(
     species_col: str = "species"
 ) -> Dict[str, Any]:
     """
-    Generate comprehensive quality control report.
+    Generate quality control report.
 
     This creates:
     - mixed_species_summary.csv
@@ -962,15 +964,15 @@ def generate_quality_control_report(
 
 ## Overview
 
-This directory contains automated quality control analysis identifying potential
+This directory contains quality control analysis identifying potential
 contamination and misidentifications in the genotype assignments.
 
 ## Files
 
 - **mixed_species_summary.csv**: Summary of contamination in each haplotype
 - **contamination_heatmap.pdf**: Visual overview of species × groups
-- **depositor_flags_summary.csv**: Samples with uncertainty notes
-- **potential_misidentifications.csv**: Flagged samples likely mislabeled
+- **depositor_flags_summary.csv**: Samples with depositor uncertainty notes
+- **potential_misidentifications.csv**: Flagged samples that were likely misidentified based on group majority and depositor notes
 - **purity_distribution.pdf**: Distribution of majority fractions
 
 ## Summary Statistics
@@ -985,28 +987,15 @@ contamination and misidentifications in the genotype assignments.
 
 ### Group Purity Flags
 
-- **CLEAN**: 100% single species - high confidence homogeneous group
-- **CONTAMINATED**: <100% but >70% majority - minor contamination present
-- **AMBIGUOUS**: <70% majority - unclear species assignment, genus-level appropriate
+- **CLEAN**: 100% single species - high confidence this haplotype is a homogeneous group
+- **CONTAMINATED**: <100% but >70% majority - minor contamination present (some samples were likely originally misidentified or contaminated)
+- **AMBIGUOUS**: <70% majority - the haplotype is valid, but default to genus-level assignment because species-level assignment is unclear
 
 ### Misidentification Confidence
 
 - **high**: >95% identity, clear majority (>90%), no depositor uncertainty
 - **medium**: 90-95% identity, moderate majority (70-90%), or has uncertainty notes
 - **low**: <90% identity, weak majority (<70%), or flagged as ambiguous
-
-## Recommended Actions
-
-1. Review samples in `potential_misidentifications.csv`
-2. Cross-reference with `depositor_flags_summary.csv` for known issues
-3. Consider hierarchical (family-level) analysis for contamination context
-4. Manually review ambiguous groups with <70% majority
-
-## Methods Integration
-
-Include quality control metrics in your manuscript's results section.
-See contamination_summary.csv for group-level statistics suitable for
-supplementary tables.
 """
 
     with open(readme_path, 'w') as f:
@@ -1037,24 +1026,24 @@ def print_quality_alert(qc_summary: Dict[str, Any]) -> None:
 
     if n_mixed > 0 or n_flagged > 0 or n_misid > 0:
         print("\n" + "="*70)
-        print("⚠️  QUALITY CONTROL ALERTS")
+        print("QUALITY CONTROL ALERTS")
         print("="*70)
 
         if n_mixed > 0:
             pct = (n_mixed / total_groups * 100) if total_groups > 0 else 0
-            print(f"\n🔬 {n_mixed} of {total_groups} haplotypes contain multiple species ({pct:.1f}%)")
-            print("   → See: quality_control/mixed_species_summary.csv")
+            print(f"\n{n_mixed} of {total_groups} haplotypes contain multiple species ({pct:.1f}%)")
+            print("    See: quality_control/mixed_species_summary.csv")
 
         if n_misid > 0:
-            print(f"\n🚨 {n_misid} samples flagged as potential misidentifications")
-            print("   → See: quality_control/potential_misidentifications.csv")
+            print(f"\n{n_misid} samples flagged as potential misidentifications")
+            print("    See: quality_control/potential_misidentifications.csv")
 
         if n_flagged > 0:
-            print(f"\n📝 {n_flagged} samples have depositor notes indicating uncertainty")
-            print("   → See: quality_control/depositor_flags_summary.csv")
+            print(f"\n {n_flagged} samples have depositor notes indicating uncertainty")
+            print("    See: quality_control/depositor_flags_summary.csv")
 
-        print("\n💡 TIP: Consider running family-level analysis for quality control")
-        print("   Run: boldgenotyper-compare --help")
+        print("\n TIP: Consider running family-level analysis for quality control")
+        print("   Run: python scripts/compare_analyses.py --help")
         print("="*70 + "\n")
     else:
-        print("\n✓ Quality control: No significant contamination detected")
+        print("\n Quality control: No significant contamination detected")

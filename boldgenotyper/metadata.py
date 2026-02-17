@@ -5,7 +5,7 @@ This module handles parsing of BOLD TSV files and assignment of samples to
 their best-matching consensus genotype groups based on sequence similarity.
 
 Key Responsibilities:
-1. Parse BOLD TSV files (~86 columns) extracting critical fields:
+1. Parse BOLD TSV files and extract critical fields:
    - processid: Unique sample identifier (REQUIRED)
    - nuc: COI nucleotide sequence (REQUIRED)
    - coord: Geographic coordinates in format [lat, lon]
@@ -46,7 +46,7 @@ Example Usage:
     ...     min_identity=0.90
     ... )
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from typing import Dict, List, Optional, Tuple, Set, Any, Union
@@ -85,7 +85,7 @@ def parse_bold_tsv(
     Parse BOLD TSV file and validate required fields.
 
     Handles various BOLD export formats, encoding issues, and missing columns.
-    Performs comprehensive validation and provides informative error messages.
+    This validates your BOLD data and ensure it contains the necessary information for genotyping and geographic analysis.
 
     Parameters
     ----------
@@ -139,7 +139,7 @@ def parse_bold_tsv(
     logger.info(f"Reading BOLD TSV file: {path}")
 
     def _read_with_fallback(enc: str) -> pd.DataFrame:
-        """Read TSV with robust fallbacks for malformed rows."""
+        """Read TSV with fallbacks for malformed rows."""
         try:
             return pd.read_csv(
                 path,
@@ -557,11 +557,10 @@ def filter_by_coordinate_quality(
 ) -> pd.DataFrame:
     """
     Filter samples based on coordinate quality.
-
-    Implements critical filtering rules to exclude samples with low-quality
-    or ambiguous coordinates. This is ESSENTIAL for accurate biogeographic
-    analysis because many BOLD records contain country-level centroids rather
-    than actual collection locations.
+    
+    Uses filtering rules to exclude samples with ambiguous coordinates. This is ESSENTIAL 
+    for accurate biogeographic analysis because many BOLD records contain country-level 
+    centroids rather than actual collection locations.
 
     Filtering Rules:
     1. Exclude samples with missing coordinates
@@ -596,9 +595,10 @@ def filter_by_coordinate_quality(
 
     Notes
     -----
-    This filtering is CRITICAL for accurate ocean basin assignment.
-    Many BOLD records use country centroids instead of actual collection
-    locations, which can lead to incorrect biogeographic conclusions.
+    This filtering is critical for accurate geography assignment.
+    Many BOLD records use country centroids instead of actual 
+    collection locations, which can lead to incorrect biogeographic 
+    conclusions if not properly filtered.
     """
     n_initial = len(df)
     df_filtered = df.copy()
@@ -654,7 +654,7 @@ def mark_coordinate_quality(
 
     This function adds boolean columns to identify samples with questionable
     coordinates WITHOUT removing them from the dataset. This ensures that:
-    - Samples with centroid coordinates ARE included in clustering/genotyping
+    - Samples with centroid coordinates are INCLUDED in clustering/genotyping
     - Samples with centroid coordinates are EXCLUDED from geographic analysis
     - Users can see which samples have coordinate quality issues
 

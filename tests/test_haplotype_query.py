@@ -4,7 +4,7 @@ Tests for Haplotype Query Module
 Tests the haplotype_query module that allows querying new COI sequences
 against previously identified haplotypes from a completed BOLD analysis.
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import pytest

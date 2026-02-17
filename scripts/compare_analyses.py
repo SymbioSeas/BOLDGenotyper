@@ -1,19 +1,21 @@
+#!/usr/bin/env python3
 """
-Comparative Analysis Module for BOLDGenotyper
+compare_analyses.py — Standalone comparative analysis utility for BOLDGenotyper
 
-This module enables hierarchical taxonomic comparison by comparing species-level
-and family/genus-level analyses to detect database contamination and potential
-misidentifications.
+Compares species-level and family/genus-level BOLDGenotyper analyses to detect
+database contamination and potential misidentifications.
 
-Key Features:
-- Compare two BOLDGenotyper outputs (e.g., species vs family level)
-- Generate genotype crosswalk tables
-- Identify mixed-species groups and contamination patterns
-- Create sample-level reassignment tables
-- Generate comparison visualizations
-- Auto-generate methods text
+Usage:
+    python scripts/compare_analyses.py \\
+        --species-level Sphyrna_lewini_output/ \\
+        --family-level Sphyrnidae_output/ \\
+        --output comparative_analysis/ \\
+        --generate-reassignment-table
 
-Author: Steph Smith (steph.smith@unc.edu)
+Requirements:
+    pandas, numpy (standard BOLDGenotyper dependencies)
+
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -24,8 +26,6 @@ from datetime import datetime
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
@@ -592,7 +592,8 @@ def generate_methods_text(
     species_meta: Dict[str, Any],
     family_meta: Dict[str, Any],
     summary_df: pd.DataFrame,
-    output_path: Path
+    output_path: Path,
+    majority_threshold: float = 0.7
 ) -> Path:
     """
     Auto-generate methods section text.
@@ -607,6 +608,8 @@ def generate_methods_text(
         Comparison summary
     output_path : Path
         Output path for methods text
+    majority_threshold : float
+        Threshold used for species-level assignment
 
     Returns
     -------
@@ -629,20 +632,16 @@ def generate_methods_text(
     mixed_groups = summary_df[summary_df['metric'] == 'mixed_species_groups']['family_level'].values[0]
     pct_mixed = (mixed_groups / fam_groups * 100) if fam_groups > 0 else 0
 
-    # Get threshold
-    threshold = species_meta.get('params', {}).get('clustering_threshold', 0.015)
-
     methods_text = f"""### Comparative Taxonomic Analysis
 
 To assess database quality and detect potential misidentifications, we performed
 hierarchical taxonomic analysis by comparing species-level and family-level
-clustering approaches. Species-level analysis queried BOLD for all samples
-labeled "{sp_organism}" (n={sp_n} samples), while family-level analysis retrieved all
+approaches. Species-level analysis queried BOLD for all samples labeled
+"{sp_organism}" (n={sp_n} samples), while family-level analysis retrieved all
 {fam_organism} samples (n={fam_n} samples representing {fam_detected} species). Both analyses used
-identical BOLDGenotyper parameters (clustering threshold={threshold}, assignment
-threshold=0.50).
+identical BOLDGenotyper parameters (majority threshold={majority_threshold:.2f}).
 
-Species-level analysis generated {sp_groups} consensus genotypes, with {sp_detected} species detected,
+Species-level analysis generated {sp_groups} consensus haplotypes, with {sp_detected} species detected,
 superficially suggesting {"homogeneous, high-quality data" if sp_detected == 1 else "taxonomically diverse samples"}.
 However, family-level comparative analysis revealed {mixed_groups} of {fam_groups} consensus
 groups ({pct_mixed:.1f}%) contained multiple species, indicating taxonomic heterogeneity
@@ -667,7 +666,7 @@ when mining public barcode databases.
     with open(output_path, 'w') as f:
         f.write(methods_text)
 
-    logger.info(f"  ✓ Generated methods text: {output_path}")
+    logger.info(f"  Generated methods text: {output_path}")
 
     return output_path
 
@@ -777,7 +776,10 @@ def compare_analyses(
     logger.info("Generating methods text...")
     try:
         methods_path = output_dir / "methods_text.md"
-        generate_methods_text(species_meta, family_meta, summary_df, methods_path)
+        generate_methods_text(
+            species_meta, family_meta, summary_df, methods_path,
+            majority_threshold=majority_threshold
+        )
         results['methods_text'] = methods_path
     except Exception as e:
         logger.warning(f"  Could not generate methods text: {e}")
@@ -798,7 +800,7 @@ Comparison of species-level ({species_meta['organism']}) and family-level
     # Add key metrics to README
     for _, row in summary_df.iterrows():
         metric = row['metric'].replace('_', ' ').title()
-        readme_content += f"- **{metric}**: {row['species_level']} (species) → {row['family_level']} (family)\n"
+        readme_content += f"- **{metric}**: {row['species_level']} (species) -> {row['family_level']} (family)\n"
 
     readme_content += f"""
 
@@ -823,8 +825,124 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     results['readme'] = readme_path
 
     logger.info("="*70)
-    logger.info(f"✓ Comparative analysis complete")
+    logger.info("Comparative analysis complete")
     logger.info(f"  Output directory: {output_dir}")
     logger.info("="*70)
 
     return results
+
+
+def main():
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        prog="compare_analyses.py",
+        description="Compare species-level and family-level BOLDGenotyper analyses for contamination detection",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Compare two completed analyses
+  python scripts/compare_analyses.py \\
+      --species-level Sphyrna_lewini_output/ \\
+      --family-level Sphyrnidae_output/
+
+  # Generate sample reassignment table
+  python scripts/compare_analyses.py \\
+      --species-level species_analysis/ \\
+      --family-level family_analysis/ \\
+      --generate-reassignment-table
+
+  # Specify custom output directory
+  python scripts/compare_analyses.py \\
+      --species-level sp/ --family-level fam/ \\
+      --output custom_comparison/
+        """
+    )
+
+    parser.add_argument(
+        '--species-level',
+        type=Path,
+        required=True,
+        help='Path to species-level analysis directory or annotated CSV'
+    )
+
+    parser.add_argument(
+        '--family-level',
+        type=Path,
+        required=True,
+        help='Path to family-level analysis directory or annotated CSV'
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=Path,
+        default=Path('comparative_analysis'),
+        help='Output directory for comparison results (default: comparative_analysis/)'
+    )
+
+    parser.add_argument(
+        '--generate-reassignment-table',
+        action='store_true',
+        help='Generate sample-level reassignment table'
+    )
+
+    parser.add_argument(
+        '--majority-threshold',
+        type=float,
+        default=0.7,
+        help='Threshold for species-level assignment (default: 0.7)'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default='INFO',
+        help='Logging verbosity (default: INFO)'
+    )
+
+    args = parser.parse_args()
+
+    # Setup logging
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    # Validate inputs
+    if not args.species_level.exists():
+        print(f"Error: Species-level path not found: {args.species_level}", file=sys.stderr)
+        return 1
+
+    if not args.family_level.exists():
+        print(f"Error: Family-level path not found: {args.family_level}", file=sys.stderr)
+        return 1
+
+    # Run comparison
+    try:
+        results = compare_analyses(
+            species_path=args.species_level,
+            family_path=args.family_level,
+            output_dir=args.output,
+            generate_reassignment_table=args.generate_reassignment_table,
+            majority_threshold=args.majority_threshold
+        )
+
+        print("\nComparative analysis complete!")
+        print(f"  Results saved to: {args.output}")
+        print("\nGenerated files:")
+        for key, path in results.items():
+            if isinstance(path, Path):
+                print(f"  - {path.name}")
+
+        return 0
+
+    except Exception as e:
+        logging.error(f"Comparative analysis failed: {e}", exc_info=True)
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -3,44 +3,28 @@ Helper Functions and Utilities
 
 This module provides common utility functions used throughout the BOLDGenotyper
 package, including file I/O operations, external tool verification, logging
-configuration, and general-purpose helper functions.
+configuration, sequence validation, and taxonomy assignment helpers.
 
 Key Utilities:
-1. File Operations
-   - Cross-platform path handling using pathlib
-   - Safe file reading and writing
-   - Automatic directory creation
-   - Organism name extraction from filenames
+1. Logging Configuration
+   - Centralized logging setup with console and file output
 
 2. External Tool Management
-   - Check for required bioinformatics tools (MAFFT, trimAl, PhyML)
-   - Version checking
-   - Helpful error messages with installation instructions
-   - Path discovery in system PATH
+   - Check for required bioinformatics tools (MAFFT, trimAl, FastTree)
+   - Version checking and installation instructions
 
-3. Logging Configuration
-   - Centralized logging setup
-   - Progress tracking for long-running operations
-   - Structured error reporting
-   - User-friendly status messages
+3. File Operations
+   - FASTA reading and writing (pure Python, no BioPython required)
+   - Filename sanitization and organism name extraction from BOLD filenames
 
-4. Data Validation
-   - Input file format validation
-   - Required field checking
-   - Type conversion with error handling
-   - Edge case detection
+4. Sequence Validation
+   - DNA sequence quality checks (length, N-content, gaps)
+   - COI open reading frame validation and orientation detection
+   - Core alignment region extraction for variable-length barcodes
 
-5. General Helpers
-   - String manipulation (organism names with special characters)
-   - Numeric utilities (sequence identity calculation)
-   - Time and memory tracking
-   - Configuration file parsing
-
-Design Principles:
-- Functions are small, focused, and well-documented
-- All file operations use pathlib for cross-platform compatibility
-- Error messages are informative and actionable
-- Graceful degradation when optional dependencies are missing
+5. Taxonomy Assignment
+   - Consensus taxonomy for haplotype groups (majority-rule species assignment)
+   - Multi-source taxonomy resolution (sequence-based vs metadata-based)
 
 Example Usage:
     >>> from boldgenotyper.utils import check_external_tool, extract_organism_name
@@ -49,7 +33,7 @@ Example Usage:
     >>> organism = extract_organism_name("Sphyrna_lewini_BOLD_data.tsv")
     >>> print(organism)  # Output: Sphyrna_lewini
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from typing import Optional, Dict, Any, List, Tuple, Union, Iterable
@@ -60,8 +44,6 @@ import re
 import sys
 import shutil
 import os
-from datetime import datetime
-from collections import Counter
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -141,27 +123,6 @@ def setup_logging(
     return package_logger
 
 
-def log_function_call(func_name: str, **kwargs) -> None:
-    """
-    Log a function call with its parameters.
-
-    Useful for tracking pipeline execution and debugging.
-
-    Parameters
-    ----------
-    func_name : str
-        Name of the function being called
-    **kwargs
-        Function parameters to log
-
-    Examples
-    --------
-    >>> log_function_call("dereplicate_sequences", threshold=0.01, n_sequences=150)
-    """
-    params = ", ".join(f"{k}={v}" for k, v in kwargs.items())
-    logger.debug(f"Calling {func_name}({params})")
-
-
 # ============================================================================
 # External Tool Management
 # ============================================================================
@@ -179,7 +140,7 @@ def check_external_tool(
     Parameters
     ----------
     tool_name : str
-        Name of tool to check (e.g., 'mafft', 'trimal', 'phyml')
+        Name of tool to check (e.g., 'mafft', 'trimal', 'fasttree')
     min_version : str, optional
         Minimum required version (e.g., '7.0', '1.4.1')
 
@@ -192,8 +153,8 @@ def check_external_tool(
     --------
     >>> if check_external_tool("mafft", min_version="7.0"):
     ...     print("MAFFT is ready")
-    >>> if not check_external_tool("phyml"):
-    ...     print("Please install PhyML")
+    >>> if not check_external_tool("fasttree"):
+    ...     print("Please install FastTree")
 
     Notes
     -----
@@ -389,11 +350,11 @@ trimAl Installation:
   Via apt:   sudo apt-get install trimal
   Website:   http://trimal.cgenomics.org/
 """,
-        "phyml": """
-PhyML Installation:
-  Via conda: conda install -c bioconda phyml
-  Via apt:   sudo apt-get install phyml
-  Website:   http://www.atgc-montpellier.fr/phyml/
+        "fasttree": """
+FastTree Installation:
+  Via conda: conda install -c bioconda fasttree
+  Via apt:   sudo apt-get install fasttree
+  Website:   http://www.microbesonline.org/fasttree/
 """,
     }
 
@@ -406,89 +367,6 @@ PhyML Installation:
 # ============================================================================
 # File I/O and Path Handling
 # ============================================================================
-
-def create_output_directory(output_dir: Union[str, Path]) -> Path:
-    """
-    Create output directory if it doesn't exist.
-
-    Handles path creation with proper error handling and logging.
-
-    Parameters
-    ----------
-    output_dir : Union[str, Path]
-        Path to output directory
-
-    Returns
-    -------
-    Path
-        Path object for output directory
-
-    Raises
-    ------
-    OSError
-        If directory cannot be created due to permissions or other issues
-
-    Examples
-    --------
-    >>> output_path = create_output_directory("results/analysis_2025")
-    >>> print(output_path.exists())
-    True
-    """
-    path = Path(output_dir)
-
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        logger.debug(f"Created/verified output directory: {path}")
-        return path
-    except OSError as e:
-        logger.error(f"Failed to create directory {path}: {e}")
-        raise
-
-
-def safe_file_path(
-    base_dir: Union[str, Path],
-    filename: str,
-    extension: Optional[str] = None
-) -> Path:
-    """
-    Create a safe file path with optional extension.
-
-    Ensures directory exists and handles filename sanitization.
-
-    Parameters
-    ----------
-    base_dir : Union[str, Path]
-        Base directory
-    filename : str
-        Filename (will be sanitized)
-    extension : str, optional
-        File extension (with or without leading dot)
-
-    Returns
-    -------
-    Path
-        Safe file path
-
-    Examples
-    --------
-    >>> path = safe_file_path("results", "Sphyrna lewini", ".tsv")
-    >>> print(path)
-    results/Sphyrna_lewini.tsv
-    """
-    base = Path(base_dir)
-    base.mkdir(parents=True, exist_ok=True)
-
-    # Sanitize filename
-    safe_name = sanitize_filename(filename)
-
-    # Add extension if provided
-    if extension:
-        if not extension.startswith('.'):
-            extension = '.' + extension
-        safe_name += extension
-
-    return base / safe_name
-
 
 def sanitize_filename(filename: str) -> str:
     """
@@ -700,106 +578,6 @@ def write_fasta(
     logger.debug(f"Wrote {len(records)} sequences to {path}")
 
 
-# ============================================================================
-# Validation Functions
-# ============================================================================
-
-def validate_fasta_file(fasta_path: Union[str, Path]) -> bool:
-    """
-    Validate that file is properly formatted FASTA.
-
-    Checks for basic FASTA format compliance without being overly strict.
-
-    Parameters
-    ----------
-    fasta_path : Union[str, Path]
-        Path to FASTA file
-
-    Returns
-    -------
-    bool
-        True if valid FASTA format, False otherwise
-
-    Examples
-    --------
-    >>> if validate_fasta_file("sequences.fasta"):
-    ...     print("Valid FASTA")
-    """
-    try:
-        records = read_fasta(fasta_path)
-
-        # Check that we have at least one record
-        if not records:
-            logger.warning(f"No sequences found in {fasta_path}")
-            return False
-
-        # Check that sequences are not empty
-        for header, seq in records:
-            if not seq:
-                logger.warning(f"Empty sequence for header: {header}")
-                return False
-
-        return True
-
-    except Exception as e:
-        logger.warning(f"FASTA validation failed for {fasta_path}: {e}")
-        return False
-
-
-def validate_tsv_file(
-    tsv_path: Union[str, Path],
-    required_columns: Optional[List[str]] = None
-) -> bool:
-    """
-    Validate that TSV file exists and contains required columns.
-
-    Parameters
-    ----------
-    tsv_path : Union[str, Path]
-        Path to TSV file
-    required_columns : List[str], optional
-        List of required column names
-
-    Returns
-    -------
-    bool
-        True if valid, False otherwise
-
-    Examples
-    --------
-    >>> if validate_tsv_file("metadata.tsv", ["processid", "nuc"]):
-    ...     print("Valid metadata file")
-    """
-    path = Path(tsv_path)
-
-    if not path.exists():
-        logger.error(f"TSV file not found: {path}")
-        return False
-
-    if required_columns is None:
-        return True
-
-    # Read first line to check headers
-    try:
-        with open(path, 'r') as fh:
-            header_line = fh.readline().strip()
-            headers = header_line.split('\t')
-
-            missing = [col for col in required_columns if col not in headers]
-
-            if missing:
-                logger.error(
-                    f"TSV file {path} is missing required columns: {missing}"
-                )
-                return False
-
-            return True
-
-    except Exception as e:
-        logger.error(f"Error validating TSV file {path}: {e}")
-        return False
-
-
 def validate_sequence(sequence: str, min_length: int = 100) -> Tuple[bool, str]:
     """
     Validate DNA sequence quality.
@@ -852,161 +630,8 @@ def validate_sequence(sequence: str, min_length: int = 100) -> Tuple[bool, str]:
 
 
 # ============================================================================
-# Sequence Utilities
+# Formatting Utilities
 # ============================================================================
-
-def calculate_sequence_identity(
-    seq1: str,
-    seq2: str,
-    ignore_gaps: bool = True
-) -> float:
-    """
-    Calculate percent identity between two sequences.
-
-    For aligned sequences, calculates identity as the fraction of matching
-    positions. Optionally ignores positions with gaps.
-
-    Parameters
-    ----------
-    seq1 : str
-        First sequence
-    seq2 : str
-        Second sequence
-    ignore_gaps : bool, optional
-        Ignore positions with gaps (default: True)
-
-    Returns
-    -------
-    float
-        Percent identity (0.0-1.0)
-
-    Examples
-    --------
-    >>> identity = calculate_sequence_identity("ATCG", "ATCG")
-    >>> print(identity)
-    1.0
-    >>> identity = calculate_sequence_identity("ATCG", "ATGG")
-    >>> print(identity)
-    0.75
-
-    Notes
-    -----
-    Based on the compute_distance function from msa_to_consensus.py
-    This is the aligned sequence version (not edit distance)
-    """
-    s1 = seq1.upper()
-    s2 = seq2.upper()
-
-    if len(s1) != len(s2):
-        raise ValueError("Sequences must be same length (aligned)")
-
-    matches = 0
-    valid_sites = 0
-
-    for a, b in zip(s1, s2):
-        if ignore_gaps:
-            # Only count positions where both are valid bases
-            if a in 'ACGT' and b in 'ACGT':
-                valid_sites += 1
-                if a == b:
-                    matches += 1
-        else:
-            # Count all positions
-            valid_sites += 1
-            if a == b:
-                matches += 1
-
-    if valid_sites == 0:
-        return 0.0
-
-    return matches / valid_sites
-
-
-def get_sequence_stats(sequence: str) -> Dict[str, Any]:
-    """
-    Calculate statistics for a DNA sequence.
-
-    Parameters
-    ----------
-    sequence : str
-        DNA sequence
-
-    Returns
-    -------
-    Dict[str, Any]
-        Dictionary with length, GC content, base composition, etc.
-
-    Examples
-    --------
-    >>> stats = get_sequence_stats("ATCGATCG")
-    >>> print(stats['length'])
-    8
-    >>> print(stats['gc_content'])
-    0.5
-    """
-    seq = sequence.upper().strip()
-    length = len(seq)
-
-    # Count bases
-    base_counts = Counter(seq)
-
-    # Calculate GC content (excluding N and gaps)
-    valid_bases = sum(base_counts.get(b, 0) for b in 'ACGT')
-    gc_count = base_counts.get('G', 0) + base_counts.get('C', 0)
-    gc_content = gc_count / valid_bases if valid_bases > 0 else 0.0
-
-    return {
-        'length': length,
-        'gc_content': gc_content,
-        'base_counts': dict(base_counts),
-        'n_count': base_counts.get('N', 0),
-        'n_percent': (base_counts.get('N', 0) / length * 100) if length > 0 else 0,
-        'gap_count': base_counts.get('-', 0),
-    }
-
-
-# ============================================================================
-# Time and Formatting Utilities
-# ============================================================================
-
-def format_elapsed_time(seconds: float) -> str:
-    """
-    Format elapsed time in human-readable format.
-
-    Parameters
-    ----------
-    seconds : float
-        Elapsed time in seconds
-
-    Returns
-    -------
-    str
-        Formatted time string (e.g., "2h 15m 30s")
-
-    Examples
-    --------
-    >>> format_elapsed_time(3661)
-    '1h 1m 1s'
-    >>> format_elapsed_time(45)
-    '45s'
-    """
-    if seconds < 60:
-        return f"{seconds:.0f}s"
-
-    minutes = seconds / 60
-    if minutes < 60:
-        return f"{minutes:.1f}m"
-
-    hours = minutes / 60
-    minutes_remainder = minutes % 60
-
-    if hours < 24:
-        return f"{int(hours)}h {int(minutes_remainder)}m"
-
-    days = hours / 24
-    hours_remainder = hours % 24
-    return f"{int(days)}d {int(hours_remainder)}h"
-
 
 def format_file_size(size_bytes: int) -> str:
     """
@@ -1034,24 +659,6 @@ def format_file_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} PB"
 
 
-def get_timestamp() -> str:
-    """
-    Get current timestamp string.
-
-    Returns
-    -------
-    str
-        Timestamp in ISO format
-
-    Examples
-    --------
-    >>> timestamp = get_timestamp()
-    >>> print(timestamp)
-    2025-11-03T10:30:45
-    """
-    return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-
-
 # ============================================================================
 # Process ID Extraction (BOLD-specific)
 # ============================================================================
@@ -1061,7 +668,6 @@ def extract_processid_from_header(header: str) -> Optional[str]:
     Extract BOLD processid from FASTA header.
 
     Uses regex pattern to find processid in common BOLD header formats.
-    Based on the regex from consensus_group_to_metadata.py.
 
     Parameters
     ----------
@@ -1096,76 +702,9 @@ def extract_processid_from_header(header: str) -> Optional[str]:
 
 
 # ============================================================================
-# Progress Tracking
-# ============================================================================
-
-class ProgressTracker:
-    """
-    Simple progress tracker for long-running operations.
-
-    Examples
-    --------
-    >>> tracker = ProgressTracker(total=100, description="Processing")
-    >>> for i in range(100):
-    ...     tracker.update()
-    >>> tracker.finish()
-    """
-
-    def __init__(self, total: int, description: str = "Progress"):
-        """
-        Initialize progress tracker.
-
-        Parameters
-        ----------
-        total : int
-            Total number of items to process
-        description : str
-            Description of the operation
-        """
-        self.total = total
-        self.description = description
-        self.current = 0
-        self.start_time = datetime.now()
-        self.last_log_percent = 0
-
-    def update(self, n: int = 1) -> None:
-        """
-        Update progress by n items.
-
-        Parameters
-        ----------
-        n : int
-            Number of items completed
-        """
-        self.current += n
-        percent = (self.current / self.total) * 100
-
-        # Log at 10% intervals
-        if percent - self.last_log_percent >= 10:
-            elapsed = (datetime.now() - self.start_time).total_seconds()
-            rate = self.current / elapsed if elapsed > 0 else 0
-            eta = (self.total - self.current) / rate if rate > 0 else 0
-
-            logger.info(
-                f"{self.description}: {self.current}/{self.total} "
-                f"({percent:.1f}%) - ETA: {format_elapsed_time(eta)}"
-            )
-            self.last_log_percent = int(percent / 10) * 10
-
-    def finish(self) -> None:
-        """Log completion."""
-        elapsed = (datetime.now() - self.start_time).total_seconds()
-        logger.info(
-            f"{self.description} complete: {self.total} items "
-            f"in {format_elapsed_time(elapsed)}"
-        )
-        
-# ============================================================================
 # Taxonomy Assignment Helper
 # ============================================================================
-import re
 import pandas as pd
-from typing import Tuple, Dict
 
 def _norm_species(s: str) -> str:
     if pd.isna(s):

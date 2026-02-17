@@ -13,18 +13,17 @@ Workflow:
 4. Haplotype Assignment (Match samples to haplotypes)
 5. Taxonomy Assignment
 6. Post-assignment QC (Contamination detection)
-6.5. Species-Level Aggregation (Group by species, diversity metrics, species-faceted haplotype subsets)
+6.5. Species-Level Aggregation (Group by species, diversity metrics)
 7. Geographic Enhancement
 8. Phylogenetic Analysis (Optional)
-9. Divergence Analysis (Haplotype-level, species-level, within-species divergence matrices)
-10. Visualization & Reports (Haplotype, species-level, and species-faceted visualizations)
+9. Divergence Analysis (Haplotype-level, species-level, within-species)
+9.5. Metadata Analysis (Optional)
+10. Visualization (Haplotype, species-level, and species-faceted plots)
+10.5. Plot Data Export (Optional)
+11. Population Genetics Export (Optional)
+12. Reports
 
-Species-Faceted Analysis:
-- Phase 6.5.4: Generate per-species haplotype subsets
-- Phase 9.3: Calculate within-species divergence matrices
-- Phase 10: Create species-specific haplotype distribution maps and basin charts
-
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import argparse
@@ -32,6 +31,7 @@ import sys
 import os
 import logging
 import json
+import shutil
 from pathlib import Path
 from typing import Optional
 import pandas as pd
@@ -41,11 +41,12 @@ from Bio import SeqIO
 from . import (
     utils, config, metadata, geographic, dereplication,
     haplotype_assignment, phylogenetics, visualization, reports,
-    cluster_diagnostics, quality_control, plot_export, comparative_analysis,
+    quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
-    metadata_enrichment, popgen_export, species_analysis, msa_visualization,
+    popgen_export, species_analysis, msa_visualization,
     metadata_analysis,
 )
+from . import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -227,15 +228,17 @@ def run_pipeline(
     skip_geo : bool, optional
         Skip geographic analysis (default: False)
     export_plot_data : bool, optional
-        Export raw plot data and R regeneration scripts (default: True)
+        Export raw plot data and Python regeneration scripts (default: True)
     export_popgen_formats : list, optional
         List of population genetics formats to export (default: None)
     shapefile_path : Path, optional
-        Path to custom shapefile for geographic analysis (default: None uses GOaS)
+        Path to custom shapefile for geographic region assignment. Works with
+        any polygon shapefile. If None, uses built-in GOaS ocean basins.
     shapefile_field : str, optional
         Shapefile attribute field containing region names (default: 'name')
     geo_category : str, optional
-        Geographic category name for outputs (default: 'ocean_basin')
+        Geographic category name for outputs. Defaults to 'ocean_basin' when
+        using GOaS, or 'geographic_region' when using a custom shapefile.
 
     Returns
     -------
@@ -253,7 +256,6 @@ def run_pipeline(
     dirs = setup_directories(output_dir)
 
     # Save pipeline parameters for reference and HTML report
-    import json
     params = {
         'workflow': 'haplotype-first',
         'coi_validation': {
@@ -280,7 +282,9 @@ def run_pipeline(
             'tie_margin': cfg.genotype_assignment.tie_margin,
         },
         'threads': cfg.n_threads,
-        'build_tree': cfg.phylogenetic.build_tree
+        'build_tree': cfg.phylogenetic.build_tree,
+        'geo_category': geo_category,
+        'custom_shapefile': str(shapefile_path) if shapefile_path else None,
     }
     params_file = output_dir / f"{organism}_pipeline_parameters.json"
     with open(params_file, 'w') as f:
@@ -604,8 +608,6 @@ def run_pipeline(
         logger.info(f"  Identified {len(haplotype_records)} high-confidence haplotypes (after error filtering)")
 
         # Copy haplotype outputs to main haplotypes directory
-        import shutil
-
         # Move/copy haplotype FASTA
         source_haplotype_fasta = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotypes.fasta"
         haplotype_fasta = dirs['haplotypes'] / f"{organism}_haplotypes.fasta"
@@ -803,9 +805,8 @@ def run_pipeline(
         logger.info(f"  ✓ Assigned taxonomy to {len(assign_table)} haplotypes")
 
         # Merge with geographic data (only if not already present in df_with_haplotypes)
-        # df_with_haplotypes may already have lat/lon/ocean_basin from the TSV file
         geo_cols_to_merge = []
-        for col in ['lat', 'lon', 'ocean_basin']:
+        for col in ['lat', 'lon', geo_category]:
             if col in df_qc_passed.columns and col not in df_with_haplotypes.columns:
                 geo_cols_to_merge.append(col)
 
@@ -1237,7 +1238,7 @@ def run_pipeline(
             logger.debug("Metadata analysis error details:", exc_info=True)
     else:
         logger.info("")
-        logger.info("PHASE 9.5: Metadata Analysis - SKIPPED (use --no-metadata-analysis was specified)")
+        logger.info("PHASE 9.5: Metadata Analysis - SKIPPED (--no-metadata-analysis was specified)")
 
     # ========================================================================
     # PHASE 10: Visualization
@@ -1419,7 +1420,7 @@ def run_pipeline(
                                 output_dir=species_bar_facet_dir,
                                 species_column='primary_species',
                                 haplotype_column='haplotype_sp',
-                                basin_column='ocean_basin',
+                                basin_column=geo_category,
                                 min_haplotypes=2,
                                 figure_format=fmt
                             )
@@ -1576,11 +1577,11 @@ def run_pipeline(
         logger.warning(f"Visualization generation encountered errors (non-critical): {e}")
 
     # ========================================================================
-    # PHASE 6.5: Plot Data Export (Optional)
+    # PHASE 10.5: Plot Data Export (Optional)
     # ========================================================================
     if export_plot_data:
         logger.info("")
-        logger.info("PHASE 6.5: Plot Data Export")
+        logger.info("PHASE 10.5: Plot Data Export")
         logger.info("-" * 80)
 
         try:
@@ -1624,7 +1625,8 @@ def run_pipeline(
                 output_dir=output_dir,
                 organism=organism,
                 formats=export_popgen_formats,
-                group_by='haplotype_id'
+                group_by='haplotype_id',
+                geo_category=geo_category
             )
 
             logger.info(f"  ✓ Population genetics formats exported to {output_dir / 'exports'}")
@@ -1680,7 +1682,7 @@ def run_pipeline(
             html_report_path = reports.generate_html_report(
                 organism=organism,
                 output_dir=output_dir,
-                version="1.0.0"
+                version=__version__
             )
             if html_report_path:
                 logger.info(f"  ✓ Generated HTML report: {html_report_path}")
@@ -1702,7 +1704,6 @@ def run_pipeline(
     if not cfg.keep_intermediates:
         intermediate_dir = output_dir / 'intermediate'
         if intermediate_dir.exists():
-            import shutil
             try:
                 shutil.rmtree(intermediate_dir)
                 logger.info("")
@@ -1727,247 +1728,6 @@ def run_pipeline(
     logger.info("=" * 80)
 
     return True
-
-def main_cluster_diagnostics(argv=None) -> int:
-    """
-    CLI entry point for the 'cluster-diagnostics' subcommand.
-
-    Example:
-        boldgenotyper cluster-diagnostics \
-            --consensus data/Sphyrnidae_consensus.fasta \
-            --diagnostics data/Sphyrnidae_assignment_diagnostics.tsv \
-            --alignment data/Sphyrnidae_trimmed_alignment.fasta \
-            --threshold 0.01 \
-            --output-dir diagnostics/Sphyrnidae
-    """
-    parser = argparse.ArgumentParser(
-        prog="boldgenotyper cluster-diagnostics",
-        description="Cluster-level diagnostics for dereplication and genotype assignment",
-    )
-
-    parser.add_argument(
-        "--consensus",
-        required=True,
-        type=Path,
-        help="Path to consensus FASTA (e.g., consensus_Sphyrnidae.fasta)",
-    )
-    parser.add_argument(
-        "--diagnostics",
-        required=True,
-        type=Path,
-        help="Path to genotype assignment diagnostics TSV",
-    )
-    parser.add_argument(
-        "--output-dir",
-        required=True,
-        type=Path,
-        help="Directory to write diagnostics outputs",
-    )
-    parser.add_argument(
-        "--alignment",
-        required=False,
-        type=Path,
-        default=None,
-        help=(
-            "Optional trimmed alignment FASTA used in dereplication. "
-            "If provided, intra-cluster distance stats and a dendrogram "
-            "will be generated."
-        ),
-    )
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.01,
-        help=(
-            "Distance threshold used during dereplication clustering "
-            "(must match your dereplication threshold). Default: 0.01"
-        ),
-    )
-    parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-        help="Logging verbosity (default: INFO)",
-    )
-
-    args = parser.parse_args(argv)
-
-    # Resolve and create output directory
-    output_dir = args.output_dir.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Setup logging to a dedicated diagnostics log file
-    log_file = output_dir / "cluster_diagnostics.log"
-    utils.setup_logging(log_level=args.log_level, log_file=str(log_file))
-
-    logger.info("=== Cluster diagnostics ===")
-    logger.info(f"Consensus FASTA: {args.consensus}")
-    logger.info(f"Diagnostics TSV: {args.diagnostics}")
-    if args.alignment:
-        logger.info(f"Alignment FASTA: {args.alignment}")
-        logger.info(f"Dereplication threshold: {args.threshold}")
-    logger.info(f"Output directory: {output_dir}")
-
-    # Load inputs via cluster_diagnostics helpers
-    consensus_df = cluster_diagnostics.parse_consensus_fasta(args.consensus)
-    diag_df = cluster_diagnostics.load_diagnostics(args.diagnostics)
-
-    # Per-cluster assignment statistics
-    stats_df = cluster_diagnostics.compute_cluster_assignment_stats(
-        consensus_df, diag_df
-    )
-
-    # Optional intra-cluster distances + dendrogram
-    if args.alignment:
-        (
-            intra_df,
-            dist_condensed,
-            seq_ids,
-            cluster_labels,
-        ) = cluster_diagnostics.compute_intracluster_distance_stats(
-            alignment_path=args.alignment,
-            threshold=args.threshold,
-        )
-
-        # Merge intra-cluster stats into main table
-        stats_df = stats_df.merge(
-            intra_df,
-            on="cluster_id",
-            how="left",
-            suffixes=("", "_intra"),
-        )
-
-        # Global dendrogram
-        cluster_diagnostics.plot_global_dendrogram(
-            dist_condensed=dist_condensed,
-            seq_ids=seq_ids,
-            output_dir=output_dir,
-            title="Global sequence dendrogram (trimmed alignment)",
-        )
-
-    # Write summary table
-    out_tsv = output_dir / "cluster_diagnostics.tsv"
-    stats_df.to_csv(out_tsv, sep="\t", index=False)
-    logger.info(f"Wrote cluster diagnostics to {out_tsv}")
-
-    logger.info("Cluster diagnostics completed.")
-    return 0
-
-def main_compare(argv=None) -> int:
-    """
-    CLI entry point for the 'boldgenotyper-compare' command.
-
-    Compare species-level and family-level analyses to detect contamination.
-
-    Example:
-        boldgenotyper-compare \
-            --species-level Sphyrna_lewini_output/ \
-            --family-level Sphyrnidae_output/ \
-            --output comparative_analysis/ \
-            --generate-reassignment-table
-    """
-    parser = argparse.ArgumentParser(
-        prog="boldgenotyper-compare",
-        description="Compare species-level and family-level analyses for contamination detection",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Compare two completed analyses
-  boldgenotyper-compare --species-level Sphyrna_lewini_output/ \
-                         --family-level Sphyrnidae_output/
-
-  # Generate sample reassignment table
-  boldgenotyper-compare --species-level species_analysis/ \
-                         --family-level family_analysis/ \
-                         --generate-reassignment-table
-
-  # Specify custom output directory
-  boldgenotyper-compare --species-level sp/ --family-level fam/ \
-                         --output custom_comparison/
-
-For more information: https://github.com/your-repo/boldgenotyper
-        """
-    )
-
-    parser.add_argument(
-        '--species-level',
-        type=Path,
-        required=True,
-        help='Path to species-level analysis directory or annotated CSV'
-    )
-
-    parser.add_argument(
-        '--family-level',
-        type=Path,
-        required=True,
-        help='Path to family-level analysis directory or annotated CSV'
-    )
-
-    parser.add_argument(
-        '--output', '-o',
-        type=Path,
-        default=Path('comparative_analysis'),
-        help='Output directory for comparison results (default: comparative_analysis/)'
-    )
-
-    parser.add_argument(
-        '--generate-reassignment-table',
-        action='store_true',
-        help='Generate sample-level reassignment table (Table S4 equivalent)'
-    )
-
-    parser.add_argument(
-        '--majority-threshold',
-        type=float,
-        default=0.7,
-        help='Threshold for species-level assignment (default: 0.7)'
-    )
-
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
-        help='Logging verbosity (default: INFO)'
-    )
-
-    args = parser.parse_args(argv)
-
-    # Setup logging
-    utils.setup_logging(log_level=args.log_level, log_file=None)
-
-    # Validate inputs
-    if not args.species_level.exists():
-        print(f"Error: Species-level path not found: {args.species_level}", file=sys.stderr)
-        return 1
-
-    if not args.family_level.exists():
-        print(f"Error: Family-level path not found: {args.family_level}", file=sys.stderr)
-        return 1
-
-    # Run comparison
-    try:
-        results = comparative_analysis.compare_analyses(
-            species_path=args.species_level,
-            family_path=args.family_level,
-            output_dir=args.output,
-            generate_reassignment_table=args.generate_reassignment_table,
-            majority_threshold=args.majority_threshold
-        )
-
-        print("\n✓ Comparative analysis complete!")
-        print(f"  Results saved to: {args.output}")
-        print("\nGenerated files:")
-        for key, path in results.items():
-            if isinstance(path, Path):
-                print(f"  - {path.name}")
-
-        return 0
-
-    except Exception as e:
-        logger.error(f"Comparative analysis failed: {e}", exc_info=True)
-        print(f"\nError: {e}", file=sys.stderr)
-        return 1
-
 
 def main_sweep(argv=None) -> int:
     """
@@ -1996,7 +1756,7 @@ Examples:
   # Run in parallel with 8 threads
   boldgenotyper-sweep data/samples.tsv --threads 8
 
-For more information: https://github.com/your-repo/boldgenotyper
+For more information: https://github.com/SymbioSeas/BOLDGenotyper
         """
     )
 
@@ -2090,215 +1850,8 @@ For more information: https://github.com/your-repo/boldgenotyper
         return 1
 
 
-def main_enrich(argv=None) -> int:
-    """
-    CLI entry point for the 'boldgenotyper-enrich' command.
-
-    Add custom metadata or update geographic assignments in BOLDGenotyper output.
-
-    Example:
-        boldgenotyper-enrich Sphyrnidae_annotated.csv \
-            --add-metadata my_sampling_data.csv \
-            --join-on processid \
-            --output enriched_analysis/
-    """
-    parser = argparse.ArgumentParser(
-        prog="boldgenotyper-enrich",
-        description="Add custom metadata or update geographic assignments",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Add custom metadata
-  boldgenotyper-enrich Sphyrnidae_annotated.csv \
-                       --add-metadata sampling_data.csv \
-                       --output enriched_analysis/
-
-  # Update geographic regions with custom shapefile (e.g., freshwater basins)
-  boldgenotyper-enrich Salmo_trutta_annotated.csv \
-                       --custom-shp freshwater_basins.shp \
-                       --shp-field basin_name \
-                       --geo-category freshwater_basin \
-                       --output enriched_analysis/
-
-  # Add custom grouping variable
-  boldgenotyper-enrich Sphyrnidae_annotated.csv \
-                       --add-metadata expedition_data.csv \
-                       --add-grouping sampling_expedition \
-                       --output enriched_analysis/
-
-  # Combine multiple operations
-  boldgenotyper-enrich Sphyrnidae_annotated.csv \
-                       --add-metadata data1.csv \
-                       --add-metadata data2.csv \
-                       --recalculate-geography \
-                       --add-grouping expedition \
-                       --output enriched_analysis/
-
-For more information: https://github.com/your-repo/boldgenotyper
-        """
-    )
-
-    parser.add_argument(
-        'input_csv',
-        type=Path,
-        help='Input annotated CSV from BOLDGenotyper output'
-    )
-
-    parser.add_argument(
-        '--add-metadata',
-        type=Path,
-        action='append',
-        dest='metadata_files',
-        help='CSV file(s) with additional metadata to merge (can specify multiple times)'
-    )
-
-    parser.add_argument(
-        '--join-on',
-        type=str,
-        default='processid',
-        help='Column name to join metadata on (default: processid)'
-    )
-
-    parser.add_argument(
-        '--custom-shp',
-        type=Path,
-        dest='shapefile_path',
-        help='Path to custom shapefile for geographic region assignment '
-             '(ocean basins, freshwater basins, ecoregions, etc.)'
-    )
-
-    parser.add_argument(
-        '--shp-field',
-        type=str,
-        default='name',
-        dest='shapefile_field',
-        help='Name of shapefile attribute containing region labels (default: name). '
-             'Use this to specify which field in your shapefile contains the region names.'
-    )
-
-    parser.add_argument(
-        '--geo-category',
-        type=str,
-        default='ocean_basin',
-        dest='geo_category',
-        help='Name for geographic category (default: ocean_basin). '
-             'Examples: "ecoregion", "watershed", "freshwater_basin", "biome"'
-    )
-
-    parser.add_argument(
-        '--add-grouping',
-        type=str,
-        dest='grouping_column',
-        help='Column name to use for custom grouping (e.g., sampling_expedition)'
-    )
-
-    parser.add_argument(
-        '--recalculate-geography',
-        action='store_true',
-        help='Recalculate all geographic summaries with updated data'
-    )
-
-    parser.add_argument(
-        '--output', '-o',
-        type=Path,
-        default=Path('enriched_analysis'),
-        help='Output directory for enriched data (default: enriched_analysis/)'
-    )
-
-    parser.add_argument(
-        '--organism',
-        type=str,
-        help='Organism name (extracted from filename if not provided)'
-    )
-
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
-        help='Logging verbosity (default: INFO)'
-    )
-
-    args = parser.parse_args(argv)
-
-    # Setup logging
-    utils.setup_logging(log_level=args.log_level, log_file=None)
-
-    # Validate input
-    if not args.input_csv.exists():
-        print(f"Error: Input CSV not found: {args.input_csv}", file=sys.stderr)
-        return 1
-
-    # Check that at least one enrichment operation is specified
-    if not any([args.metadata_files, args.shapefile_path,
-                args.grouping_column, args.recalculate_geography]):
-        print("Error: No enrichment operations specified.", file=sys.stderr)
-        print("  Specify at least one of:", file=sys.stderr)
-        print("    --add-metadata", file=sys.stderr)
-        print("    --custom-shp", file=sys.stderr)
-        print("    --add-grouping", file=sys.stderr)
-        print("    --recalculate-geography", file=sys.stderr)
-        return 1
-
-    # Validate metadata files
-    if args.metadata_files:
-        for metadata_file in args.metadata_files:
-            if not metadata_file.exists():
-                print(f"Error: Metadata file not found: {metadata_file}", file=sys.stderr)
-                return 1
-
-    # Validate shapefile
-    if args.shapefile_path and not args.shapefile_path.exists():
-        print(f"Error: Shapefile not found: {args.shapefile_path}", file=sys.stderr)
-        return 1
-
-    # Run enrichment
-    try:
-        results = metadata_enrichment.enrich_metadata(
-            input_csv=args.input_csv,
-            output_dir=args.output,
-            metadata_files=args.metadata_files,
-            join_column=args.join_on,
-            shapefile_path=args.shapefile_path,
-            shapefile_field=args.shapefile_field,
-            geo_category=args.geo_category,
-            grouping_column=args.grouping_column,
-            recalculate_geography=args.recalculate_geography,
-            organism=args.organism
-        )
-
-        print("\n✓ Metadata enrichment complete!")
-        print(f"  Enriched CSV: {results['enriched_csv']}")
-        print(f"  Report: {results['report']}")
-        print(f"\nEnrichment summary:")
-        print(f"  Samples: {results['n_samples']}")
-        print(f"  Columns: {results['n_columns']}")
-        print(f"  Merge operations: {results['merge_operations']}")
-        print(f"  Geographic regions updated: {results['region_updated']}")
-        print(f"  Grouping added: {results['grouping_added']}")
-        print(f"  Visualizations generated: {results['plots_generated']}")
-
-        if results['plot_paths']:
-            print("\nGenerated plots:")
-            for plot_name, plot_path in results['plot_paths'].items():
-                print(f"  - {plot_path.name}")
-        print()
-
-        return 0
-
-    except Exception as e:
-        logger.error(f"Metadata enrichment failed: {e}", exc_info=True)
-        print(f"\nError: {e}", file=sys.stderr)
-        return 1
-
-
 def main():
     """Main CLI entry point."""
-    # Support subcommands such as:
-    #   boldgenotyper cluster-diagnostics ...
-    if len(sys.argv) > 1 and sys.argv[1] == "cluster-diagnostics":
-        # Pass everything after 'cluster-diagnostics' into the subcommand parser
-        return main_cluster_diagnostics(sys.argv[2:])
-
     parser = argparse.ArgumentParser(
         description='BOLDGenotyper: haplotype-first COI genotyping with optional phylogeny, divergence, and mapping outputs.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2325,19 +1878,20 @@ Examples:
 
   # Custom geographic analysis for freshwater organisms (HydroBASINS)
   boldgenotyper data/Salmonidae.tsv --build-tree \\
-                --custom-shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp \\
+                --custom-shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp \\
                 --shp-field HYBAS_ID --geo-category freshwater_basin
 
   # Custom geographic analysis for terrestrial organisms (Ecoregions2017)
   boldgenotyper data/Pieridae.tsv --build-tree \\
-                --custom-shp Ecoregions2017/Ecoregions2017.shp \\
+                --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \\
                 --shp-field ECO_NAME --geo-category ecoregion
 
 Notes:
   - Phylogeny requires MAFFT and FastTree in PATH; trimAl is used if available.
   - Trees are built from haplotypes and relabeled with haplotype_sp by default.
-  - Geographic analysis uses GOaS ocean basins by default; use --custom-shp for other regions.
-  - Custom shapefiles support freshwater basins, terrestrial ecoregions, or any spatial regions.
+  - Geographic analysis assigns samples to regions via point-in-polygon spatial joins.
+  - Default: GOaS ocean basins (marine). Use --custom-shp for freshwater basins,
+    terrestrial ecoregions, watersheds, biomes, or any polygon shapefile.
   - Plot regeneration kits are exported by default; use --no-export-plot-data to skip.
   - Reports go to the output folder (reports/, visualization/, phylogenetic/).
 """
@@ -2370,13 +1924,6 @@ Notes:
         type=float,
         default=0.5,
         help='Minimum similarity for genotype assignment (default: 0.5)'
-    )
-
-    parser.add_argument(
-        '--clustering-threshold',
-        type=float,
-        default=0.03,
-        help=argparse.SUPPRESS  # legacy option retained for compatibility
     )
 
     parser.add_argument(
@@ -2458,8 +2005,8 @@ Notes:
     parser.add_argument(
         '--no-geo',
         action='store_true',
-        help='Skip geographic analysis (ocean basin assignment and related visualizations). '
-             'Use this if you only need genotyping and phylogeny without geographic distribution.'
+        help='Skip geographic region assignment and related visualizations. '
+             'Use this if you only need genotyping and phylogeny without geographic analysis.'
     )
 
     parser.add_argument(
@@ -2467,10 +2014,12 @@ Notes:
         type=Path,
         default=None,
         dest='shapefile_path',
-        help='Path to custom shapefile for geographic region assignment. '
-             'Use this to analyze freshwater basins, terrestrial ecoregions, or other geographic regions '
-             'instead of the default ocean basins. '
-             'Examples: HydroBASINS for freshwater, Ecoregions2017 for terrestrial.'
+        help='Path to custom shapefile (.shp) for geographic region assignment. '
+             'Works with any polygon shapefile: ocean basins, freshwater basins, '
+             'terrestrial ecoregions, watersheds, biomes, or user-defined regions. '
+             'When provided, --geo-category defaults to "geographic_region" '
+             '(override with --geo-category). Without this flag, the built-in '
+             'GOaS marine ocean basin shapefile is used.'
     )
 
     parser.add_argument(
@@ -2486,11 +2035,13 @@ Notes:
     parser.add_argument(
         '--geo-category',
         type=str,
-        default='ocean_basin',
+        default=None,
         dest='geo_category',
-        help='Name for geographic category in outputs (default: "ocean_basin"). '
-             'Examples: "ecoregion", "freshwater_basin", "watershed", "biome". '
-             'This label will be used in output files, plots, and column names.'
+        help='Name for geographic category in outputs. Defaults to "ocean_basin" '
+             'when using GOaS (no --custom-shp), or "geographic_region" when using '
+             'a custom shapefile. Examples: "ecoregion", "freshwater_basin", '
+             '"watershed", "biome". This label is used in output files, plots, '
+             'and column names.'
     )
 
     # Metadata Analysis Arguments (enabled by default)
@@ -2537,7 +2088,7 @@ Notes:
     parser.add_argument(
         '--version',
         action='version',
-        version='BOLDGenotyper 1.0.0'
+        version=f'BOLDGenotyper {__version__}'
     )
 
     args = parser.parse_args()
@@ -2551,6 +2102,10 @@ Notes:
     if args.shapefile_path and not args.shapefile_path.exists():
         print(f"Error: Custom shapefile not found: {args.shapefile_path}", file=sys.stderr)
         return 1
+
+    # Resolve geo_category default: 'geographic_region' with custom shp, 'ocean_basin' with GOaS
+    if args.geo_category is None:
+        args.geo_category = 'geographic_region' if args.shapefile_path else 'ocean_basin'
 
     # Determine organism name and sanitize for consistent file naming
     organism = args.organism if args.organism else extract_organism_from_path(args.tsv)
@@ -2573,7 +2128,6 @@ Notes:
         genotype_assignment__min_identity=args.similarity_threshold,
         genotype_assignment__tie_margin=args.tie_margin,
         genotype_assignment__tie_threshold=args.tie_threshold,
-        dereplication__clustering_threshold=args.clustering_threshold,
         n_threads=args.threads,
         output_dir=output_dir,
         log_level=args.log_level,
@@ -2593,7 +2147,6 @@ Notes:
     print(f"Output: {output_dir}")
     print()
     print("Parameters:")
-    print(f"  Clustering threshold: {args.clustering_threshold} ({(1-args.clustering_threshold)*100:.1f}% identity)")
     print(f"  Similarity threshold: {args.similarity_threshold} ({args.similarity_threshold*100:.0f}% identity)")
     print(f"  Tie margin: {args.tie_margin} ({args.tie_margin*100:.1f}% difference)")
     print(f"  Tie threshold: {args.tie_threshold} ({args.tie_threshold*100:.0f}% identity)")
@@ -2610,7 +2163,8 @@ Notes:
         print(f"    Field: {args.shapefile_field}")
         print(f"    Category: {args.geo_category}")
     else:
-        print(f"  Geographic analysis: Default (GOaS ocean basins)")
+        print(f"  Geographic analysis: GOaS ocean basins (default)"
+              f" — use --custom-shp for other regions")
     print("=" * 80)
     print()
 

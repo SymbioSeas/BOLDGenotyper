@@ -12,7 +12,7 @@ Key Features:
 - Divergence heatmaps
 - Species delimitation guidance
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -563,7 +563,7 @@ def create_divergence_heatmap(
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"  ✓ Divergence heatmap saved to {output_path}")
+    logger.info(f"  Divergence heatmap saved to {output_path}")
 
 
 def create_barcoding_gap_plot(
@@ -665,7 +665,7 @@ def create_barcoding_gap_plot(
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"  ✓ Barcoding gap plot saved to {output_path}")
+    logger.info(f"  Barcoding gap plot saved to {output_path}")
 
 
 def generate_divergence_analysis(
@@ -720,7 +720,7 @@ def generate_divergence_analysis(
     matrix_path = output_dir / "pairwise_divergence_matrix.csv"
     divergence_matrix.to_csv(matrix_path)
     results['divergence_matrix'] = matrix_path
-    logger.info(f"  ✓ Saved divergence matrix: {matrix_path}")
+    logger.info(f"  Saved divergence matrix: {matrix_path}")
 
     # Generate divergence summary
     summary_df = generate_divergence_summary(divergence_matrix, taxonomy_df)
@@ -728,7 +728,7 @@ def generate_divergence_analysis(
         summary_path = output_dir / "divergence_summary.csv"
         summary_df.to_csv(summary_path, index=False)
         results['divergence_summary'] = summary_path
-        logger.info(f"  ✓ Saved divergence summary: {summary_path}")
+        logger.info(f"  Saved divergence summary: {summary_path}")
 
     # Analyze barcoding gap
     gap_df = analyze_barcoding_gap(divergence_matrix, taxonomy_df)
@@ -736,7 +736,7 @@ def generate_divergence_analysis(
         gap_path = output_dir / "within_vs_between_species.csv"
         gap_df.to_csv(gap_path, index=False)
         results['barcoding_gap'] = gap_path
-        logger.info(f"  ✓ Saved barcoding gap analysis: {gap_path}")
+        logger.info(f"  Saved barcoding gap analysis: {gap_path}")
 
         # Store summary stats for console output
         results['gap_stats'] = gap_df.to_dict('records')
@@ -789,7 +789,7 @@ Haplotype labels follow the format `h{{number}}_n{{count}}`:
 
 **Between-Species:**
 - Low (<3%): Recently diverged or hybridizing species
-- Typical (3-5%): Standard interspecific divergence for COI
+- Typical (3-5%): Typical interspecific divergence for COI
 - High (>5%): Deeply divergent lineages
 
 ### Barcoding Gap
@@ -819,7 +819,7 @@ Gaps and ambiguous bases (N) are excluded from calculations.
 
     results['readme'] = readme_path
 
-    logger.info(f"  ✓ Divergence analysis complete")
+    logger.info(f"  Divergence analysis complete")
 
     return results
 
@@ -854,22 +854,14 @@ def print_divergence_summary(results: Dict[str, Any]) -> None:
         if not pd.isna(mean_between):
             print(f"  Between-species divergence: {mean_between:.3f} (min: {min_between:.3f})")
 
-        # Warnings for high within-species divergence
-        if mean_within > 0.02:
-            print(f"  ⚠️  WARNING: Within-species divergence >{2:.1f}% suggests potential cryptic lineages")
-            print("      Consider:")
-            print("      1. Nuclear marker validation")
-            print("      2. Morphological examination")
-            print("      3. Biogeographic context")
-
         # Barcoding gap status
         if has_gap:
             gap_size = species_data['gap_size']
-            print(f"  ✓ Barcoding gap present: {gap_size:.3f}")
+            print(f"  Barcoding gap present: {gap_size:.3f}")
         else:
             if not pd.isna(min_between):
                 overlap = max_within - min_between
-                print(f"  ✗ Barcoding gap absent (overlap: {overlap:.3f})")
+                print(f"  Barcoding gap absent (overlap: {overlap:.3f})")
 
     print("="*70 + "\n")
 
@@ -1013,11 +1005,11 @@ def generate_species_divergence_analysis(
         div_summary_path = output_dir / "species_divergence_summary.csv"
         species_div_df.to_csv(div_summary_path, index=False)
         results['species_divergence_summary'] = div_summary_path
-        logger.info(f"  ✓ Saved species divergence summary: {div_summary_path}")
+        logger.info(f"  Saved species divergence summary: {div_summary_path}")
 
         # Store for console output
         results['species_div_stats'] = species_div_df.to_dict('records')
     else:
-        logger.warning("  ⚠ No species with multiple haplotypes found for divergence analysis")
+        logger.warning("  No species with multiple haplotypes found for divergence analysis")
 
     return results

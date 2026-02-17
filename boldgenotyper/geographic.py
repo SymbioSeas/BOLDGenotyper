@@ -1,65 +1,55 @@
 """
-Geographic Analysis and Ocean Basin Assignment
+Geographic Region Assignment and Spatial Analysis
 
-This module handles geographic analysis of COI samples using the General
-Oceanographic Areas System (GOaS) shapefiles from the United Nations Food
-and Agriculture Organization (FAO).
+This module assigns geographic regions to samples using polygon shapefiles.
+It supports any spatial dataset — ocean basins, freshwater basins, terrestrial
+ecoregions, watersheds, biomes, or user-defined regions.
 
-The GOaS system provides standardized ocean basin delineations used for:
-- Ocean basin assignment for genetic samples
-- Marine vs. terrestrial coordinate validation
-- Biogeographic analysis and visualization
-- Quality control of geographic metadata
+Built-in support is provided for marine datasets via the GOaS (General
+Oceanographic Areas System) shapefile from the FAO/Marine Regions, but the
+primary function ``assign_regions_from_shapefile()`` works with any shapefile.
 
 Key Features:
-- Loads and validates GOaS shapefiles
-- Performs point-in-polygon spatial joins for basin assignment
-- Handles edge cases (samples outside basins, on boundaries, missing data)
-- Provides fallback mechanisms when GOaS data unavailable
-- Generates basin statistics and reports
+- Assign samples to geographic regions via point-in-polygon spatial joins
+- Works with any polygon shapefile (marine, freshwater, terrestrial, custom)
+- Built-in GOaS ocean basin support for marine datasets
+- Handles edge cases (missing coordinates, boundary samples, out-of-range)
+- Coordinate validation and marine-specific QC tools
+- Region statistics and summary reports
 
 Spatial Operations:
 - Coordinate Reference System (CRS): WGS84 (EPSG:4326)
-- Point-in-polygon for basin assignment
+- Point-in-polygon for region assignment
 - Spatial joins with GeoPandas
 - Boundary handling with buffering
 
-Edge Cases Handled:
-1. Coordinates outside all defined basins → "Unknown"
-2. Coordinates on basin boundaries → First match selected
-3. Missing/invalid coordinates → Skipped with warning
-4. Terrestrial coordinates → Flagged if validate_marine=True
-5. Missing GOaS data → Graceful fallback with instructions
-
-GOaS Data Setup:
-If GOaS shapefiles are not available, download from:
-https://www.fao.org/geonetwork/srv/en/main.home
-
-Or use the setup script:
-    python scripts/setup_goas.py --download
-
 Example Usage:
-    >>> from boldgenotyper.geographic import load_goas_data, assign_ocean_basins
-    >>> from boldgenotyper.metadata import parse_bold_tsv
+    >>> from boldgenotyper.geographic import assign_regions_from_shapefile
     >>>
-    >>> # Load data
-    >>> df = parse_bold_tsv("sphyrna_lewini.tsv")
-    >>> goas = load_goas_data("data/goas/goas_v1.shp")
-    >>>
-    >>> # Assign ocean basins
-    >>> df_with_basins = assign_ocean_basins(
-    ...     df, goas,
-    ...     lat_col='lat',
-    ...     lon_col='lon',
-    ...     country_ocean_col='country/ocean'
+    >>> # Any shapefile: freshwater basins, ecoregions, watersheds, etc.
+    >>> df = assign_regions_from_shapefile(
+    ...     df,
+    ...     shapefile_path='ecoregions.shp',
+    ...     shapefile_field='ECO_NAME',
+    ...     output_column='ecoregion'
     ... )
     >>>
-    >>> # Get basin statistics
-    >>> counts = get_basin_counts(df_with_basins)
-    >>> for basin, count in counts.items():
-    ...     print(f"{basin}: {count}")
+    >>> # Marine datasets: built-in GOaS ocean basin assignment
+    >>> from boldgenotyper.geographic import load_goas_data, assign_ocean_basins
+    >>> goas = load_goas_data("data/goas/goas_v1.shp")
+    >>> df = assign_ocean_basins(df, goas)
 
-Author: Steph Smith (steph.smith@unc.edu)
+Supported Shapefile Examples:
+    +-----------------------+------------------+---------------------+
+    | System                | Shapefile        | --shp-field         |
+    +-----------------------+------------------+---------------------+
+    | Marine (built-in)     | GOaS             | (automatic)         |
+    | Freshwater            | HydroBASINS      | HYBAS_ID            |
+    | Terrestrial           | WWF Ecoregions   | ECO_NAME            |
+    | Custom                | Any .shp         | Any attribute field |
+    +-----------------------+------------------+---------------------+
+
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from typing import Dict, List, Optional, Tuple, Union

@@ -41,7 +41,7 @@ import boldgenotyper
 from pathlib import Path
 
 # Import specific modules
-from boldgenotyper import metadata, dereplication, genotype_assignment
+from boldgenotyper import metadata, dereplication, haplotype_assignment
 from boldgenotyper import geographic, visualization, phylogenetics
 
 # Check version
@@ -137,27 +137,28 @@ print(f"Consensus sequences: {consensus_fasta}")
 
 ---
 
-### 3. genotype_assignment - Sample-to-Genotype Matching
+### 3. haplotype_assignment - Sample-to-Haplotype Matching
 
-**Purpose**: Assign samples to consensus genotypes using edit distance
+**Purpose**: Assign samples to haplotype sequences using edit distance
 
 **Key Functions**:
 
 ```python
-from boldgenotyper import genotype_assignment
+from boldgenotyper import haplotype_assignment
 
-# Assign samples to genotypes
-assignments = genotype_assignment.assign_genotypes(
-    sample_sequences=sequences,
-    consensus_fasta='output/consensus.fasta',
-    similarity_threshold=0.50,
+# Assign samples to haplotypes
+stats = haplotype_assignment.assign_haplotypes(
+    metadata_path='data/samples.tsv',
+    fasta_path='output/sequences.fasta',
+    consensus_path='output/haplotypes.fasta',
+    output_path='output/samples_with_haplotypes.tsv',
+    min_identity=0.50,
     tie_margin=0.003,
-    tie_threshold=0.95,
-    threads=8
+    tie_min_identity=0.95,
+    n_processes=8
 )
 
-print(f"Assigned {len(assignments)} samples")
-print(f"Assignment columns: {assignments.columns.tolist()}")
+print(f"Assigned {stats['assigned']}/{stats['total']} samples")
 ```
 
 **Main Functions**:
@@ -180,7 +181,7 @@ from boldgenotyper import geographic
 # Assign ocean basins
 df_with_basins = geographic.assign_ocean_basins(
     df=df_with_coords,
-    goas_shapefile='boldgenotyper/GOaS_v1_20211214/World_Seas_IHO_v3.shp'
+    goas_shapefile='shapefiles/GOaS_v1_20211214/goas_v01.shp'
 )
 
 print(f"Unique basins: {df_with_basins['ocean_basin'].unique()}")
@@ -270,33 +271,44 @@ visualization.plot_identity_distribution(
 
 ---
 
-### 7. comparative_analysis - Multi-Level Comparison
+### 7. compare_analyses.py - Multi-Level Comparison (Standalone Script)
 
-**Purpose**: Compare species vs. family analyses for quality control
+**Purpose**: Compare species vs. family analyses for quality control. This utility
+lives in `scripts/compare_analyses.py` and is run directly rather than imported.
 
-**Key Functions**:
+**Usage**:
+
+```bash
+python scripts/compare_analyses.py \
+    --species-level Sphyrna_lewini_output/ \
+    --family-level Sphyrnidae_output/ \
+    --output comparative_analysis/ \
+    --generate-reassignment-table \
+    --majority-threshold 0.70
+```
+
+**Main Functions** (importable for programmatic use):
 
 ```python
-from boldgenotyper import comparative_analysis
+from scripts import compare_analyses  # or sys.path-based import
 
-# Compare analyses
-results = comparative_analysis.compare_analyses(
-    species_level_dir=Path('Sphyrna_lewini_output/'),
-    family_level_dir=Path('Sphyrnidae_output/'),
+results = compare_analyses.compare_analyses(
+    species_path=Path('Sphyrna_lewini_output/'),
+    family_path=Path('Sphyrnidae_output/'),
     output_dir=Path('comparison/'),
     generate_reassignment_table=True,
     majority_threshold=0.70
 )
-
-print(f"Potential misidentifications: {results['n_misidentifications']}")
-print(f"Comparison summary saved to: {results['summary_path']}")
+# results keys: comparison_summary, genotype_crosswalk, sample_reassignments,
+#               methods_text, readme (all Path objects)
 ```
 
-**Main Functions**:
-- `compare_analyses(species_level_dir, family_level_dir, output_dir, generate_reassignment_table, majority_threshold)`: Full comparison
-- `load_analysis_metadata(analysis_dir)`: Extract metadata from completed analysis
-- `calculate_genotype_crosswalk(species_df, family_df)`: Map genotypes between levels
-- `identify_misassignments(crosswalk_df, threshold)`: Flag problematic samples
+- `compare_analyses(species_path, family_path, output_dir, generate_reassignment_table, majority_threshold)`: Full comparison workflow
+- `load_analysis_results(analysis_path)`: Load annotated CSV from a completed run
+- `generate_comparison_summary(species_df, family_df, ...)`: High-level metric table
+- `generate_genotype_crosswalk(species_df, family_df, ...)`: Group-level mapping table
+- `generate_sample_reassignments(species_df, family_df, ...)`: Sample-level reassignment table
+- `generate_methods_text(species_meta, family_meta, summary_df, output_path, majority_threshold)`: Auto-generate methods text
 
 ---
 
@@ -330,39 +342,7 @@ print(f"Elbow point: {sweep_results['elbow_point']}")
 
 ---
 
-### 9. metadata_enrichment - Custom Metadata and Geography
-
-**Purpose**: Add custom metadata or apply custom shapefiles
-
-**Key Functions**:
-
-```python
-from boldgenotyper import metadata_enrichment
-
-# Enrich with custom metadata
-enriched_df = metadata_enrichment.enrich_metadata(
-    input_csv=Path('output/annotated.csv'),
-    output_dir=Path('enriched/'),
-    metadata_files=[Path('field_data.csv'), Path('lab_data.csv')],
-    join_column='processid',
-    shapefile_path=Path('data/hydrobasins.shp'),
-    shapefile_field='MAIN_BAS',
-    geo_category='freshwater_basin'
-)
-
-print(f"Enriched dataset: {len(enriched_df)} samples")
-print(f"New columns: {enriched_df.columns.tolist()}")
-```
-
-**Main Functions**:
-- `enrich_metadata(input_csv, output_dir, metadata_files, join_column, shapefile_path, shapefile_field, geo_category)`: Full enrichment workflow
-- `merge_metadata(df, metadata_df, join_column)`: Merge custom metadata
-- `apply_custom_shapefile(df, shapefile_path, field_name, category_name)`: Assign custom geographic regions
-- `recalculate_summaries(df, geo_category)`: Update geographic summaries
-
----
-
-### 10. popgen_export - Population Genetics Formats
+### 9. popgen_export - Population Genetics Formats
 
 **Purpose**: Export genotypes to external software formats
 
@@ -441,35 +421,35 @@ print(f"Updated clustering threshold: {cfg_custom.dereplication.clustering_thres
 
 ## Examples
 
-### Example 1: Custom Clustering Pipeline
+### Example 1: Custom Haplotype Pipeline
 
 ```python
-from boldgenotyper import metadata, dereplication, genotype_assignment
+from boldgenotyper import metadata, dereplication, haplotype_assignment
 from pathlib import Path
 
 # 1. Load data
 df = metadata.parse_bold_tsv('data/samples.tsv')
-sequences = metadata.extract_sequences(df, min_length=500, max_n_content=0.05)
 
-# 2. Cluster with custom threshold
-consensus_fasta, clusters = dereplication.dereplicate_sequences(
-    sequences=sequences,
+# 2. Identify haplotypes using ESV approach
+haplotypes = dereplication.identify_haplotypes(
+    tsv_path='data/samples.tsv',
     output_dir=Path('custom_output/'),
-    clustering_threshold=0.015,  # Stricter: 98.5% identity
-    threads=16
+    n_threads=16
 )
 
-# 3. Assign genotypes
-assignments = genotype_assignment.assign_genotypes(
-    sample_sequences=sequences,
-    consensus_fasta=consensus_fasta,
-    similarity_threshold=0.80,  # Higher threshold
-    threads=16
+# 3. Assign samples to haplotypes
+stats = haplotype_assignment.assign_haplotypes(
+    metadata_path='data/samples.tsv',
+    fasta_path='custom_output/sequences.fasta',
+    consensus_path='custom_output/haplotypes.fasta',
+    output_path='custom_output/samples_with_haplotypes.tsv',
+    min_identity=0.80,
+    n_processes=16
 )
 
-# 4. Merge with metadata
+# 4. Load results
 import pandas as pd
-final_df = pd.merge(df, assignments, on='processid', how='left')
+final_df = pd.read_csv('custom_output/samples_with_haplotypes.tsv', sep='\t')
 
 # 5. Save results
 final_df.to_csv('custom_output/annotated.csv', index=False)
@@ -708,7 +688,7 @@ Explore module source code for advanced usage:
 ### Support
 
 - **Issues**: https://github.com/SymbioSeas/BOLDGenotyper/issues
-- **Email**: steph.smith@unc.edu
+- **Email**: symbioseas@outlook.com
 
 ---
 

@@ -4,7 +4,7 @@ Unit tests for metadata_analysis.py module.
 Tests metadata coverage analysis, categorical field analysis,
 temporal analysis, and statistical association tests.
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import unittest

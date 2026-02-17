@@ -15,7 +15,7 @@ Costello MJ, Tsai P, Wong PS, Cheung AKL, Basher Z, Chaudhary C (2017)
 Marine biogeographic realms and species endemicity. Nature Communications 8: 1057.
 https://doi.org/10.1038/s41467-017-01121-2
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import argparse
@@ -268,8 +268,8 @@ https://www.marineregions.org/
     parser.add_argument(
         '--data-dir',
         type=Path,
-        default=Path(__file__).parent / "GOaS_v1_20211214",
-        help='Directory to install GOaS data (default: ./GOaS_v1_20211214)'
+        default=Path(__file__).parent.parent / "shapefiles" / "GOaS_v1_20211214",
+        help='Directory to install GOaS data (default: shapefiles/GOaS_v1_20211214)'
     )
     
     parser.add_argument(

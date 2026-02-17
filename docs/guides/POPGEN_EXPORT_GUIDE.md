@@ -327,7 +327,7 @@ If you use these exports in a publication, please cite:
 For questions or issues:
 - GitHub: https://github.com/yourusername/boldgenotyper
 - Documentation: [BOLDGenotyper docs]
-- Email: steph.smith@unc.edu
+- Email: symbioseas@outlook.com
 
 ---
 

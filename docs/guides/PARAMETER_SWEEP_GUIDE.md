@@ -22,22 +22,22 @@
 
 ## Overview
 
-The clustering threshold is the most critical parameter in BOLDGenotyper, determining how genetically similar sequences must be to group into the same consensus genotype. Selecting an appropriate threshold is challenging because:
+The `min_singleton_distance` parameter is the key tunable setting in BOLDGenotyper's ESV (Exact Sequence Variant) framework. It controls singleton error filtering: singleton haplotypes (those with only one member) that fall within this divergence distance of an existing multi-member haplotype are removed as likely sequencing or PCR errors. Selecting the right value is challenging because:
 
-1. **Taxonomic variation**: Optimal thresholds vary by taxonomic group
-2. **Marker variation**: COI divergence rates differ across taxa
-3. **Study goals**: Fine-scale population studies require different thresholds than species delimitation
-4. **Data quality**: Sequencing errors and alignment artifacts affect clustering
+1. **Sequencing quality variation**: Optimal values depend on error rates for your platform and lab protocol
+2. **Taxonomic variation**: COI divergence rates differ across taxa, affecting where real rare variants sit relative to errors
+3. **Study goals**: Population-level studies may need to retain more rare variants than contamination-screening studies
+4. **Dataset size**: Larger datasets have more power to distinguish real singletons from errors
 
-The `boldgenotyper-sweep` command addresses this challenge through **systematic empirical testing** of multiple threshold values to identify the optimal clustering parameter for your specific dataset.
+The `boldgenotyper-sweep` command addresses this challenge through **systematic empirical testing** of multiple `min_singleton_distance` values to identify the optimal singleton filtering threshold for your specific dataset.
 
 ### What Parameter Sweep Does
 
-Parameter sweep runs the complete genotyping pipeline multiple times, each with a different clustering threshold, then analyzes how key metrics change across thresholds to identify:
+Parameter sweep runs the complete genotyping pipeline multiple times, each with a different `min_singleton_distance` value, then analyzes how key metrics change across values to identify:
 
-- **Stability point**: Where grouping structure stabilizes (elbow point)
-- **Assignment efficiency**: Threshold maximizing successful genotype assignments
-- **Clustering coherence**: Consistency of sample groupings across threshold ranges
+- **Stability point**: Where haplotype grouping structure stabilizes (elbow point)
+- **Assignment efficiency**: Value maximizing successful haplotype assignments
+- **Grouping stability**: Consistency of sample groupings across the tested range
 - **Identity scores**: Relationship between threshold and sequence identity
 
 ### Advantages Over Manual Selection
@@ -63,8 +63,8 @@ Parameter sweep runs the complete genotyping pipeline multiple times, each with 
 
 ### When Manual Selection is Sufficient
 
-- Literature provides well-established thresholds for your exact taxon
-- Pilot analysis with standard threshold (0.03) yields reasonable results
+- Prior analyses on the same organism/platform confirm the default value (0.005) performs well
+- Pilot analysis with the default produces minimal singletons and high assignment rates
 - Limited computational resources (sweep requires multiple pipeline runs)
 - Exploratory analysis only (not for publication)
 
@@ -116,9 +116,9 @@ open parameter_sweep/elbow_plot.pdf
 ### Step 3: Run Final Analysis with Optimal Threshold
 
 ```bash
-# Use recommended threshold from sweep
+# Use recommended min_singleton_distance from sweep
 boldgenotyper data/Sphyrna_lewini.tsv \
-  --clustering-threshold 0.020 \
+  --min-singleton-distance 0.020 \
   --build-tree \
   --output final_analysis/
 ```
@@ -164,7 +164,7 @@ threshold,n_consensus_groups,n_assigned,pct_assigned,mean_identity,median_identi
 - `n_assigned`: Samples successfully assigned
 - `pct_assigned`: Assignment success rate
 - `mean_identity`: Average sequence identity to assigned genotype
-- `n_singletons`: Groups with only 1 sample (potential oversplitting)
+- `n_singletons`: Singleton haplotypes retained after filtering (high counts at low thresholds may indicate sequencing errors)
 
 #### 2. `threshold_stability.pdf`
 
@@ -187,7 +187,7 @@ Focused plot for elbow detection showing number of groups vs. threshold with:
 - Potential elbow point marked
 - Rate of change indicators
 
-**Elbow point**: Where the curve transitions from steep to gradual, indicating diminishing returns from stricter thresholds.
+**Elbow point**: Where the curve transitions from steep to gradual, indicating diminishing returns from more aggressive singleton filtering.
 
 #### 4. `group_membership_tracking.csv`
 
@@ -222,27 +222,28 @@ Example:
 PARAMETER SWEEP RECOMMENDATIONS
 ================================
 
-Recommended Threshold: 0.020
+Recommended min_singleton_distance: 0.020
 Confidence: High
 
 Rationale:
-- Elbow point detected at threshold 0.020
+- Elbow point detected at min_singleton_distance 0.020
 - Assignment rate: 95.8% (near maximum)
 - Mean identity: 95.2% (stable and high)
-- Singleton groups: 2 (minimal oversplitting)
-- Clustering stability: 89% of samples show stable grouping
+- Retained singletons: 2 (effective error filtering)
+- Haplotype stability: 89% of samples show stable grouping
 
-This threshold balances genotype resolution with assignment efficiency
-and minimizes artifactual splitting due to sequencing variation.
+This value balances singleton error removal with retention of genuine
+rare haplotypes, maximizing haplotype assignment efficiency.
 
 Interpretation:
-At this threshold, sequences with >98% identity are grouped together,
-consistent with intraspecific variation in COI sequences for this
-taxonomic group.
+At this threshold, singletons diverging ≤2.0% from their nearest
+multi-member haplotype are removed as likely sequencing errors.
+Singletons with greater divergence are retained as candidate
+rare haplotypes.
 
 Next Steps:
-1. Run full analysis with --clustering-threshold 0.020
-2. Verify genotypes align with taxonomic expectations
+1. Run full analysis with --min-singleton-distance 0.020
+2. Verify haplotypes align with taxonomic expectations
 3. Check group_membership_tracking.csv for unstable samples (n_changes > 2)
 ```
 
@@ -280,7 +281,7 @@ Elbow: ~0.02 (transition from steep to gradual)
 
 ### Strategy 2: Assignment Efficiency Maximization
 
-Choose the threshold that maximizes successful genotype assignments while maintaining high identity scores.
+Choose the `min_singleton_distance` that maximizes successful haplotype assignments while maintaining high identity scores.
 
 **Decision criteria**:
 1. Assignment rate >90%
@@ -292,16 +293,16 @@ Choose the threshold that maximizes successful genotype assignments while mainta
 
 ```csv
 threshold,pct_assigned,mean_identity,pct_singletons
-0.010,87.3,96.5,17.8  # Too strict: many singletons
-0.015,94.5,95.8,12.5  # Good assignment, some singletons
+0.010,87.3,96.5,17.8  # Too lenient: many singletons retained (potential errors)
+0.015,94.5,95.8,12.5  # Good assignment, moderate singletons
 0.020,95.8,95.2,8.3   # ← OPTIMAL: Best balance
-0.030,95.1,94.5,5.6   # Lower identity
-0.050,90.8,93.1,0.0   # Too permissive: low identity
+0.030,95.1,94.5,5.6   # More aggressive filtering, slightly lower identity
+0.050,90.8,93.1,0.0   # Too aggressive: may be removing genuine rare haplotypes
 ```
 
-### Strategy 3: Clustering Stability Analysis
+### Strategy 3: Haplotype Stability Analysis
 
-Examine `group_membership_tracking.csv` to identify samples with unstable clustering.
+Examine `group_membership_tracking.csv` to identify samples with unstable haplotype assignments.
 
 **Stability categories**:
 - **High (n_changes = 0)**: Samples always cluster with the same partners (ideal)
@@ -343,14 +344,14 @@ awk -F',' '$7 == "low" {print $1}' group_membership_tracking.csv > problem_sampl
 Compare results to taxonomic expectations:
 
 **Expected patterns**:
-- **Single species**: 1-10 genotypes depending on population structure
-- **Closely related species**: Genotypes should separate by species at higher thresholds
-- **Genus-level**: Many genotypes, species-specific clustering
+- **Single species**: 1-10 haplotypes depending on population structure
+- **Closely related species**: Haplotypes should correspond to biological variation, not sequencing artifacts
+- **Genus-level**: Many haplotypes with species-level separation
 
 **Red flags**:
-- Too many genotypes (oversplitting): Consider higher threshold
-- Single genotype for multi-species dataset: Threshold too permissive
-- Taxonomically mixed genotypes: Re-evaluate species IDs or threshold
+- Too many singleton haplotypes: Consider raising `min_singleton_distance` to filter more errors
+- Very few haplotypes across a diverse dataset: May be filtering too aggressively; lower `min_singleton_distance`
+- Taxonomically unexpected haplotypes: Re-evaluate species IDs or sequence quality
 
 ---
 
@@ -380,17 +381,17 @@ START
 
 ### Conservative vs. Permissive Strategies
 
-**Conservative (lower threshold, more groups)**:
-- **Use when**: Population genetics, fine-scale structure, within-species variation
-- **Advantages**: Captures subtle variation, avoids lumping distinct haplotypes
-- **Disadvantages**: May oversplit due to sequencing errors
-- **Example**: Threshold 0.01 for salmon population structure
+**Lenient (lower min_singleton_distance, more singletons retained)**:
+- **Use when**: High-quality data, well-characterized taxa, rare variant discovery
+- **Advantages**: Retains more candidate rare haplotypes
+- **Disadvantages**: May retain sequencing errors as false haplotypes
+- **Example**: 0.005–0.010 for high-quality Illumina amplicon data
 
-**Permissive (higher threshold, fewer groups)**:
-- **Use when**: Species delimitation, contamination screening, multi-species datasets
-- **Advantages**: Robust to sequencing errors, clear genotype separation
-- **Disadvantages**: May lump distinct haplotypes
-- **Example**: Threshold 0.05 for genus-level diversity
+**Aggressive (higher min_singleton_distance, fewer singletons retained)**:
+- **Use when**: Lower-quality data, Sanger sequencing, contamination screening
+- **Advantages**: Robust error filtering, cleaner haplotype set
+- **Disadvantages**: May remove genuine rare haplotypes in low-frequency variants
+- **Example**: 0.03–0.05 for datasets with known sequencing artifacts
 
 ### Handling Ambiguous Results
 
@@ -444,19 +445,19 @@ Best identity: 0.015
 
 ### Custom Threshold Ranges
 
-Test very fine-scale resolution:
+Test fine-grained singleton filtering (high-quality data, rare variant focus):
 
 ```bash
-# Fine-grained population genetics
+# Low error rates — test lenient filtering values
 boldgenotyper-sweep data/population_samples.tsv \
   --thresholds 0.001,0.003,0.005,0.007,0.01,0.015 \
   --output fine_sweep/
 ```
 
-Test broad taxonomic groups:
+Test aggressive singleton filtering (lower-quality data or contamination screening):
 
 ```bash
-# Genus or family level
+# Higher error rates — test more aggressive filtering values
 boldgenotyper-sweep data/diverse_taxa.tsv \
   --thresholds 0.03,0.05,0.07,0.10,0.15 \
   --output coarse_sweep/
@@ -500,17 +501,17 @@ boldgenotyper-sweep data/large_dataset.tsv \
 Recommended workflow:
 
 ```bash
-# 1. Run sweep to determine optimal threshold
+# 1. Run sweep to determine optimal min_singleton_distance
 boldgenotyper-sweep data/samples.tsv --output sweep/
 
 # 2. Review recommendations
 cat sweep/recommendations.txt
 
-# 3. Run main analysis with optimal threshold
-OPTIMAL_THRESHOLD=$(grep "Recommended" sweep/recommendations.txt | awk '{print $NF}')
+# 3. Run main analysis with optimal value
+OPTIMAL_THRESHOLD=$(grep "Recommended min_singleton_distance" sweep/recommendations.txt | awk '{print $NF}')
 
 boldgenotyper data/samples.tsv \
-  --clustering-threshold $OPTIMAL_THRESHOLD \
+  --min-singleton-distance $OPTIMAL_THRESHOLD \
   --build-tree \
   --export-format all \
   --output final_analysis/
@@ -627,49 +628,53 @@ boldgenotyper-sweep data/samples_subset.tsv --output pilot_sweep/
 ### Example Methods Section
 
 ```
-Clustering threshold optimization was performed using the boldgenotyper-sweep
-command, which systematically tested thresholds of 0.01, 0.015, 0.02, 0.03,
-and 0.05. For each threshold, the complete genotyping pipeline was executed,
-and metrics including number of consensus groups, assignment success rate,
-mean sequence identity, and clustering stability were calculated.
+The singleton error-filtering threshold (min_singleton_distance) was optimized
+empirically using the boldgenotyper-sweep command (Smith, 2025), which
+systematically tested values of 0.01, 0.015, 0.02, 0.03, and 0.05. For each
+value, the complete haplotype discovery pipeline was executed and metrics
+including number of consensus haplotypes, haplotype assignment success rate,
+mean sequence identity, and haplotype stability were recorded.
 
-The optimal threshold was determined using the elbow method (Smith, 2025),
-identifying the point where grouping structure stabilized while maintaining
-high assignment efficiency (>95%) and sequence identity (>90%). Based on this
-analysis, a clustering threshold of 0.020 was selected, corresponding to
-sequences with ≥98% identity being grouped into consensus genotypes.
+The optimal value was identified using the elbow method, selecting the point
+where haplotype structure stabilized while maintaining high assignment
+efficiency (>95%) and mean identity (>90%). Based on this analysis,
+min_singleton_distance=0.020 was selected, meaning singleton haplotypes with
+≤2.0% divergence from the nearest multi-member haplotype were removed as
+likely sequencing errors; those with greater divergence were retained as
+candidate rare haplotypes.
 
-Clustering stability was assessed by tracking sample groupings across all
-tested thresholds using Jaccard similarity of cluster composition. A total of
-89.3% of samples showed high stability (consistent clustering partners across
-thresholds), indicating robust genotype delineation.
+Haplotype stability was assessed by tracking sample assignments across all
+tested values using Jaccard similarity of group composition. A total of 89.3%
+of samples showed high stability (consistent assignment partners across all
+values), indicating robust haplotype delineation.
 
 References:
-Smith, S. (2025). BOLDGenotyper: Automated COI sequence genotyping and
+Smith, S. (2025). BOLDGenotyper: Automated COI haplotype discovery and
 biogeographic analysis. https://github.com/SymbioSeas/BOLDGenotyper
 ```
 
 ### Short Version (for supplementary methods)
 
 ```
-Clustering threshold (0.020) was determined empirically using parameter sweep
-analysis (boldgenotyper-sweep), which tested five threshold values and
-identified the elbow point balancing genotype resolution and assignment
-efficiency (see Supplementary Figure S1).
+The singleton filtering threshold (min_singleton_distance=0.020) was
+determined empirically using parameter sweep analysis (boldgenotyper-sweep),
+which tested five values and identified the elbow point balancing error
+removal with rare haplotype retention (see Supplementary Figure S1).
 ```
 
 ### Figure Legend for Sweep Plots
 
 ```
-Figure S1: Parameter sweep analysis for clustering threshold optimization.
-(A) Number of consensus genotypes identified at each threshold value. The
-elbow point at 0.020 (arrow) indicates optimal threshold balancing resolution
-and stability. (B) Assignment success rate showing near-maximum efficiency
-(95.8%) at threshold 0.020. (C) Mean sequence identity to assigned genotypes
-remains high (>95%) across threshold range. (D) Singleton groups (genotypes
-with single sample) minimized at threshold 0.020, indicating appropriate
-grouping without oversplitting. Vertical dashed line indicates selected
-threshold.
+Figure S1: Parameter sweep analysis for singleton error-filtering threshold
+optimization. (A) Number of consensus haplotypes identified at each
+min_singleton_distance value. The elbow point at 0.020 (arrow) indicates the
+optimal value balancing error filtering and rare haplotype retention.
+(B) Haplotype assignment success rate showing near-maximum efficiency (95.8%)
+at min_singleton_distance=0.020. (C) Mean sequence identity to assigned
+haplotypes remains high (>95%) across the tested range. (D) Retained singleton
+haplotypes decrease with increasing threshold; the selected value (0.020)
+removes likely sequencing errors while retaining singletons with substantial
+divergence. Vertical dashed line indicates selected value.
 ```
 
 ---
@@ -709,14 +714,13 @@ threshold.
 
 ### Relevant Literature
 
-**Elbow method for clustering**:
+**Elbow method**:
 - Thorndike, R. L. (1953). Who belongs in the family? Psychometrika, 18(4), 267-276.
 
-**COI barcoding thresholds**:
-- Hebert, P. D. N., Cywinska, A., Ball, S. L., & deWaard, J. R. (2003). Biological identifications through DNA barcodes. Proceedings of the Royal Society B, 270(1512), 313-321.
-- Ward, R. D., Zemlak, T. S., Innes, B. H., Last, P. R., & Hebert, P. D. N. (2005). DNA barcoding Australia's fish species. Philosophical Transactions of the Royal Society B, 360(1462), 1847-1857.
+**ESV (Exact Sequence Variant) approach**:
+- Porter, T. M., & Hajibabaei, M. (2020). Putting the I in ITS: Improved characterization of ITS diversity for the eukaryotes using exact sequence variants. Ecology and Evolution, 10(14), 7110-7127.
 
-**Clustering stability**:
+**Grouping stability analysis**:
 - Ben-Hur, A., Elisseeff, A., & Guyon, I. (2002). A stability based method for discovering structure in clustered data. Pacific Symposium on Biocomputing, 7, 6-17.
 
 ---
@@ -728,7 +732,7 @@ For questions or issues with parameter sweep:
 1. **Check documentation**: Review this guide and README.md
 2. **Examine outputs**: recommendations.txt often provides specific guidance
 3. **GitHub Issues**: https://github.com/SymbioSeas/BOLDGenotyper/issues
-4. **Email**: steph.smith@unc.edu
+4. **Email**: symbioseas@outlook.com
 
 When reporting issues, include:
 - Command used

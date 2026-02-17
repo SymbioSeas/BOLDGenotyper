@@ -5,7 +5,7 @@ Python-based plot regeneration from exported data with custom styling.
 This module provides functions to regenerate all plots using matplotlib/seaborn/geopandas,
 reading configuration from plot_config.yaml.
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations

@@ -5,118 +5,51 @@ All notable changes to BOLDGenotyper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2025
 
 ### Added
-- Comprehensive documentation improvement plan for publication readiness
-- CITATION.cff for standardized software citation
-- MIT LICENSE file
-- This CHANGELOG.md file
+- **Custom Shapefile Support**: `--custom-shp`, `--shp-field`, `--geo-category` for geographic analysis with any polygon shapefile (freshwater basins, ecoregions, watersheds, biomes, etc.)
+- **Metadata Analysis Module**: Automated haplotype-metadata association analysis with chi-square tests, coverage assessment, and temporal emergence timelines (`metadata_analysis.py`)
+- **Population Genetics Export**: Export to Arlequin (.arp), PopART/NEXUS, DnaSP (.fas), and generic CSV/FASTA via `--export-format`
+- **Outgroup Rooting**: Three rooting modes — `--phylo-outgroup-fasta`, `--phylo-outgroup-label`, `--phylo-outgroup-taxon`
+- **Haplotype Query Tool**: `boldgenotyper-query` command for assigning new sequences to existing haplotypes
+- **Parameter Sweep Tool**: `boldgenotyper-sweep` command for optimizing singleton filtering thresholds
+- **Plot Customization**: YAML-configured plot regeneration from exported data (`plot_export.py`, `plot_regeneration.py`)
+- **Species-Faceted Analysis**: Per-species haplotype distribution maps and bar charts
+- **MSA Visualization**: Phylogeny-ordered multiple sequence alignment plots (`msa_visualization.py`)
+- **Divergence Analysis**: Pairwise divergence matrices, barcoding gap analysis, within/between-species divergence
+- **ESV Approach**: Exact Sequence Variant haplotype discovery (replaces clustering-based approach)
+- **COI Validation**: Orientation normalization and ORF validation with configurable genetic codes
+- **Dynamic QC**: Median-based adaptive quality control filtering
+- **Singleton Error Filtering**: Two-stage singleton quality control with configurable thresholds
 
 ### Changed
-- Documentation structure reorganized for publication
+- Geographic analysis generalized from marine-only to any organism via custom shapefiles
+- Haplotype discovery uses ESV approach instead of clustering thresholds
+- Version bumped to 1.0.0 for publication release
+- Python requirement raised to >=3.9 (3.8 is EOL)
+- FastTree is the only supported tree-building algorithm
 
-## [0.1.0] - 2025-11-17
+### Removed
+- PhyML and RAxML tree-building options (only FastTree is used)
+- `genotype_assignment.py` (replaced by `haplotype_assignment.py`)
+- `cluster_diagnostics.py` (functionality integrated elsewhere)
+- `comparative_analysis.py` (standalone script at `scripts/compare_analyses.py`)
+- Dead configuration classes: `DelimitationConfig`, `OutlierConfig`, `DistanceConfig`
+
+## [0.1.0] - 2025-01-20
 
 ### Added
-- **Core Pipeline**: Complete end-to-end analysis pipeline from BOLD TSV to annotated results
-- **Sequence Dereplication**:
-  - MAFFT-based multiple sequence alignment
-  - trimAl-based alignment trimming
-  - Hierarchical clustering with configurable thresholds (default: 99% identity)
-  - Consensus sequence generation with majority-rule voting
-- **Genotype Assignment**:
-  - CIGAR string-based identity calculation
-  - Support for both "target_based" and "classic" identity metrics
-  - Parallel processing support for large datasets
-  - Comprehensive diagnostics output
-- **Geographic Analysis**:
-  - GOaS (Global Oceans and Seas) shapefile integration
-  - Ocean basin assignment for marine organisms
-  - Coordinate quality filtering (precise vs country centroid)
-  - Land detection and snap-to-coast functionality
-  - `--no-geo` flag for non-marine organisms or when GOaS unavailable
-- **Phylogenetic Analysis** (Optional):
-  - Tree building with FastTree, RAxML, or IQ-TREE
-  - Tree visualization with colored tips by genotype
-  - Newick format output
-- **Visualization**:
-  - Geographic distribution maps with Cartopy
-  - Genotype abundance plots
-  - Identity distribution histograms
-  - Phylogenetic trees with custom styling
-  - Multiple output formats (PNG, PDF, SVG)
-- **Configuration System**:
-  - Hierarchical configuration via dataclasses
-  - YAML/JSON config file support
-  - Command-line parameter overrides
-- **Command-Line Interface**:
-  - Single-command pipeline execution
-  - Automatic organism name detection from filename
-  - Flexible parameter customization
-  - Comprehensive logging with configurable levels
-- **Documentation**:
-  - Comprehensive README with installation, usage, and troubleshooting
-  - QUICKSTART guide for new users
-  - CLI testing guide
-  - GOaS setup documentation
-  - Analysis notes and technical documentation
-- **Quality Control**:
-  - Coordinate precision filtering
-  - Sequence length validation
-  - Assignment confidence tracking
-  - Comprehensive error handling
-
-### Features by Module
-- **boldgenotyper.cli**: Complete CLI interface with pipeline orchestration
-- **boldgenotyper.config**: Hierarchical configuration management
-- **boldgenotyper.dereplication**: Sequence clustering and consensus generation
-- **boldgenotyper.genotype_assignment**: Sample-to-genotype mapping with CIGAR
-- **boldgenotyper.geographic**: Spatial analysis and ocean basin assignment
-- **boldgenotyper.metadata**: BOLD TSV parsing with flexible column mapping
-- **boldgenotyper.phylogenetics**: Tree building and visualization
-- **boldgenotyper.reports**: Summary statistics and report generation
-- **boldgenotyper.utils**: Helper functions and utilities
-- **boldgenotyper.visualization**: Publication-ready figure generation
-- **boldgenotyper.goas_downloader**: Automated GOaS shapefile download
-
-### Dependencies
-- Python ≥3.8
-- biopython ≥1.79
-- pandas ≥1.3.0
-- scipy ≥1.7.0
-- numpy ≥1.21.0
-- matplotlib ≥3.4.0
-- seaborn ≥0.11.0
-- Optional: geopandas, cartopy (for geographic analysis)
-- External tools: MAFFT, trimAl, FastTree (optional)
-
-### Known Limitations
-- Geographic analysis currently optimized for marine organisms only
-- GOaS shapefile not included in repository (must be downloaded separately)
-- Large datasets (>10,000 sequences) may encounter memory limitations
-- Phylogenetics module has some stub functions for planned features
-- Windows support requires WSL (Windows Subsystem for Linux)
-
-### Performance
-- Small datasets (<500 samples): 2-5 minutes
-- Medium datasets (500-2,000 samples): 5-15 minutes
-- Large datasets (>2,000 samples): 15-60 minutes
-- Parallel processing supported for genotype assignment
-
-### Testing
-- Comprehensive test suite for core modules
-- Example datasets included for validation
-- Integration tests for full pipeline
-
-## [0.0.1] - Development Versions
-
-### 2024-11-XX to 2025-11-XX
-- Initial development and prototyping
-- Reference scripts implementation
-- Module refactoring and package structure
-- Documentation iterations
-- Testing and validation
+- Core pipeline: BOLD TSV to annotated results
+- Sequence dereplication with MAFFT alignment
+- Edit distance-based genotype assignment with CIGAR string parsing
+- GOaS ocean basin assignment for marine organisms
+- Phylogenetic tree building with FastTree
+- Geographic distribution maps with Cartopy
+- Interactive HTML reports with Plotly.js
+- Publication-ready visualizations (PDF/SVG)
+- Hierarchical configuration system with dataclasses
+- Comprehensive CLI with automatic organism name detection
 
 ---
 
@@ -129,34 +62,10 @@ BOLDGenotyper uses [Semantic Versioning](https://semver.org/):
 
 ## Release Process
 
-1. Update version number in `setup.py` and `boldgenotyper/__init__.py`
+1. Update version number in `setup.py`, `boldgenotyper/__init__.py`, and `CITATION.cff`
 2. Update this CHANGELOG.md with release date and changes
-3. Create git tag: `git tag -a v0.1.0 -m "Release version 0.1.0"`
-4. Push tag: `git push origin v0.1.0`
-5. GitHub Actions will automatically create release and publish to PyPI (when configured)
-6. Zenodo will automatically create DOI for the release
-
-## Future Releases
-
-### [0.2.0] - Planned Features
-- Terrestrial and freshwater organism support
-- Additional geographic analysis modules
-- Enhanced phylogenetic analysis
-- Performance optimizations for very large datasets
-- Docker container support
-- Web interface (optional)
-
-### [1.0.0] - Planned for Publication
-- Complete API stability
-- Comprehensive documentation
-- Published peer-reviewed software paper
-- Full test coverage
-- Performance benchmarks
-- Production-ready release
-
----
-
-**Note**: This project is under active development. Features and API may change before version 1.0.0.
+3. Create git tag: `git tag -a v1.0.0 -m "Release version 1.0.0"`
+4. Push tag: `git push origin v1.0.0`
 
 For detailed information about any release, see the corresponding GitHub release notes at:
 https://github.com/SymbioSeas/BOLDGenotyper/releases

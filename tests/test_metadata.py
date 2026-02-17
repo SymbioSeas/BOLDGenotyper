@@ -9,7 +9,7 @@ Tests cover:
 5. Error handling for malformed data
 6. Genotype assignment workflow
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import pytest

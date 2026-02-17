@@ -119,11 +119,11 @@ def aggregate_samples_by_species(
 
         assignments_file = output_dir / 'species_assignments.csv'
         species_assignments.to_csv(assignments_file, index=False)
-        logger.info(f"  ✓ Saved species assignments: {assignments_file}")
+        logger.info(f"  Saved species assignments: {assignments_file}")
 
         summary_file = output_dir / 'species_summary.csv'
         species_summary.to_csv(summary_file, index=False)
-        logger.info(f"  ✓ Saved species summary: {summary_file}")
+        logger.info(f"  Saved species summary: {summary_file}")
 
     return species_assignments, species_summary
 
@@ -203,7 +203,7 @@ def calculate_species_diversity(
         output_dir = Path(output_dir)
         diversity_file = output_dir / 'species_diversity.csv'
         diversity_df.to_csv(diversity_file, index=False)
-        logger.info(f"  ✓ Saved species diversity metrics: {diversity_file}")
+        logger.info(f"  Saved species diversity metrics: {diversity_file}")
 
     return diversity_df
 
@@ -251,7 +251,7 @@ def generate_species_geographic_summary(
             output_dir = Path(output_dir)
             basin_file = output_dir / 'species_basin_distribution.csv'
             basin_summary.to_csv(basin_file, index=False)
-            logger.info(f"  ✓ Saved species basin distribution: {basin_file}")
+            logger.info(f"  Saved species basin distribution: {basin_file}")
 
     # Country distribution
     if 'country/ocean' in confident.columns:
@@ -262,7 +262,7 @@ def generate_species_geographic_summary(
             output_dir = Path(output_dir)
             country_file = output_dir / 'species_country_distribution.csv'
             country_summary.to_csv(country_file, index=False)
-            logger.info(f"  ✓ Saved species country distribution: {country_file}")
+            logger.info(f"  Saved species country distribution: {country_file}")
 
     # Geographic range extent (for species with coordinates)
     if 'coord' in confident.columns:
@@ -304,7 +304,7 @@ def generate_species_geographic_summary(
             output_dir = Path(output_dir)
             range_file = output_dir / 'species_geographic_range.csv'
             range_df.to_csv(range_file, index=False)
-            logger.info(f"  ✓ Saved species geographic range: {range_file}")
+            logger.info(f"  Saved species geographic range: {range_file}")
 
     # Return basin summary as primary output
     return basin_summary if 'basin_summary' in locals() else pd.DataFrame()
@@ -438,7 +438,7 @@ def generate_species_faceted_haplotype_subsets(
             group.to_csv(subset_file, index=False)
             logger.debug(f"    Saved: {subset_file}")
 
-    logger.info(f"  ✓ Created subsets for {len(species_subsets)} species")
+    logger.info(f"  Created subsets for {len(species_subsets)} species")
 
     return species_subsets
 
@@ -541,7 +541,7 @@ def generate_within_species_divergence_matrices(
         species_matrix.to_csv(matrix_file)
         results['matrices'][species] = matrix_file
 
-        logger.info(f"  ✓ {species}: {len(species_haplotypes)} haplotypes, "
+        logger.info(f"  {species}: {len(species_haplotypes)} haplotypes, "
                    f"mean divergence = {stats['mean_divergence']:.4f}")
 
     # Save summary statistics
@@ -550,8 +550,8 @@ def generate_within_species_divergence_matrices(
         stats_file = species_matrices_dir / 'within_species_divergence_summary.csv'
         stats_df.to_csv(stats_file, index=False)
         results['stats_file'] = stats_file
-        logger.info(f"  ✓ Saved divergence summary: {stats_file}")
+        logger.info(f"  Saved divergence summary: {stats_file}")
 
-    logger.info(f"  ✓ Created matrices for {len(results['matrices'])} species")
+    logger.info(f"  Created matrices for {len(results['matrices'])} species")
 
     return results

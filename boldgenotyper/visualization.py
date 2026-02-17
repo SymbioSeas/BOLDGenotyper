@@ -1,10 +1,10 @@
 """
-Publication-Ready Visualization Generation
+Generate publication-quality figures for genetic partitioning and biogeography.
 
 This module provides functions for creating high-quality figures to visualize
-genetic partitioning patterns and biogeographic distributions. All figures are
-designed to be publication-ready with appropriate resolution, styling, and
-formatting.
+genetic partitioning patterns and biogeographic distributions. All geographic
+plots work with any region type (ocean basins, freshwater basins, ecoregions,
+watersheds, biomes, etc.) via the ``basin_column`` parameter.
 
 Figure Types:
 1. Global Distribution Map
@@ -14,12 +14,14 @@ Figure Types:
    - Legend with haplotype colors
    - Scale bar and coordinates
 
-2. Ocean Basin Abundance Plot
-   - Stacked bar chart showing haplotype proportions per basin
-   - Bars arranged by ocean basin
+2. Geographic Region Abundance Plot
+   - Stacked bar chart showing haplotype proportions per region
+   - Bars arranged by region (curated order for GOaS ocean basins,
+     alphabetical for custom regions)
    - Colors consistent with distribution map
-   - Y-axis shows relative abundance (0-100%)
-   - Sample counts annotated
+   - Y-axis shows relative abundance (0-100%) or total counts
+   - Works with any geographic category: ocean basins, freshwater basins,
+     ecoregions, watersheds, biomes, etc.
 
 3. Phylogenetic Tree (optional)
    - Maximum likelihood tree with bootstrap support
@@ -44,24 +46,26 @@ Design Specifications:
 - Output formats: PNG (300 DPI) and PDF (vector)
 - Figure size: Publication-ready (e.g., 10x6 inches for maps)
 - Font: Arial or Helvetica, 10-12pt
-- File naming: {organism}_distribution_map.png, {organism}_ocean_basins.pdf
 
 The visualization module handles color palette generation dynamically based on
-the number of genotypes detected (scales gracefully to 20+ genotypes).
+the number of genotypes detected (scales to 20+ genotypes).
 
 Example Usage:
     >>> from boldgenotyper.visualization import plot_distribution_map, plot_ocean_basin_abundance
+    >>> # Distribution map (works for any organism)
     >>> plot_distribution_map(
     ...     df=metadata_df,
     ...     output_path="Sphyrna_lewini_distribution_map.png",
     ...     genotype_column="consensus_group"
     ... )
+    >>> # Region bar chart (works with any geographic category)
     >>> plot_ocean_basin_abundance(
     ...     df=metadata_df,
-    ...     output_path="Sphyrna_lewini_ocean_basins.pdf"
+    ...     output_path="region_abundance.pdf",
+    ...     basin_column="ecoregion"  # or "ocean_basin", "freshwater_basin", etc.
     ... )
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -135,39 +139,100 @@ def build_genotype_colors_dict(
     # Return mapping
     return {g: colors[i] for i, g in enumerate(genos)}
 
-def _format_ocean_basin_labels() -> Tuple[List[str], Dict[str, str]]:
-    """
-    Get standardized ocean basin label formatting and ordering.
+# Curated ordering and display labels for GOaS ocean basins
+OCEAN_BASIN_ORDER = [
+    "North Atlantic Ocean",
+    "South Atlantic Ocean",
+    "Indian Ocean",
+    "South China and Easter Archipelagic Seas",
+    "South Pacific Ocean",
+    "North Pacific Ocean",
+]
 
-    Returns formatted labels with line breaks for compact display and
-    defines the preferred display order for ocean basins.
+OCEAN_BASIN_LABELS = {
+    "North Atlantic Ocean": "North\nAtlantic",
+    "South Atlantic Ocean": "South\nAtlantic",
+    "Indian Ocean": "Indian\nOcean",
+    "South China and Easter Archipelagic Seas": "S. China\nSeas",
+    "South Pacific Ocean": "South\nPacific",
+    "North Pacific Ocean": "North\nPacific",
+}
+
+
+def _format_region_label(name: str, max_line_len: int = 12) -> str:
+    """
+    Format a region name for compact x-axis display by wrapping at word boundaries.
+
+    Parameters
+    ----------
+    name : str
+        Region name to format
+    max_line_len : int
+        Maximum characters per line before wrapping (default: 12)
+
+    Returns
+    -------
+    str
+        Name with newlines inserted at word boundaries for compact display
+    """
+    if len(name) <= max_line_len:
+        return name
+    words = name.split()
+    lines: List[str] = []
+    current = ""
+    for w in words:
+        if current and len(current) + 1 + len(w) > max_line_len:
+            lines.append(current)
+            current = w
+        else:
+            current = f"{current} {w}".strip()
+    if current:
+        lines.append(current)
+    return "\n".join(lines)
+
+
+def _get_region_ordering_and_labels(
+    region_names: List[str],
+) -> Tuple[List[str], Dict[str, str]]:
+    """
+    Get display ordering and formatted labels for geographic regions.
+
+    Uses curated ordering for known GOaS ocean basins (preserving existing
+    marine behavior). Falls back to alphabetical sorting with auto-formatted
+    labels for custom regions (freshwater basins, ecoregions, etc.).
+
+    Parameters
+    ----------
+    region_names : list of str
+        Region names present in the data
 
     Returns
     -------
     tuple
-        (basin_order, label_map) where basin_order is the list of basin names
-        in preferred display order, and label_map maps original names to
-        formatted display names with line breaks.
+        (ordered_regions, label_map) where ordered_regions is the list of
+        region names in display order, and label_map maps original names
+        to formatted display names with line breaks.
     """
-    label_map = {
-        "North Atlantic Ocean": "North\nAtlantic",
-        "South Atlantic Ocean": "South\nAtlantic",
-        "Indian Ocean": "Indian\nOcean",
-        "South China and Easter Archipelagic Seas": "S. China\nSeas",
-        "South Pacific Ocean": "South\nPacific",
-        "North Pacific Ocean": "North\nPacific"
-    }
+    region_set = set(region_names)
 
-    basin_order = [
-        "North Atlantic Ocean",
-        "South Atlantic Ocean",
-        "Indian Ocean",
-        "South China and Easter Archipelagic Seas",
-        "South Pacific Ocean",
-        "North Pacific Ocean"
-    ]
+    # Check if data matches GOaS ocean basins
+    goas_match = [r for r in OCEAN_BASIN_ORDER if r in region_set]
 
-    return basin_order, label_map
+    if goas_match:
+        # GOaS path: use curated geographic order for known basins
+        ordered = [b for b in OCEAN_BASIN_ORDER if b in region_set]
+        # Append any extra regions not in curated list (alphabetically)
+        extra = sorted(region_set - set(OCEAN_BASIN_ORDER))
+        ordered.extend(extra)
+        label_map = dict(OCEAN_BASIN_LABELS)
+        for r in extra:
+            label_map[r] = _format_region_label(r)
+        return ordered, label_map
+    else:
+        # Generic path: alphabetical sorting, auto-formatted labels
+        ordered = sorted(region_names)
+        label_map = {r: _format_region_label(r) for r in ordered}
+        return ordered, label_map
 
 
 def calculate_map_extent_with_buffer(
@@ -444,7 +509,7 @@ def plot_distribution_map(
             f"Skipping map generation for: {output_path}"
         )
         logger.warning(msg)
-        print(f"⚠ WARNING: {msg}")
+        print(f"WARNING: {msg}")
         return None, None
 
     # Count samples at each location for sizing
@@ -639,14 +704,14 @@ def plot_ocean_basin_abundance(
         tmp = df[["consensus_group", "consensus_group_sp"]].dropna().drop_duplicates()
         label_map = dict(zip(tmp["consensus_group"], tmp["consensus_group_sp"]))
 
-    # Get standardized basin ordering and labels
-    basin_order, basin_label_map = _format_ocean_basin_labels()
-    # Filter to only basins present in data
-    ordered_basins = [b for b in basin_order if b in counts[basin_column].unique()]
+    # Get region ordering and display labels (data-driven)
+    ordered_basins, basin_label_map = _get_region_ordering_and_labels(
+        counts[basin_column].unique().tolist()
+    )
 
     # pivot to stacked proportions
     wide = counts.pivot(index=basin_column, columns=genotype_column, values="prop").fillna(0.0)
-    wide = wide.reindex(index=ordered_basins)  # apply custom basin order
+    wide = wide.reindex(index=ordered_basins)  # apply region order
     wide = wide[[g for g in genos if g in wide.columns]]
 
     plt.figure(figsize=figsize)
@@ -675,7 +740,7 @@ def plot_ocean_basin_abundance(
         plt.savefig(out, bbox_inches="tight")
     plt.close()
 
-    logger.info(f"Saved ocean basin abundance (relative) plot: {out}")
+    logger.info(f"Saved {basin_label.lower()} abundance (relative) plot: {out}")
 
     # Prepare data for interactive plotting
     # Calculate total sample counts per genotype
@@ -778,14 +843,14 @@ def plot_ocean_basin_abundance_total(
         tmp = df[["consensus_group", "consensus_group_sp"]].dropna().drop_duplicates()
         label_map = dict(zip(tmp["consensus_group"], tmp["consensus_group_sp"]))
 
-    # Get standardized basin ordering and labels
-    basin_order, basin_label_map = _format_ocean_basin_labels()
-    # Filter to only basins present in data
-    ordered_basins = [b for b in basin_order if b in counts[basin_column].unique()]
+    # Get region ordering and display labels (data-driven)
+    ordered_basins, basin_label_map = _get_region_ordering_and_labels(
+        counts[basin_column].unique().tolist()
+    )
 
     # Pivot to stacked counts (not proportions)
     wide = counts.pivot(index=basin_column, columns=genotype_column, values="n").fillna(0)
-    wide = wide.reindex(index=ordered_basins)  # apply custom basin order
+    wide = wide.reindex(index=ordered_basins)  # apply region order
     wide = wide[[g for g in genos if g in wide.columns]]
 
     plt.figure(figsize=figsize)
@@ -814,7 +879,7 @@ def plot_ocean_basin_abundance_total(
         plt.savefig(out, bbox_inches="tight")
     plt.close()
 
-    logger.info(f"Saved ocean basin abundance (total counts) plot: {out}")
+    logger.info(f"Saved {basin_label.lower()} abundance (total counts) plot: {out}")
 
     # Prepare data for interactive plotting
     # Calculate total sample counts per genotype
@@ -1294,10 +1359,10 @@ def plot_ocean_basin_abundance_faceted(
     all_colors = get_genotype_colors(len(all_genotypes))
     color_map = {g: all_colors[i] for i, g in enumerate(all_genotypes)}
 
-    # Get standardized basin ordering and labels
-    basin_order, basin_label_map = _format_ocean_basin_labels()
-    # Filter to only basins present in data (maintains specified order)
-    all_basins = [b for b in basin_order if b in d[basin_column].unique()]
+    # Get region ordering and display labels (data-driven)
+    all_basins, basin_label_map = _get_region_ordering_and_labels(
+        d[basin_column].unique().tolist()
+    )
 
     # Create figure with facets in 2-column layout
     import math

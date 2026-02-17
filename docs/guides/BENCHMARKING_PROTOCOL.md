@@ -1104,7 +1104,7 @@ boldgenotyper data/Sphyrnidae.tsv \
     --clustering-threshold 0.030
 
 # Third, run comparative analysis
-boldgenotyper-compare \
+python scripts/compare_analyses.py \
     --species-level data/Sphyrna_lewini_output \
     --family-level data/Sphyrnidae_output \
     --output-dir benchmarking/comparative_analysis/Sphyrnidae_comparison

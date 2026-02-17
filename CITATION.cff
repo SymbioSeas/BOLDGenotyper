@@ -2,13 +2,13 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "BOLDGenotyper: Automated COI Sequence Genotyping and Biogeographic Analysis"
-version: 0.1.0
-date-released: "2025-11-17"
+version: 1.0.0
+date-released: "2025-01-20"
 authors:
   - family-names: Smith
     given-names: Steph
-    email: steph.smith@unc.edu
-    affiliation: "University of North Carolina, Institute of Marine Sciences"
+    email: symbioseas@outlook.com
+    affiliation: "University of North Carolina at Chapel Hill, Department of Biology"
 repository-code: "https://github.com/SymbioSeas/BOLDGenotyper"
 url: "https://github.com/SymbioSeas/BOLDGenotyper"
 abstract: >-
@@ -16,18 +16,17 @@ abstract: >-
   sequence genotyping and biogeographic analysis from BOLD (Barcode of Life
   Database) data. The package enables researchers to identify genetic
   partitioning patterns in any organism with publicly available COI barcode
-  sequences through sequence dereplication, genotype assignment, geographic
-  coordinate filtering, ocean basin assignment, and publication-ready
-  visualization generation.
+  sequences through haplotype discovery, assignment, geographic region
+  assignment using any polygon shapefile, and publication-ready visualization.
 keywords:
   - bioinformatics
   - DNA barcoding
   - COI
   - cytochrome oxidase I
   - genotyping
+  - haplotype
   - phylogeography
   - biogeography
-  - ocean basins
   - BOLD database
   - population genetics
 license: MIT
@@ -37,7 +36,7 @@ preferred-citation:
   authors:
     - family-names: Smith
       given-names: Steph
-      email: steph.smith@unc.edu
+      email: symbioseas@outlook.com
   year: 2025
   url: "https://github.com/SymbioSeas/BOLDGenotyper"
   notes: "If a DOI is available, please use it for citation."

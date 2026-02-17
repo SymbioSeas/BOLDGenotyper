@@ -2,16 +2,17 @@
 Population Genetics Export Module for BOLDGenotyper
 
 This module exports genotyping results to various population genetics software formats,
-enabling seamless integration with downstream analysis tools.
+enabling seamless integration with downstream analysis tools. Geographic region columns
+are handled generically via a ``geo_category`` parameter, supporting ocean basins (GOaS),
+freshwater drainage basins, ecoregions, or any custom polygon-based classification.
 
 Supported formats:
 - Arlequin (.arp): Population genetics and genomics analysis
 - PopART/NEXUS: Haplotype network visualization and phylogeography
 - DnaSP (.fas): DNA sequence polymorphism analysis
-- Structure (.str): Genetic structure analysis (if SNPs available)
 - Generic: CSV and FASTA formats for general use
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ def export_arlequin(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group'
+    group_by: str = 'consensus_group',
+    geo_category: str = 'ocean_basin'
 ) -> Path:
     """
     Export data in Arlequin format (.arp).
@@ -50,6 +52,8 @@ def export_arlequin(
         Organism name
     group_by : str
         Column to use for population grouping (default: 'consensus_group')
+    geo_category : str
+        Column name for geographic region (default: 'ocean_basin')
 
     Returns
     -------
@@ -124,12 +128,12 @@ def export_arlequin(
     }).reset_index()
     pop_mapping.columns = ['population', 'n_samples', 'species']
 
-    if 'ocean_basin' in df_assigned.columns:
-        basin_mapping = df_assigned.groupby(group_by)['ocean_basin'].agg(
+    if geo_category in df_assigned.columns:
+        region_mapping = df_assigned.groupby(group_by)[geo_category].agg(
             lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown'
         )
         pop_mapping = pop_mapping.merge(
-            basin_mapping.rename('ocean_basin'),
+            region_mapping.rename(geo_category),
             left_on='population',
             right_index=True,
             how='left'
@@ -145,7 +149,8 @@ def export_popart_nexus(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group'
+    group_by: str = 'consensus_group',
+    geo_category: str = 'ocean_basin'
 ) -> Tuple[Path, Path]:
     """
     Export data in PopART/NEXUS format.
@@ -162,6 +167,8 @@ def export_popart_nexus(
         Organism name
     group_by : str
         Column to use for population grouping
+    geo_category : str
+        Column name for geographic region (default: 'ocean_basin')
 
     Returns
     -------
@@ -212,10 +219,10 @@ def export_popart_nexus(
         species = row.get('species', 'Unknown') if pd.notna(row.get('species')) else 'Unknown'
         species = species.replace(' ', '_')
 
-        basin = row.get('ocean_basin', 'Unknown') if pd.notna(row.get('ocean_basin')) else 'Unknown'
-        basin = basin.replace(' ', '_')
+        region = row.get(geo_category, 'Unknown') if pd.notna(row.get(geo_category)) else 'Unknown'
+        region = region.replace(' ', '_')
 
-        traits.append((taxon_name, genotype, species, basin))
+        traits.append((taxon_name, genotype, species, region))
 
     # Get sequence length
     seq_length = max(len(s) for s in sequences) if sequences else 650
@@ -240,18 +247,18 @@ BEGIN CHARACTERS;
         seq_padded = seq.ljust(seq_length, '?')
         nexus_content += f"        {taxon}  {seq_padded}\n"
 
-    nexus_content += """    ;
+    nexus_content += f"""    ;
 END;
 
 BEGIN TRAITS;
     DIMENSIONS NTRAITS=3;
     FORMAT LABELS=YES MISSING=? SEPARATOR=COMMA;
-    TRAITLABELS genotype species ocean_basin;
+    TRAITLABELS genotype species {geo_category};
     MATRIX
 """
 
-    for taxon, genotype, species, basin in traits:
-        nexus_content += f"        {taxon},{genotype},{species},{basin}\n"
+    for taxon, genotype, species, region in traits:
+        nexus_content += f"        {taxon},{genotype},{species},{region}\n"
 
     nexus_content += """    ;
 END;
@@ -264,7 +271,7 @@ END;
 
     # Also create a populations CSV file
     pop_csv = output_dir / "populations.csv"
-    pop_df = pd.DataFrame(traits, columns=['sample', 'genotype', 'species', 'ocean_basin'])
+    pop_df = pd.DataFrame(traits, columns=['sample', 'genotype', 'species', geo_category])
     pop_df.to_csv(pop_csv, index=False)
 
     return nexus_file, traits_file
@@ -275,7 +282,8 @@ def export_dnasp(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group'
+    group_by: str = 'consensus_group',
+    geo_category: str = 'ocean_basin'
 ) -> Path:
     """
     Export data in DnaSP format (FASTA with pop labels).
@@ -292,6 +300,8 @@ def export_dnasp(
         Organism name
     group_by : str
         Column to use for population grouping
+    geo_category : str
+        Column name for geographic region (default: 'ocean_basin')
 
     Returns
     -------
@@ -333,11 +343,11 @@ def export_dnasp(
         species = row.get('species', 'Unknown') if pd.notna(row.get('species')) else 'Unknown'
         species = species.replace(' ', '_')
 
-        basin = row.get('ocean_basin', 'Unknown') if pd.notna(row.get('ocean_basin')) else 'Unknown'
-        basin = basin.replace(' ', '_')
+        region = row.get(geo_category, 'Unknown') if pd.notna(row.get(geo_category)) else 'Unknown'
+        region = region.replace(' ', '_')
 
         # DnaSP format: >sample_id [key=value;key=value;...]
-        description = f"[genotype={genotype};species={species};basin={basin};processid={sample_id}]"
+        description = f"[genotype={genotype};species={species};region={region};processid={sample_id}]"
 
         record = SeqRecord(
             Seq(seq),
@@ -359,7 +369,8 @@ def export_generic(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group'
+    group_by: str = 'consensus_group',
+    geo_category: str = 'ocean_basin'
 ) -> Dict[str, Path]:
     """
     Export generic formats: CSV membership table, FASTA alignment, haplotypes table.
@@ -376,6 +387,8 @@ def export_generic(
         Organism name
     group_by : str
         Column to use for population grouping
+    geo_category : str
+        Column name for geographic region (default: 'ocean_basin')
 
     Returns
     -------
@@ -400,8 +413,8 @@ def export_generic(
         membership_cols.append('species')
     if 'lat' in df_assigned.columns and 'lon' in df_assigned.columns:
         membership_cols.extend(['lat', 'lon'])
-    if 'ocean_basin' in df_assigned.columns:
-        membership_cols.append('ocean_basin')
+    if geo_category in df_assigned.columns:
+        membership_cols.append(geo_category)
     if 'country' in df_assigned.columns:
         membership_cols.append('country')
 
@@ -456,10 +469,10 @@ def export_generic(
             'species': genotype_df['species'].mode()[0] if 'species' in genotype_df.columns and len(genotype_df['species'].mode()) > 0 else 'Unknown'
         }
 
-        if 'ocean_basin' in genotype_df.columns:
-            basins = genotype_df['ocean_basin'].value_counts()
-            haplotype_info['primary_basin'] = basins.index[0]
-            haplotype_info['n_basins'] = len(basins)
+        if geo_category in genotype_df.columns:
+            regions = genotype_df[geo_category].value_counts()
+            haplotype_info['primary_region'] = regions.index[0]
+            haplotype_info['n_regions'] = len(regions)
 
         haplotypes.append(haplotype_info)
 
@@ -589,7 +602,7 @@ Example: `c15_n386` = cluster 15, containing 386 samples
 
 - **genotype**: Consensus group identifier
 - **species**: Taxonomic species assignment (if available)
-- **ocean_basin**: Geographic region (if available)
+- **geographic region**: Geographic classification (ocean basin, drainage basin, ecoregion, etc.)
 - **processid**: BOLD database sample identifier
 
 ### Sequences
@@ -617,8 +630,8 @@ If you use these data in a publication, please cite:
 ## Support
 
 For questions about these exports or BOLDGenotyper:
-- GitHub: https://github.com/yourusername/boldgenotyper
-- Email: support@example.com
+- GitHub: https://github.com/SymbioSeas/BOLDGenotyper
+- Email: symbioseas@outlook.com
 
 For format-specific software support, consult the respective software documentation.
 """
@@ -637,7 +650,8 @@ def export_population_genetics_formats(
     output_dir: Path,
     organism: str,
     formats: Optional[List[str]] = None,
-    group_by: str = 'consensus_group'
+    group_by: str = 'consensus_group',
+    geo_category: str = 'ocean_basin'
 ) -> Dict[str, Any]:
     """
     Master function to export to multiple population genetics formats.
@@ -657,6 +671,8 @@ def export_population_genetics_formats(
         Default is ['all']
     group_by : str
         Column to use for population grouping (default: 'consensus_group')
+    geo_category : str
+        Column name for geographic region (default: 'ocean_basin')
 
     Returns
     -------
@@ -686,23 +702,23 @@ def export_population_genetics_formats(
     # Export each requested format
     if 'arlequin' in formats:
         arlequin_dir = exports_dir / "arlequin"
-        arp_file = export_arlequin(df, consensus_seqs, arlequin_dir, organism, group_by)
+        arp_file = export_arlequin(df, consensus_seqs, arlequin_dir, organism, group_by, geo_category)
         results['files']['arlequin'] = arp_file
 
     if 'popart' in formats:
         popart_dir = exports_dir / "popart"
-        nexus_file, traits_file = export_popart_nexus(df, consensus_seqs, popart_dir, organism, group_by)
+        nexus_file, traits_file = export_popart_nexus(df, consensus_seqs, popart_dir, organism, group_by, geo_category)
         results['files']['popart_nexus'] = nexus_file
         results['files']['popart_traits'] = traits_file
 
     if 'dnasp' in formats:
         dnasp_dir = exports_dir / "dnasp"
-        fas_file = export_dnasp(df, consensus_seqs, dnasp_dir, organism, group_by)
+        fas_file = export_dnasp(df, consensus_seqs, dnasp_dir, organism, group_by, geo_category)
         results['files']['dnasp'] = fas_file
 
     if 'generic' in formats:
         generic_dir = exports_dir / "generic"
-        generic_files = export_generic(df, consensus_seqs, generic_dir, organism, group_by)
+        generic_files = export_generic(df, consensus_seqs, generic_dir, organism, group_by, geo_category)
         results['files']['generic'] = generic_files
 
     # Create README

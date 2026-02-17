@@ -17,7 +17,9 @@ Key Concepts:
 - Edit Distance: Minimum number of insertions, deletions, and substitutions
   needed to transform one sequence into another (global alignment)
 
-- Identity Score: 1 - (edit_distance / max_length), represents similarity
+- Identity Score: matches / haplotype_length (target-based); robust to length
+  differences at sequence ends. classic_identity (1 - edit_distance/max_length)
+  is also computed and written to diagnostics for comparison.
 
 - Minimum Identity Threshold: Default 0.90 (90% similarity required for assignment)
   Sequences below this threshold are marked as unassigned
@@ -29,8 +31,7 @@ Key Concepts:
 
 Terminology:
 - **Haplotype**: Unique sequence variant (ESV) identified from core region
-- **Haplotype ID**: Format haplotype_hX_nY where X = haplotype number, Y = sample count
-- Previous "genotype" and "haplotype_id" terminology updated to "haplotype"
+- **Haplotype ID**: Format hX_nY where X = haplotype number, Y = member count (e.g., h1_n85)
 
 Dependencies:
 - edlib (optional): Fast C-based edit distance calculation
@@ -41,13 +42,13 @@ Example Usage:
     >>> results = assign_haplotypes(
     ...     metadata_path="data.tsv",
     ...     fasta_path="sequences.fasta",
-    ...     haplotype_path="haplotypes.fasta",
+    ...     consensus_path="haplotypes.fasta",
     ...     output_path="data_with_haplotypes.tsv",
     ...     min_identity=0.90,
     ...     n_processes=4
     ... )
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 from __future__ import annotations
@@ -123,8 +124,8 @@ def levenshtein_distance(seq1: str, seq2: str) -> int:
     """
     Calculate Levenshtein distance (edit distance) between two sequences.
 
-    This pure Python implementation uses dynamic programming with O(n*m) time
-    complexity and O(min(n,m)) space complexity (optimized to use only two rows).
+    This uses dynamic programming with O(n*m) time complexity and 
+    O(min(n,m)) space complexity (optimized to use only two rows).
 
     Parameters
     ----------
@@ -307,7 +308,7 @@ def calculate_identity_with_cigar(
       Recommended for haplotype assignment where consensus is the reference.
 
     - **classic_identity**: 1 - (edit_distance / max_length)
-      The original method (kept for comparison and backwards compatibility).
+      Included as a diagnostic value for comparison.
 
     The target_identity metric is more lenient when samples have extra bases
     (e.g., noisy 5'/3' ends) but still penalizes missing bases appropriately.
@@ -587,18 +588,15 @@ def find_best_haplotype_match(
     haplotype_groups: List[Tuple[str, str]],
     min_identity: float = 0.90,
     use_edlib: bool = True,
-    identity_method: str = "target_based",
     tie_margin: float = 0.003,
     tie_min_identity: float = 0.95,
 ) -> Dict[str, Any]:
     """
     Find best matching haplotype for a sequence.
 
-    Supports two identity calculation methods:
-    - "target_based" (default): matches / haplotype_length
-      More robust to length differences and noisy 5'/3' ends
-    - "classic": 1 - (edit_distance / max_length)
-      Original method for backwards compatibility
+    Uses target-based identity (matches / haplotype_length), which is robust
+    to length differences and noisy 5'/3' ends. classic_identity is also
+    computed and included in the return dict for diagnostic purposes.
 
     Parameters
     ----------
@@ -610,8 +608,6 @@ def find_best_haplotype_match(
         Minimum identity required for assignment (default: 0.90)
     use_edlib : bool, optional
         Use edlib if available (default: True)
-    identity_method : str, optional
-        Identity calculation method: "target_based" or "classic" (default: "target_based")
     tie_margin : float, optional
         Maximum allowed difference between best and runner-up identity to be considered a tie (default: 0.003 = 0.3%).
     tie_min_identity : float, optional
@@ -622,9 +618,9 @@ def find_best_haplotype_match(
     Dict[str, Any]
         Dictionary with keys:
         - 'best_haplotype': Best matching haplotype ID (or None if below threshold)
-        - 'best_identity': Identity to best match (using selected method)
-        - 'classic_identity': Identity using classic metric (for comparison)
-        - 'target_identity': Identity using target-based metric (for comparison)
+        - 'best_identity': target_identity to best match (matches / haplotype_length)
+        - 'classic_identity': 1 - (edit_distance / max_length) for the best match (diagnostic)
+        - 'target_identity': Same as best_identity (for output consistency)
         - 'matches': Number of matching bases
         - 'mismatches': Number of mismatching bases
         - 'insertions': Number of insertions
@@ -632,7 +628,6 @@ def find_best_haplotype_match(
         - 'edit_distance': Total edit distance
         - 'cigar': CIGAR string for best match
         - 'length_discrepancy': abs(query_length - target_length)
-        - 'identity_method': Which method was used for best_identity
         - 'runner_up_haplotype': Second best haplotype ID
         - 'runner_up_identity': Identity to runner-up
         - 'is_tie': Boolean, True if best and runner-up are very close (diff < 0.01)
@@ -654,27 +649,15 @@ def find_best_haplotype_match(
     runner_up_identity = -1.0
     runner_up_details = None
 
-    # Validate identity_method
-    if identity_method not in ["target_based", "classic"]:
-        raise ValueError(
-            f"identity_method must be 'target_based' or 'classic', "
-            f"got '{identity_method}'"
-        )
-
     # Compare to all haplotype sequences
     for haplotype_id, haplotype_seq in haplotype_groups:
         # Calculate identity using CIGAR-based method
         result = calculate_identity_with_cigar(sequence, haplotype_seq, use_edlib=use_edlib)
 
-        # Select identity metric based on method
-        if identity_method == "target_based":
-            identity = result['target_identity']
-            secondary_identity = result.get('alignment_identity', result['classic_identity'])
-            tertiary_identity = result['classic_identity']
-        else:  # classic
-            identity = result['classic_identity']
-            secondary_identity = result.get('alignment_identity', result['target_identity'])
-            tertiary_identity = result['target_identity']
+        # Use target-based identity as primary metric (matches / haplotype_length)
+        identity = result['target_identity']
+        secondary_identity = result.get('alignment_identity', result['classic_identity'])
+        tertiary_identity = result['classic_identity']
 
         candidate_score = (
             identity,
@@ -744,7 +727,6 @@ def find_best_haplotype_match(
         'target_identity': best_details['target_identity'] if best_details else 0.0,
         'classic_identity': best_details['classic_identity'] if best_details else 0.0,
         'alignment_identity': best_details['alignment_identity'] if best_details else 0.0,
-        'identity_method': identity_method,
         'matches': best_details['matches'] if best_details else 0,
         'mismatches': best_details['mismatches'] if best_details else None,
         'insertions': best_details['insertions'] if best_details else None,
@@ -764,7 +746,6 @@ def _assignment_worker(
     haplotype_groups: List[Tuple[str, str]],
     min_identity: float,
     use_edlib: bool,
-    identity_method: str = "target_based",
     tie_margin: float = 0.003,
     tie_min_identity: float = 0.95,
 ) -> Dict[str, Any]:
@@ -781,8 +762,6 @@ def _assignment_worker(
         Minimum identity threshold
     use_edlib : bool
         Whether to use edlib
-    identity_method : str, optional
-        Identity calculation method (default: "target_based")
     tie_margin : float, optional
         Maximum allowed difference between best and runner-up identity to be considered a tie.
     tie_min_identity : float, optional
@@ -805,7 +784,6 @@ def _assignment_worker(
             'target_identity': 0.0,
             'classic_identity': 0.0,
             'alignment_identity': 0.0,
-            'identity_method': identity_method,
             'matches': 0,
             'mismatches': None,
             'insertions': None,
@@ -826,7 +804,6 @@ def _assignment_worker(
         haplotype_groups=haplotype_groups,
         min_identity=min_identity,
         use_edlib=use_edlib,
-        identity_method=identity_method,
         tie_margin=tie_margin,
         tie_min_identity=tie_min_identity,
     )
@@ -848,32 +825,6 @@ def _assignment_worker(
 
     return result
 
-
-def assign_species_to_sample(
-    query_fasta: str,
-    db_path: str,
-    config: TaxonomyConfig
-) -> List[Dict]:
-    """
-    Run BLASTn/VSEARCH for each query sequence and return per-sample 
-    seq-based assignment with level, identity, qcov, ties, etc.
-    """
-    # 1) run search (subprocess to blastn -task megablast -perc_identity; or vsearch --usearch_global)
-    # 2) parse hits, compute coverage and identity; sort, compute top2 delta, ties
-    # 3) apply thresholds & LCA to species/genus; set fields:
-    #    seq_sp, seq_level, seq_best_identity, seq_qcov, seq_top2_delta, n_top_ties, low_confidence_flag
-    # 4) return records keyed by processid
-    
-def assign_species_to_consensus(
-    consensus_fasta: str,
-    db_path: str,
-    config: TaxonomyConfig
-) -> pd.DataFrame:
-    """
-    Classify each consensus sequence (untrimmed from Step 6 FASTA)
-    with same thresholds; return DataFrame:
-      haplotype_id, cluster_seq_sp, cluster_seq_level, cluster_seq_best_identity, cluster_seq_qcov, cluster_seq_top2_delta, n_top_ties
-    """
 
 
 def compute_species_composition(
@@ -983,7 +934,6 @@ def assign_haplotypes(
     min_identity: float = 0.90,
     n_processes: int = 1,
     diagnostics_path: Optional[str] = None,
-    identity_method: str = "target_based",
     tie_margin: float = 0.003,
     tie_min_identity: float = 0.95,
 ) -> Dict[str, Any]:
@@ -1013,10 +963,6 @@ def assign_haplotypes(
         Number of parallel processes (default: 1)
     diagnostics_path : str, optional
         Path for diagnostics CSV output (default: None, no diagnostics)
-    identity_method : str, optional
-        Identity calculation method: "target_based" or "classic" (default: "target_based")
-        - "target_based": matches / consensus_length (robust to length differences)
-        - "classic": 1 - (edit_distance / max_length) (backwards compatibility)
     tie_margin : float, optional
         Maximum allowed difference between best and runner-up identity to be considered a tie (default: 0.003 = 0.3%).
     tie_min_identity : float, optional
@@ -1079,12 +1025,6 @@ def assign_haplotypes(
 
     if n_processes < 1:
         raise ValueError(f"n_processes must be >= 1, got {n_processes}")
-
-    if identity_method not in ["target_based", "classic"]:
-        raise ValueError(
-            f"identity_method must be 'target_based' or 'classic', "
-            f"got '{identity_method}'"
-        )
 
     # Check edlib availability
     use_edlib = EDLIB_AVAILABLE
@@ -1154,7 +1094,6 @@ def assign_haplotypes(
 
     # Step 5: Perform parallel assignment
     logger.info(f"Step 5/6: Assigning haplotypes (using {n_processes} processes)")
-    logger.info(f"Identity calculation method: {identity_method}")
     logger.info(f"Tie margin: {tie_margin}, tie_min_identity: {tie_min_identity}")
 
     worker_func = partial(
@@ -1162,7 +1101,6 @@ def assign_haplotypes(
         haplotype_groups=haplotype_groups,
         min_identity=min_identity,
         use_edlib=use_edlib,
-        identity_method=identity_method,
         tie_margin=tie_margin,
         tie_min_identity=tie_min_identity,
     )
@@ -1184,46 +1122,11 @@ def assign_haplotypes(
         processid_to_group[result['processid']] = result['haplotype_id']
 
     # Add haplotype_id column to metadata
-    # NOTE:
-    # - haplotype_id IDs come directly from the consensus FASTA headers
-    #   (e.g., "consensus_c1_n84") produced by the dereplication step.
-    # - These IDs must remain stable and unmodified so that downstream
-    #   taxonomy (Phase 4) and phylogenetic relabeling (Phase 5) can
-    #   match them exactly to the consensus_taxonomy.csv table and the
-    #   tree tip labels.
+    # haplotype_id IDs come directly from the haplotype FASTA headers
+    # (e.g., "h1_n85") produced by identify_unique_haplotypes() in dereplication.
+    # These IDs must remain stable so downstream taxonomy (Phase 4) and
+    # phylogenetic relabeling (Phase 5) can match them to tree tip labels.
     metadata_df['haplotype_id'] = metadata_df['processid'].map(processid_to_group)
-
-    # Write updated metadata
-    metadata_df.to_csv(output_path, sep='\t', index=False)
-    logger.info(f"Wrote updated metadata to {output_path}")
-        
-    # Count samples assigned to each haplotype
-    # Filter out None values (unassigned samples)
-    assigned_groups = metadata_df[metadata_df['haplotype_id'].notna()]['haplotype_id']
-    group_counts = assigned_groups.value_counts().to_dict()
-
-    # Create mapping from old names (consensus_cX) to new names (consensus_cX_nZ)
-    # where Z = number of samples assigned to that group
-    old_to_new_names = {}
-    for group, count in group_counts.items():
-        # group is like "consensus_c7" and count is number of samples
-        new_name = f"{group}_n{count}"
-        old_to_new_names[group] = new_name
-        logger.debug(f"Renaming {group} to {new_name} ({count} samples assigned)")
-
-    # Update haplotype names in metadata
-    metadata_df['haplotype_id'] = metadata_df['haplotype_id'].map(
-        lambda x: old_to_new_names.get(x, x) if pd.notna(x) else x
-    )
-
-    # Update haplotype names in results list for diagnostics
-    for result in results:
-        if result['haplotype_id'] is not None:
-            result['haplotype_id'] = old_to_new_names.get(result['haplotype_id'], result['haplotype_id'])
-        if result['runner_up_haplotype'] is not None:
-            result['runner_up_haplotype'] = old_to_new_names.get(result['runner_up_haplotype'], result['runner_up_haplotype'])
-
-    logger.info(f"Renamed {len(old_to_new_names)} haplotypes with sample counts (_nZ suffix)")
 
     # Write updated metadata
     metadata_df.to_csv(output_path, sep='\t', index=False)
@@ -1278,9 +1181,9 @@ def assign_haplotypes(
         diagnostics_path = Path(diagnostics_path)
         with open(diagnostics_path, 'w', newline='') as f:
             fieldnames = [
-                'processid', 'haplotype_id', 'n_assigned_to_consensus',
+                'processid', 'haplotype_id',
                 'identity', 'target_identity', 'classic_identity',
-                'identity_method', 'matches', 'mismatches', 'insertions', 'deletions',
+                'matches', 'mismatches', 'insertions', 'deletions',
                 'edit_distance', 'length_discrepancy',
                 'runner_up_haplotype', 'runner_up_identity',
                 'is_tie', 'is_low_confidence', 'status'
@@ -1292,11 +1195,9 @@ def assign_haplotypes(
                 writer.writerow({
                     'processid': result['processid'],
                     'haplotype_id': result['haplotype_id'] or '',
-                    'n_assigned_to_consensus': result.get('n_assigned_to_consensus', ''),
                     'identity': round(result['identity'], 6),
                     'target_identity': round(result['target_identity'], 6),
                     'classic_identity': round(result['classic_identity'], 6),
-                    'identity_method': result['identity_method'],
                     'matches': result['matches'],
                     'mismatches': result['mismatches'] if result['mismatches'] is not None else '',
                     'insertions': result['insertions'] if result['insertions'] is not None else '',

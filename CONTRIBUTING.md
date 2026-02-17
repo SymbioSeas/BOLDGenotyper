@@ -17,7 +17,7 @@ Thank you for your interest in contributing to BOLDGenotyper! We welcome contrib
 
 ## Code of Conduct
 
-This project adheres to the Contributor Covenant [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to steph.smith@unc.edu.
+This project adheres to the Contributor Covenant [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to symbioseas@outlook.com.
 
 ## Getting Started
 
@@ -476,7 +476,7 @@ If you have questions about contributing:
 2. **Read the documentation** thoroughly
 3. **Open a discussion** on GitHub Discussions (if available)
 4. **Create an issue** with the "question" label
-5. **Email maintainer**: steph.smith@unc.edu
+5. **Email maintainer**: symbioseas@outlook.com
 
 ## Recognition
 

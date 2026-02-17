@@ -112,7 +112,7 @@ jupyter lab notebooks/
 
 **Topics covered**:
 - Inspecting shapefile structure and attributes
-- Running enrichment with custom shapefiles
+- Running the pipeline with custom shapefiles
 - Analyzing genotype distributions by drainage basin
 - Identifying basin-specific genotypes
 - Extending to terrestrial organisms
@@ -237,11 +237,11 @@ See `data/README.md` for detailed dataset descriptions.
 
 ### Documentation
 - **Main README**: `../README.md` - Complete BOLDGenotyper documentation
-- **API Reference**: `../API_REFERENCE.md` - Programmatic usage
-- **Parameter Sweep Guide**: `../PARAMETER_SWEEP_GUIDE.md` - Threshold optimization
-- **Comparative Analysis Guide**: `../COMPARATIVE_ANALYSIS_GUIDE.md` - Quality control
-- **Custom Shapefiles Guide**: `../CUSTOM_SHAPEFILES_GUIDE.md` - Non-marine organisms
-- **PopGen Export Guide**: `../POPGEN_EXPORT_GUIDE.md` - Population genetics
+- **API Reference**: `../docs/guides/API_REFERENCE.md` - Programmatic usage
+- **Parameter Sweep Guide**: `../docs/guides/PARAMETER_SWEEP_GUIDE.md` - Threshold optimization
+- **Comparative Analysis Guide**: `../docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md` - Quality control
+- **Custom Shapefiles Guide**: `../docs/guides/CUSTOM_SHAPEFILE_IMPLEMENTATION.md` - Non-marine organisms
+- **PopGen Export Guide**: `../docs/guides/POPGEN_EXPORT_GUIDE.md` - Population genetics
 - **Plot Customization**: See Tutorial 6 and main README section "Customizing Plots for Publication"
 
 ### Example Data
@@ -283,7 +283,7 @@ https://github.com/SymbioSeas/BOLDGenotyper
 
 For questions or assistance:
 - **GitHub Issues**: https://github.com/SymbioSeas/BOLDGenotyper/issues
-- **Email**: steph.smith@unc.edu
+- **Email**: symbioseas@outlook.com
 - **Documentation**: See main README.md
 
 ---

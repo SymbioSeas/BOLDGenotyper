@@ -24,7 +24,7 @@ Values are presented as-is without standardization. Users know their data best
 and should decide how to standardize values. Optional sex normalization is
 available via the --normalize-sex flag.
 
-Author: Steph Smith (steph.smith@unc.edu)
+Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import logging
