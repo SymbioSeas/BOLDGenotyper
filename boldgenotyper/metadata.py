@@ -1,8 +1,9 @@
 """
-TSV Parsing and Genotype Assignment
+TSV Parsing, GenBank Parsing, and Genotype Assignment
 
-This module handles parsing of BOLD TSV files and assignment of samples to
-their best-matching consensus genotype groups based on sequence similarity.
+This module handles parsing of BOLD TSV files and GenBank flat files (.gb/.gbk),
+and assignment of samples to their best-matching consensus genotype groups
+based on sequence similarity.
 
 Key Responsibilities:
 1. Parse BOLD TSV files and extract critical fields:
@@ -58,6 +59,7 @@ import numpy as np
 import csv
 from functools import partial
 import multiprocessing as mp
+from Bio import SeqIO
 
 # Try to import edlib for fast edit distance
 try:
@@ -126,6 +128,10 @@ def parse_bold_tsv(
     - Checks for duplicate processids
     - Converts dtypes where appropriate
     - Logs warnings for data quality issues
+
+    See Also
+    --------
+    parse_genbank : Companion function for parsing GenBank flat files (.gb/.gbk).
     """
     path = Path(tsv_path)
 
@@ -200,6 +206,235 @@ def parse_bold_tsv(
 
     # Log data quality statistics
     _log_data_quality(df)
+
+    return df
+
+
+def parse_genbank(
+    gb_path: Union[str, Path],
+) -> pd.DataFrame:
+    """
+    Parse a GenBank flat file (.gb / .gbk) and return a tidy DataFrame.
+
+    Extracts sequence data and metadata from the ``source`` feature qualifiers
+    of each GenBank record, producing a DataFrame whose columns align with
+    those expected by the downstream BOLDGenotyper pipeline.
+
+    Parameters
+    ----------
+    gb_path : Union[str, Path]
+        Path to a GenBank flat file.  Both ``.gb`` and ``.gbk`` extensions
+        are accepted.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per sequence record with the following columns:
+
+        ``processid``
+            Accession.version string (e.g. ``PQ899501.1``), used as the
+            unique sample identifier throughout the pipeline.
+        ``nuc``
+            Full nucleotide sequence as a plain string.
+        ``species_name``
+            Organism name from the ``/organism`` qualifier.
+        ``country``
+            Country token extracted from ``/geo_loc_name``
+            (everything before the first ``":"`` separator, e.g.
+            ``"Australia: Victoria"`` → ``"Australia"``).
+        ``geo_loc_name``
+            Full ``/geo_loc_name`` value preserved for metadata analysis.
+        ``collection_date``
+            Collection date string from ``/collection_date``, or ``NaN``.
+        ``host``
+            Host organism from ``/host``, or ``NaN``.
+        ``isolate``
+            Isolate label from ``/isolate``, or ``NaN``.
+        ``clone``
+            Clone identifier from ``/clone``, or ``NaN``.
+        ``specimen_voucher``
+            Voucher string from ``/specimen_voucher``, or ``NaN``.
+        ``isolation_source``
+            Source material from ``/isolation_source``, or ``NaN``.
+        ``db_xref``
+            First ``/db_xref`` value (e.g. ``"taxon:123456"``), or ``NaN``.
+        ``latitude``, ``longitude``
+            Signed decimal degree coordinates parsed from ``/lat_lon``
+            (e.g. ``"37.2697 N 115.7977 W"`` → lat=37.2697, lon=-115.7977),
+            or ``NaN`` when absent.
+        ``coord``
+            Formatted coordinate string ``"[latitude, longitude]"`` when
+            ``/lat_lon`` is present, otherwise ``NaN``.
+        ``coord_source``
+            Always ``NaN`` (no centroid concept in GenBank).
+
+    Raises
+    ------
+    FileNotFoundError
+        If the GenBank file does not exist at *gb_path*.
+    ValueError
+        If the file contains no parseable records, or if the ``nuc``
+        column is entirely empty after parsing.
+
+    Examples
+    --------
+    >>> df = parse_genbank("data/Bonamia_NCBI_02172026.gb")
+    >>> print(df.shape)
+    (42, 16)
+    >>> print(df['processid'].head(3).tolist())
+    ['PQ899501.1', 'PQ899502.1', 'PQ899503.1']
+
+    Notes
+    -----
+    * Coordinate data are frequently absent in GenBank records.  Run the
+      pipeline with ``--no-geo`` when using GenBank input to avoid
+      spurious "no coordinates" warnings.
+    * COI-specific quality-control steps (ORF validation, orientation
+      normalisation) are automatically skipped when ``input_format``
+      is ``'genbank'``; no action is required from the caller.
+    * The ``processid`` field maps to ACCESSION.VERSION (e.g.
+      ``PQ899501.1``), ensuring uniqueness within a downloaded sequence
+      set.  Duplicates are warned about and deduplicated (first
+      occurrence kept), mirroring the behaviour of :func:`parse_bold_tsv`.
+
+    See Also
+    --------
+    parse_bold_tsv : Companion function for parsing BOLD TSV exports.
+    """
+    path = Path(gb_path)
+    if not path.exists():
+        raise FileNotFoundError(f"GenBank file not found: {path}")
+
+    logger.info(f"Reading GenBank file: {path}")
+
+    def _parse_lat_lon(raw: str) -> Tuple[Optional[float], Optional[float]]:
+        """Parse GenBank lat_lon string, e.g. '37.2697 N 115.7977 W'."""
+        tokens = raw.strip().split()
+        if len(tokens) != 4:
+            return None, None
+        try:
+            lat_val = float(tokens[0])
+            lat_hemi = tokens[1].upper()
+            lon_val = float(tokens[2])
+            lon_hemi = tokens[3].upper()
+            lat = lat_val if lat_hemi == 'N' else -lat_val
+            lon = lon_val if lon_hemi == 'E' else -lon_val
+            return lat, lon
+        except (ValueError, IndexError):
+            return None, None
+
+    records = []
+    n_skipped_undefined = 0
+    for record in SeqIO.parse(str(path), 'genbank'):
+        try:
+            nuc = str(record.seq)
+        except Exception:
+            # Catches Bio.Seq.UndefinedSequenceError for WGS master records
+            # and similar entries that have length metadata but no actual bases
+            logger.warning(
+                f"Skipping {record.id}: sequence content is undefined "
+                "(likely a WGS master or assembly record with no sequence data)"
+            )
+            n_skipped_undefined += 1
+            continue
+
+        row: Dict[str, Any] = {
+            'processid': record.id,
+            'nuc': nuc,
+            'species_name': np.nan,
+            'country': np.nan,
+            'geo_loc_name': np.nan,
+            'collection_date': np.nan,
+            'host': np.nan,
+            'isolate': np.nan,
+            'clone': np.nan,
+            'specimen_voucher': np.nan,
+            'isolation_source': np.nan,
+            'db_xref': np.nan,
+            'latitude': np.nan,
+            'longitude': np.nan,
+            'coord': np.nan,
+            'coord_source': np.nan,
+        }
+
+        # Extract qualifiers from the 'source' feature
+        for feature in record.features:
+            if feature.type == 'source':
+                q = feature.qualifiers
+
+                if 'organism' in q:
+                    row['species_name'] = q['organism'][0]
+
+                if 'geo_loc_name' in q:
+                    full_loc = q['geo_loc_name'][0]
+                    row['geo_loc_name'] = full_loc
+                    row['country'] = full_loc.split(':')[0].strip()
+
+                if 'collection_date' in q:
+                    row['collection_date'] = q['collection_date'][0]
+
+                if 'host' in q:
+                    row['host'] = q['host'][0]
+
+                if 'isolate' in q:
+                    row['isolate'] = q['isolate'][0]
+
+                if 'clone' in q:
+                    row['clone'] = q['clone'][0]
+
+                if 'specimen_voucher' in q:
+                    row['specimen_voucher'] = q['specimen_voucher'][0]
+
+                if 'isolation_source' in q:
+                    row['isolation_source'] = q['isolation_source'][0]
+
+                if 'db_xref' in q:
+                    row['db_xref'] = q['db_xref'][0]
+
+                if 'lat_lon' in q:
+                    lat, lon = _parse_lat_lon(q['lat_lon'][0])
+                    if lat is not None and lon is not None:
+                        row['latitude'] = lat
+                        row['longitude'] = lon
+                        row['coord'] = f"[{lat}, {lon}]"
+
+                break  # Only process first source feature
+
+        records.append(row)
+
+    if not records:
+        raise ValueError(f"No parseable GenBank records found in: {path}")
+
+    df = pd.DataFrame(records)
+
+    # Validate nuc column
+    non_empty = df['nuc'].apply(lambda s: isinstance(s, str) and len(s) > 0)
+    if not non_empty.any():
+        raise ValueError(f"GenBank file contains no sequence data: {path}")
+
+    # Validate processid uniqueness (warn and deduplicate, keep first)
+    duplicates = df['processid'].duplicated()
+    if duplicates.any():
+        n_dup = duplicates.sum()
+        dup_ids = df.loc[duplicates, 'processid'].head(5).tolist()
+        logger.warning(
+            f"Found {n_dup} duplicate processids. "
+            f"Examples: {dup_ids}. "
+            "Keeping only first occurrence of each duplicate."
+        )
+        df = df[~duplicates].copy()
+        logger.info(f"After removing duplicates: {len(df)} records remaining")
+
+    # Log summary statistics
+    n_records = len(df)
+    n_seqs = non_empty.sum()
+    n_coords = df['coord'].notna().sum()
+    logger.info(f"GenBank parse summary:")
+    logger.info(f"  Records parsed:        {n_records}")
+    if n_skipped_undefined:
+        logger.info(f"  Skipped (no seq data): {n_skipped_undefined}")
+    logger.info(f"  Sequences present:     {n_seqs}")
+    logger.info(f"  Coordinates present:   {n_coords}")
 
     return df
 
@@ -717,8 +952,10 @@ def mark_coordinate_quality(
 
     # 2. Mark centroid coordinates
     if coord_source_column in df_marked.columns:
-        df_marked['has_centroid_coords'] = df_marked[coord_source_column].str.contains(
-            'centroid', case=False, na=False
+        df_marked['has_centroid_coords'] = (
+            df_marked[coord_source_column].astype(str).str.contains(
+                'centroid', case=False, na=False
+            )
         )
         n_centroid = df_marked['has_centroid_coords'].sum()
         if n_centroid > 0:

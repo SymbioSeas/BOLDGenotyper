@@ -4181,6 +4181,8 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
     html += '<div class="code-block" style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 10px 0; font-family: \'Times New Roman\', serif; line-height: 1.6;">\n'
 
     # Build templated paragraph
+    input_format = params.get('input_format', 'bold')
+
     n_sequences = metrics.get('valid_sequences', '[N]')
     n_genotypes = metrics.get('consensus_genotypes', '[M]')
     n_assigned = metrics.get('successfully_assigned', '[X]')
@@ -4200,34 +4202,65 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
     else:
         st_pct = "[X]%"
 
-    methods_text = f"DNA barcode sequences for {organism} were downloaded from the Barcode of Life Data System (BOLD; Ratnasingham &amp; Hebert, 2007) and processed using BOLDGenotyper v{version}. "
+    if input_format == 'genbank':
+        methods_text = f"Sequences for {organism} were retrieved from NCBI GenBank and processed using BOLDGenotyper v{version}. "
 
-    if isinstance(n_sequences, int):
-        methods_text += f"A total of {n_sequences:,} sequences were analyzed "
-    else:
-        methods_text += "Sequences were analyzed "
-
-    methods_text += "after removing duplicates and filtering for sequence quality (minimum length: 400 bp). "
-    methods_text += "Sequences were aligned using MAFFT (Katoh &amp; Standley, 2013) and trimmed with trimAl (Capella-Gutiérrez et al., 2009). "
-    methods_text += f"Consensus genotypes were identified through hierarchical clustering at {ct_pct} sequence identity using average linkage. "
-    methods_text += f"Individual sequences were assigned to genotypes using edit distance calculations (minimum identity: {st_pct}). "
-
-    if params.get('build_tree', False):
-        methods_text += "A phylogenetic tree was constructed using FastTree (Price et al., 2010) with the GTR+Gamma substitution model. "
-
-    if metrics.get('ocean_basin_assigned') or metrics.get('samples_with_coords'):
-        geo_cat = params.get('geo_category', 'ocean_basin')
-        custom_shp = params.get('custom_shapefile')
-        if custom_shp:
-            geo_label = geo_cat.replace('_', ' ')
-            methods_text += f"Geographic distributions were mapped using coordinates provided in BOLD and assigned to {geo_label}s using a custom shapefile. "
+        if isinstance(n_sequences, int):
+            methods_text += f"A total of {n_sequences:,} sequences were analyzed "
         else:
-            methods_text += "Geographic distributions were mapped using coordinates provided in BOLD and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). "
+            methods_text += "Sequences were analyzed "
 
-    if isinstance(n_assigned, int) and isinstance(n_total, int) and isinstance(n_genotypes, int):
-        methods_text += f"{n_assigned:,} sequences ({assign_pct:.1f}%) were successfully assigned to {n_genotypes} consensus genotypes."
+        methods_text += "after removing duplicates and filtering for sequence quality (minimum length: 400 bp). "
+        methods_text += "Sequences were aligned using MAFFT (Katoh &amp; Standley, 2013) and trimmed with trimAl (Capella-Gutiérrez et al., 2009). "
+        methods_text += f"Consensus haplotypes were identified through hierarchical clustering at {ct_pct} sequence identity using average linkage. "
+        methods_text += f"Individual sequences were assigned to haplotypes using edit distance calculations (minimum identity: {st_pct}). "
+
+        if params.get('build_tree', False):
+            methods_text += "A phylogenetic tree was constructed using FastTree (Price et al., 2010) with the GTR+Gamma substitution model. "
+
+        if metrics.get('ocean_basin_assigned') or metrics.get('samples_with_coords'):
+            geo_cat = params.get('geo_category', 'ocean_basin')
+            custom_shp = params.get('custom_shapefile')
+            if custom_shp:
+                geo_label = geo_cat.replace('_', ' ')
+                methods_text += f"Geographic distributions were mapped using coordinates provided in GenBank records and assigned to {geo_label}s using a custom shapefile. "
+            else:
+                methods_text += "Geographic distributions were mapped using coordinates provided in GenBank records and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). Note that coordinate data may be limited or absent in GenBank records. "
+
+        if isinstance(n_assigned, int) and isinstance(n_total, int) and isinstance(n_genotypes, int):
+            methods_text += f"{n_assigned:,} sequences ({assign_pct:.1f}%) were successfully assigned to {n_genotypes} consensus haplotypes."
+        else:
+            methods_text += "[N] sequences ([X]%) were successfully assigned to [M] consensus haplotypes."
+
     else:
-        methods_text += "[N] sequences ([X]%) were successfully assigned to [M] consensus genotypes."
+        methods_text = f"DNA barcode sequences for {organism} were downloaded from the Barcode of Life Data System (BOLD; Ratnasingham &amp; Hebert, 2007) and processed using BOLDGenotyper v{version}. "
+
+        if isinstance(n_sequences, int):
+            methods_text += f"A total of {n_sequences:,} sequences were analyzed "
+        else:
+            methods_text += "Sequences were analyzed "
+
+        methods_text += "after removing duplicates and filtering for sequence quality (minimum length: 400 bp). "
+        methods_text += "Sequences were aligned using MAFFT (Katoh &amp; Standley, 2013) and trimmed with trimAl (Capella-Gutiérrez et al., 2009). "
+        methods_text += f"Consensus genotypes were identified through hierarchical clustering at {ct_pct} sequence identity using average linkage. "
+        methods_text += f"Individual sequences were assigned to genotypes using edit distance calculations (minimum identity: {st_pct}). "
+
+        if params.get('build_tree', False):
+            methods_text += "A phylogenetic tree was constructed using FastTree (Price et al., 2010) with the GTR+Gamma substitution model. "
+
+        if metrics.get('ocean_basin_assigned') or metrics.get('samples_with_coords'):
+            geo_cat = params.get('geo_category', 'ocean_basin')
+            custom_shp = params.get('custom_shapefile')
+            if custom_shp:
+                geo_label = geo_cat.replace('_', ' ')
+                methods_text += f"Geographic distributions were mapped using coordinates provided in BOLD and assigned to {geo_label}s using a custom shapefile. "
+            else:
+                methods_text += "Geographic distributions were mapped using coordinates provided in BOLD and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). "
+
+        if isinstance(n_assigned, int) and isinstance(n_total, int) and isinstance(n_genotypes, int):
+            methods_text += f"{n_assigned:,} sequences ({assign_pct:.1f}%) were successfully assigned to {n_genotypes} consensus genotypes."
+        else:
+            methods_text += "[N] sequences ([X]%) were successfully assigned to [M] consensus genotypes."
 
     html += f'<p>{methods_text}</p>\n'
     html += '</div>\n'
@@ -4249,7 +4282,8 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
     if params.get('build_tree', False):
         html += '<p>Price, M. N., Dehal, P. S., &amp; Arkin, A. P. (2010). FastTree 2 – Approximately maximum-likelihood trees for large alignments. <em>PLoS ONE</em>, 5(3), e9490.</p>\n'
 
-    html += '<p>Ratnasingham, S., &amp; Hebert, P. D. (2007). BOLD: The Barcode of Life Data System. <em>Molecular Ecology Notes</em>, 7(3), 355-364.</p>\n'
+    if input_format != 'genbank':
+        html += '<p>Ratnasingham, S., &amp; Hebert, P. D. (2007). BOLD: The Barcode of Life Data System. <em>Molecular Ecology Notes</em>, 7(3), 355-364.</p>\n'
     html += '<p>Šošić, M., &amp; Šikić, M. (2017). Edlib: a C/C++ library for fast, exact sequence alignment using edit distance. <em>Bioinformatics</em>, 33(9), 1394-1395.</p>\n'
     html += '</div>\n'
     html += '</div>\n'  # Close references subtab-content

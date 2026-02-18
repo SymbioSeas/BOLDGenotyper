@@ -6,9 +6,14 @@ Unified pipeline for BOLD barcode data implementing haplotype-first workflow:
 COI validation, haplotype discovery, assignment, geographic analysis,
 phylogenetic reconstruction, and visualization.
 
+GenBank support: Pass a .gb or .gbk file to run the pipeline on NCBI GenBank
+sequences.  Format is detected automatically from the file extension.  COI-
+specific QC (Step 2) is skipped for GenBank input.
+
 Workflow:
-1. Data Loading & Coordinate Quality
+1. Data Loading & Coordinate Quality (BOLD TSV or GenBank flat file)
 2. Pre-processing QC (Orientation normalization, ORF validation, Dynamic filtering)
+   — Step 2.2 (ORF/orientation) is skipped for GenBank input
 3. Haplotype Discovery (Align, Extract core region, Identify ESVs, Flag suspects)
 4. Haplotype Assignment (Match samples to haplotypes)
 5. Taxonomy Assignment
@@ -75,13 +80,17 @@ def extract_organism_from_path(path: Path) -> str:
     'Sphyrna_lewini'
     >>> extract_organism_from_path(Path("Great White Shark.tsv"))
     'Great_White_Shark'
+    >>> extract_organism_from_path(Path("Bonamia_NCBI_02172026.gb"))
+    'Bonamia'
     """
     # Remove extension and path
     name = path.stem
-    # Common patterns: "Genus_species.tsv", "Genus.tsv", "genus_species_data.tsv"
+    # Common patterns: "Genus_species.tsv", "Genus.tsv", "genus_species_data.tsv",
+    # "Genus_NCBI_date.gb"
     # Take first part before underscore or use whole name if no underscore
     parts = name.split('_')
-    if len(parts) >= 2 and parts[1] not in ['data', 'bold', 'samples', 'sequences']:
+    _skip = {'data', 'bold', 'samples', 'sequences', 'ncbi', 'genbank', 'gb'}
+    if len(parts) >= 2 and parts[1].lower() not in _skip:
         # Likely "Genus_species" format
         result = '_'.join(parts[:2])
     else:
@@ -89,6 +98,40 @@ def extract_organism_from_path(path: Path) -> str:
 
     # Always sanitize to ensure spaces are replaced with underscores
     return utils.sanitize_filename(result)
+
+
+def detect_input_format(path: Path) -> str:
+    """
+    Detect input file format from extension.
+
+    Returns ``'bold'`` for ``.tsv`` / ``.txt`` files and ``'genbank'`` for
+    ``.gb`` / ``.gbk`` files.
+
+    Parameters
+    ----------
+    path : Path
+        Path to input file.
+
+    Returns
+    -------
+    str
+        ``'bold'`` or ``'genbank'``.
+
+    Raises
+    ------
+    ValueError
+        If the file extension is not recognised.
+    """
+    suffix = path.suffix.lower()
+    if suffix in ('.tsv', '.txt'):
+        return 'bold'
+    elif suffix in ('.gb', '.gbk'):
+        return 'genbank'
+    else:
+        raise ValueError(
+            f"Unrecognised input file extension '{suffix}'. "
+            "Expected .tsv or .txt (BOLD) or .gb / .gbk (GenBank)."
+        )
 
 
 def remove_empty_directories(base_path: Path) -> None:
@@ -194,10 +237,11 @@ def get_viz_path(dirs: dict, filename: str, fmt: str, is_metadata: bool = False)
 
 
 def run_pipeline(
-    tsv_path: Path,
+    input_path: Path,
     organism: str,
     output_dir: Path,
     cfg: config.PipelineConfig,
+    input_format: str = 'bold',
     no_report: bool = False,
     skip_geo: bool = False,
     export_plot_data: bool = True,
@@ -215,14 +259,20 @@ def run_pipeline(
 
     Parameters
     ----------
-    tsv_path : Path
-        Path to input BOLD TSV file
+    input_path : Path
+        Path to input file.  Accepts BOLD TSV (``.tsv`` / ``.txt``) or
+        GenBank flat file (``.gb`` / ``.gbk``).
     organism : str
         Organism name
     output_dir : Path
         Output directory
     cfg : config.PipelineConfig
         Pipeline configuration
+    input_format : str, optional
+        Input file format: ``'bold'`` (default) or ``'genbank'``.
+        When ``'genbank'``, COI-specific QC (ORF validation and orientation
+        normalisation) is skipped and the ``.COI-5P`` marker suffix is
+        omitted from FASTA headers.
     no_report : bool, optional
         Skip HTML report generation (default: False)
     skip_geo : bool, optional
@@ -248,7 +298,7 @@ def run_pipeline(
     logger.info("=" * 80)
     logger.info(f"BOLDGenotyper Pipeline - {organism}")
     logger.info("=" * 80)
-    logger.info(f"Input TSV: {tsv_path}")
+    logger.info(f"Input ({input_format}): {input_path}")
     logger.info(f"Output directory: {output_dir}")
     logger.info("")
 
@@ -284,6 +334,7 @@ def run_pipeline(
         'threads': cfg.n_threads,
         'build_tree': cfg.phylogenetic.build_tree,
         'geo_category': geo_category,
+        'input_format': input_format,
         'custom_shapefile': str(shapefile_path) if shapefile_path else None,
     }
     params_file = output_dir / f"{organism}_pipeline_parameters.json"
@@ -298,9 +349,15 @@ def run_pipeline(
     logger.info("-" * 80)
 
     try:
-        # Parse BOLD TSV
-        logger.info("1.1: Parsing BOLD TSV metadata...")
-        df = metadata.parse_bold_tsv(tsv_path)
+        # Parse input file
+        if input_format == 'genbank':
+            logger.info("1.1: Parsing GenBank file...")
+            df = metadata.parse_genbank(input_path)
+            # Alias species_name → species for pipeline compatibility
+            df['species'] = df['species_name']
+        else:
+            logger.info("1.1: Parsing BOLD TSV metadata...")
+            df = metadata.parse_bold_tsv(input_path)
         logger.info(f"  ✓ Loaded {len(df)} samples with {len(df.columns)} columns")
 
         # Save parsed metadata
@@ -504,36 +561,46 @@ def run_pipeline(
         if skipped_count > 0:
             logger.warning(f"  Skipped {skipped_count} samples with missing/empty sequences")
 
-        # Step 2.2: Orientation normalization and ORF validation
-        logger.info("2.2: Normalizing sequence orientation and validating ORF...")
-        logger.info(f"  Using genetic code: {cfg.coi_validation.mitochondrial_code} (vertebrate mitochondrial)")
-        logger.info(f"  Minimum ORF coverage: {cfg.coi_validation.orf_min_coverage:.0%}")
-        logger.info(f"  Maximum internal stops: {cfg.coi_validation.orf_max_internal_stops}")
+        if input_format == 'bold':
+            # Step 2.2: Orientation normalization and ORF validation
+            logger.info("2.2: Normalizing sequence orientation and validating ORF...")
+            logger.info(f"  Using genetic code: {cfg.coi_validation.mitochondrial_code} (vertebrate mitochondrial)")
+            logger.info(f"  Minimum ORF coverage: {cfg.coi_validation.orf_min_coverage:.0%}")
+            logger.info(f"  Maximum internal stops: {cfg.coi_validation.orf_max_internal_stops}")
 
-        corrected_sequences, orf_stats_df = quality_control.apply_orientation_normalization(
-            sequences_dict=sequences_dict,
-            genetic_code=cfg.coi_validation.mitochondrial_code,
-            min_orf_coverage=cfg.coi_validation.orf_min_coverage,
-            max_internal_stops=cfg.coi_validation.orf_max_internal_stops
-        )
+            corrected_sequences, orf_stats_df = quality_control.apply_orientation_normalization(
+                sequences_dict=sequences_dict,
+                genetic_code=cfg.coi_validation.mitochondrial_code,
+                min_orf_coverage=cfg.coi_validation.orf_min_coverage,
+                max_internal_stops=cfg.coi_validation.orf_max_internal_stops
+            )
 
-        # Save ORF validation results
-        orf_stats_file = dirs['qc'] / f"{organism}_orf_validation.csv"
-        orf_stats_df.to_csv(orf_stats_file, index=False)
-        logger.info(f"  Saved ORF validation results: {orf_stats_file}")
+            # Save ORF validation results
+            orf_stats_file = dirs['qc'] / f"{organism}_orf_validation.csv"
+            orf_stats_df.to_csv(orf_stats_file, index=False)
+            logger.info(f"  Saved ORF validation results: {orf_stats_file}")
 
-        # Save oriented sequences
-        oriented_fasta_records = [(pid, seq) for pid, seq in corrected_sequences.items()]
-        oriented_fasta = dirs['qc'] / f"{organism}_oriented.fasta"
-        utils.write_fasta(oriented_fasta_records, oriented_fasta)
-        logger.info(f"  Saved oriented sequences: {oriented_fasta}")
+            # Save oriented sequences
+            oriented_fasta_records = [(pid, seq) for pid, seq in corrected_sequences.items()]
+            oriented_fasta = dirs['qc'] / f"{organism}_oriented.fasta"
+            utils.write_fasta(oriented_fasta_records, oriented_fasta)
+            logger.info(f"  Saved oriented sequences: {oriented_fasta}")
+        else:
+            # Step 2.2: Skipped — ORF/orientation validation not applicable for non-COI markers
+            logger.info("2.2: Skipping ORF validation (non-COI marker detected from GenBank input)")
+            corrected_sequences = sequences_dict
+            orf_stats_df = pd.DataFrame(
+                columns=['processid', 'orientation', 'frame', 'needs_revcomp',
+                         'orf_valid', 'orf_coverage', 'internal_stops', 'failure_reasons']
+            )
 
         # Step 2.3: Dynamic QC filtering
         logger.info("2.3: Applying dynamic quality control filters...")
         logger.info(f"  Absolute minimum length: {cfg.qc.min_raw_length_abs} bp")
         logger.info(f"  Median-based minimum: {cfg.qc.min_raw_length_frac_of_median:.0%} of median")
         logger.info(f"  Maximum N fraction: {cfg.qc.max_raw_N_fraction:.1%}")
-        logger.info(f"  Require valid ORF: {cfg.qc.require_valid_orf}")
+        effective_require_orf = cfg.qc.require_valid_orf if input_format == 'bold' else False
+        logger.info(f"  Require valid ORF: {effective_require_orf}")
 
         df_qc_passed, qc_stats = quality_control.apply_dynamic_qc_filters(
             df=df_with_basins,
@@ -542,7 +609,7 @@ def run_pipeline(
             min_raw_length_abs=cfg.qc.min_raw_length_abs,
             min_raw_length_frac_of_median=cfg.qc.min_raw_length_frac_of_median,
             max_raw_N_fraction=cfg.qc.max_raw_N_fraction,
-            require_valid_orf=cfg.qc.require_valid_orf,
+            require_valid_orf=effective_require_orf,
             processid_col='processid'
         )
 
@@ -553,11 +620,12 @@ def run_pipeline(
 
         # Generate FASTA from QC-passed samples with corrected sequences
         logger.info("2.4: Generating FASTA from QC-passed samples...")
+        marker_suffix = '.COI-5P' if input_format == 'bold' else ''
         qc_passed_fasta_records = []
         for _, row in df_qc_passed.iterrows():
             processid = row['processid']
             if processid in corrected_sequences:
-                header = f"{organism}_{processid}.COI-5P"
+                header = f"{organism}_{processid}{marker_suffix}"
                 sequence = corrected_sequences[processid]
                 qc_passed_fasta_records.append((header, sequence))
 
@@ -593,7 +661,7 @@ def run_pipeline(
 
         # Run haplotype discovery
         haplotype_records, haplotype_mapping, haplotype_stats = dereplication.identify_haplotypes(
-            tsv_path=tsv_path,
+            tsv_path=input_path,
             fasta_path=qc_passed_fasta,
             output_dir=dirs['haplotype_discovery'],
             min_core_coverage=cfg.core_region.core_min_coverage,
@@ -609,21 +677,21 @@ def run_pipeline(
 
         # Copy haplotype outputs to main haplotypes directory
         # Move/copy haplotype FASTA
-        source_haplotype_fasta = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotypes.fasta"
+        source_haplotype_fasta = dirs['haplotype_discovery'] / f"{Path(input_path).stem}_haplotypes.fasta"
         haplotype_fasta = dirs['haplotypes'] / f"{organism}_haplotypes.fasta"
         if source_haplotype_fasta.exists():
             shutil.copy(source_haplotype_fasta, haplotype_fasta)
             logger.info(f"  Saved haplotypes: {haplotype_fasta}")
 
         # Move/copy mapping
-        source_mapping = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotype_mapping.csv"
+        source_mapping = dirs['haplotype_discovery'] / f"{Path(input_path).stem}_haplotype_mapping.csv"
         haplotype_mapping_file = dirs['haplotypes'] / f"{organism}_haplotype_mapping.csv"
         if source_mapping.exists():
             shutil.copy(source_mapping, haplotype_mapping_file)
             logger.info(f"  Saved haplotype mapping: {haplotype_mapping_file}")
 
         # Move/copy stats
-        source_stats = dirs['haplotype_discovery'] / f"{Path(tsv_path).stem}_haplotype_stats.csv"
+        source_stats = dirs['haplotype_discovery'] / f"{Path(input_path).stem}_haplotype_stats.csv"
         haplotype_stats_file = dirs['haplotypes'] / f"{organism}_haplotype_stats.csv"
         if source_stats.exists():
             shutil.copy(source_stats, haplotype_stats_file)
@@ -1013,12 +1081,29 @@ def run_pipeline(
                 intermediate_prefix = dirs['intermediate_phylo'] / organism
                 output_prefix = dirs['phylogenetic'] / organism
 
+                # For non-COI markers (GenBank input) the min_cluster_size filter
+                # is not meaningful: short-amplicon singleton haplotypes are already
+                # complete sequences (303 bp is 303 bp of real signal), unlike COI
+                # singletons which may be fragmentary (<40% of 1550 bp) and introduce
+                # excessive gaps into the alignment.  Set to 1 to include all haplotypes.
+                effective_min_cluster_size = (
+                    cfg.phylogenetic.min_cluster_size
+                    if input_format == 'bold'
+                    else 1
+                )
+                if input_format == 'genbank':
+                    logger.info(
+                        f"  → Non-COI marker: using min_cluster_size={effective_min_cluster_size} "
+                        f"(was {cfg.phylogenetic.min_cluster_size} for COI — "
+                        "short-amplicon singletons are complete sequences, not fragments)"
+                    )
+
                 tree = phylogenetics.build_phylogeny(
                     consensus_fasta=str(haplotype_fasta),
                     output_prefix=str(intermediate_prefix),
                     threads=cfg.n_threads,
                     min_consensus_length=cfg.phylogenetic.min_consensus_length,
-                    min_cluster_size=cfg.phylogenetic.min_cluster_size,
+                    min_cluster_size=effective_min_cluster_size,
                     outgroup_fasta=str(cfg.phylogenetic.outgroup_fasta) if cfg.phylogenetic.outgroup_fasta else None,
                     trim_alignment=cfg.phylogenetic.trim_alignment,
                     trim_method=cfg.phylogenetic.trim_method
@@ -1887,6 +1972,9 @@ Examples:
                 --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \\
                 --shp-field ECO_NAME --geo-category ecoregion
 
+  # GenBank input (18S, non-COI)
+  boldgenotyper data/Bonamia_NCBI.gb --no-geo
+
 Notes:
   - Phylogeny requires MAFFT and FastTree in PATH; trimAl is used if available.
   - Trees are built from haplotypes and relabeled with haplotype_sp by default.
@@ -1895,6 +1983,8 @@ Notes:
     terrestrial ecoregions, watersheds, biomes, or any polygon shapefile.
   - Plot regeneration kits are exported by default; use --no-export-plot-data to skip.
   - Reports go to the output folder (reports/, visualization/, phylogenetic/).
+  - GenBank input (.gb/.gbk): COI-specific QC is skipped; use --no-geo as GenBank
+    records rarely contain coordinates.
 """
     )
 
@@ -1902,7 +1992,7 @@ Notes:
     parser.add_argument(
         'tsv',
         type=Path,
-        help='Input BOLD TSV file with sequence and metadata'
+        help='Input file: BOLD TSV (.tsv/.txt) or GenBank flat file (.gb/.gbk)'
     )
 
     # Optional arguments
@@ -2096,7 +2186,14 @@ Notes:
 
     # Validate input file
     if not args.tsv.exists():
-        print(f"Error: Input TSV file not found: {args.tsv}", file=sys.stderr)
+        print(f"Error: Input file not found: {args.tsv}", file=sys.stderr)
+        return 1
+
+    # Detect input format from extension
+    try:
+        input_format = detect_input_format(args.tsv)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     # Validate custom shapefile if provided
@@ -2145,6 +2242,9 @@ Notes:
     print("=" * 80)
     print(f"Organism: {organism}")
     print(f"Input: {args.tsv}")
+    print(f"Input format: {'BOLD TSV' if input_format == 'bold' else 'GenBank'}")
+    if input_format == 'genbank' and not args.no_geo:
+        print("  Note: GenBank records rarely contain coordinates. Consider using --no-geo.")
     print(f"Output: {output_dir}")
     print()
     print("Parameters:")
@@ -2172,10 +2272,11 @@ Notes:
     # Run pipeline
     try:
         success = run_pipeline(
-            tsv_path=args.tsv,
+            input_path=args.tsv,
             organism=organism,
             output_dir=output_dir,
             cfg=cfg,
+            input_format=input_format,
             no_report=args.no_report,
             skip_geo=args.no_geo,
             export_plot_data=not args.no_export_plot_data,
