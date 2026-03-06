@@ -275,7 +275,7 @@ All exported files use the organism name from your input file:
 ### Issue: Missing geographic data
 
 **Cause**: GOaS shapefile not available
-**Solution**: Run `python -m boldgenotyper.goas_downloader` or use `--no-geo`
+**Solution**: Download manually from https://www.marineregions.org/downloads.php (search for `GOaS_v1_20211214.zip`, registration form required), extract to `shapefiles/GOaS_v1_20211214/`, then verify with `python -m boldgenotyper.goas_downloader`. Alternatively, use `--no-geo` to skip geographic analysis.
 
 ### Issue: Format-specific software won't open file
 

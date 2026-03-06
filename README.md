@@ -81,7 +81,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 ### Layer 5: Geographic & Phylogenetic
 - **geographic.py**: GOaS shapefile loading, point-in-polygon ocean basin assignment
 - **geographic_enhancement.py**: Coverage assessment, basin confidence metrics
-- **goas_downloader.py**: Downloads Global Oceans and Seas reference shapefiles
+- **goas_downloader.py**: Verifies Global Oceans and Seas reference shapefile installation
 - **phylogenetics.py**: MAFFT alignment, trimAl, FastTree tree building, outgroup rooting
 - **msa_visualization.py**: Phylogeny-ordered MSA display with nucleotide coloring
 
@@ -206,62 +206,32 @@ GOaS (Global Oceans and Seas) is a shapefile dataset from Marine Regions that de
 - GOaS is the **default for marine organisms**; use `--custom-shp` for freshwater/terrestrial (see below)
 - If you're only interested in genotyping and phylogeny, skip this setup using the `--no-geo` flag
 
-### Automated Download (Recommended)
+### Manual Download (Required)
 
-```bash
-# Navigate to the BOLDGenotyper directory
-cd BOLDGenotyper
-
-# Activate your conda environment
-conda activate boldgenotyper
-
-# Run the automated downloader
-python -m boldgenotyper.goas_downloader
-
-# This will:
-# 1. Download World_Seas_IHO_v3.zip from Marine Regions
-# 2. Extract to shapefiles/GOaS_v1_20211214/
-# 3. Verify all required files (.shp, .shx, .dbf, .prj, .cpg)
-# 4. Create a citation file
-```
-
-**Expected output**:
-```
-[INFO] Downloading from https://www.marineregions.org/...
-[INFO] Downloaded: 100.0% (156.3 MB)
-[INFO] Extracting World_Seas_IHO_v3.zip...
-[INFO] ✓ All GOaS files present
-[INFO] ===============================================
-[INFO] GOaS setup complete!
-[INFO] Data location: shapefiles/GOaS_v1_20211214
-[INFO] ===============================================
-```
-
-### Manual Download (If Automated Fails)
+> **Note**: Marine Regions requires a registration form before download, so the GOaS shapefile cannot be downloaded automatically. You must obtain it manually.
 
 1. **Download the shapefile**:
-   - Visit: https://www.marineregions.org/download_file.php?name=World_Seas_IHO_v3.zip
-   - Alternative: https://github.com/iobis/mregions-static/raw/master/shapefiles/World_Seas_IHO_v3.zip
+   - Visit: https://www.marineregions.org/downloads.php
+   - Search for **GOaS_v1_20211214** and fill in the required registration form
+   - Download `GOaS_v1_20211214.zip`
 
 2. **Extract and setup**:
    ```bash
-   # Extract the ZIP file
-   unzip World_Seas_IHO_v3.zip
-
    # Create the directory
    mkdir -p shapefiles/GOaS_v1_20211214
 
-   # Move all files (must include .shp, .shx, .dbf, .prj, .cpg)
-   mv World_Seas_IHO_v3.* shapefiles/GOaS_v1_20211214/
+   # Extract directly into the directory
+   unzip GOaS_v1_20211214.zip -d shapefiles/GOaS_v1_20211214/
    ```
+
+   The directory must contain: `World_Seas_IHO_v3.shp`, `.shx`, `.dbf`, `.prj`, `.cpg`
 
 3. **Verify installation**:
    ```bash
-   python -c "from boldgenotyper import config, geographic; \
-   cfg = config.get_default_config(); \
-   print(f'GOaS path: {cfg.geographic.goas_shapefile_path}'); \
-   print(f'GOaS exists: {cfg.geographic.goas_shapefile_path.exists()}')"
+   python -m boldgenotyper.goas_downloader
    ```
+
+   Expected output: `[INFO] All GOaS files present`
 
 ### Custom Shapefiles for Non-Marine Organisms
 
@@ -1466,7 +1436,11 @@ mafft --version
 **Problem**: `GOaS shapefile not found`
 
 ```bash
-# Solution 1: Run automated downloader
+# Solution 1: Download manually from Marine Regions (requires registration form)
+# Visit: https://www.marineregions.org/downloads.php
+# Download: GOaS_v1_20211214.zip
+# Extract to: shapefiles/GOaS_v1_20211214/
+# Then verify:
 python -m boldgenotyper.goas_downloader
 
 # Solution 2: Skip geographic analysis

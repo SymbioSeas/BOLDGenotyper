@@ -38,7 +38,8 @@ from datetime import datetime
 from dataclasses import dataclass
 
 import pandas as pd
-from Bio import SeqIO, pairwise2
+from Bio import SeqIO
+from Bio.Align import PairwiseAligner
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
@@ -130,7 +131,7 @@ def align_query_to_haplotype(
 
     Notes
     -----
-    Uses BioPython's pairwise2.align.localms with scoring:
+    Uses BioPython's Bio.Align.PairwiseAligner (local mode) with scoring:
     - Match: +2
     - Mismatch: -1
     - Gap open: -2
@@ -152,15 +153,13 @@ def align_query_to_haplotype(
     haplotype_clean = haplotype_seq.upper().replace(' ', '').replace('\n', '')
 
     # Perform local alignment
-    # localms: local alignment with match/mismatch scores and gap penalties
-    alignments = pairwise2.align.localms(
-        query_clean,
-        haplotype_clean,
-        2,    # match score
-        -1,   # mismatch penalty
-        -2,   # gap open penalty
-        -0.5  # gap extension penalty
-    )
+    _aligner = PairwiseAligner()
+    _aligner.mode = 'local'
+    _aligner.match_score = 2
+    _aligner.mismatch_score = -1
+    _aligner.open_gap_score = -2
+    _aligner.extend_gap_score = -0.5
+    alignments = _aligner.align(query_clean, haplotype_clean)
 
     if not alignments:
         # No alignment found (should be rare)
@@ -186,7 +185,7 @@ def align_query_to_haplotype(
     best_alignment = alignments[0]
     aligned_query = best_alignment[0]
     aligned_haplotype = best_alignment[1]
-    score = best_alignment[2]
+    score = best_alignment.score
 
     # Calculate identity in aligned region
     # Count matches where both sequences have a base (not gap)

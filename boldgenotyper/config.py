@@ -611,10 +611,12 @@ class GeographicConfig:
         if not self.goas_shapefile_path.exists():
             logger.error(
                 f"GOaS shapefile not found: {self.goas_shapefile_path}\n\n"
-                "To download the GOaS reference data, run:\n"
-                "    python setup_goas.py\n\n"
-                "Or download manually from:\n"
-                "    https://www.marineregions.org/downloads.php"
+                "The GOaS shapefile must be downloaded manually (Marine Regions requires a registration form):\n"
+                "    1. Visit: https://www.marineregions.org/downloads.php\n"
+                "    2. Download: GOaS_v1_20211214.zip\n"
+                f"    3. Extract to: {self.goas_shapefile_path.parent}\n"
+                "    4. Verify: python -m boldgenotyper.goas_downloader\n\n"
+                "Or skip geographic analysis with: boldgenotyper ... --no-geo"
             )
             return False
 
