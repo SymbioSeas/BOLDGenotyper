@@ -650,12 +650,16 @@ NEXT STEPS
 ----------
 1. Review threshold_stability.pdf and elbow_plot.pdf
 
-2. Run the full pipeline with your chosen threshold.  Set it via the
-   pipeline config:
-       cfg = get_default_config()
-       cfg = cfg.update(haplotype__min_singleton_distance={recommended_threshold:.3f})
-   Or pass it programmatically — there is no dedicated CLI flag for this
-   parameter at present.
+2. Run the full pipeline with your chosen threshold using the
+   --singleton-distance flag:
+
+       boldgenotyper --input your_data.tsv \\
+                     --output output/ \\
+                     --singleton-distance {recommended_threshold:.3f} \\
+                     [other options]
+
+   The default threshold is 0.005 (0.5%).  Always pass the sweep-recommended
+   value explicitly so your analysis is reproducible.
 
 3. If the result looks over- or under-split, adjust within the acceptable
    range and re-run.

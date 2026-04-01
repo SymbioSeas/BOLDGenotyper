@@ -235,21 +235,21 @@ GOaS (Global Oceans and Seas) is a shapefile dataset from Marine Regions that de
 
 ### Custom Shapefiles for Non-Marine Organisms
 
-BOLDGenotyper now supports custom shapefiles for **freshwater and terrestrial organisms**, enabling the same biogeographic analysis capabilities as marine datasets.
+BOLDGenotyper supports custom shapefiles for **freshwater and terrestrial organisms**, enabling the same biogeographic analysis capabilities across all environments.
 
 **Supported Geographic Categories**:
-- **Marine**: GOaS ocean basins (default)
-- **Freshwater**: HydroBASINS watershed polygons
+- **Marine**: GOaS ocean basins (default — no flag needed)
+- **Freshwater**: BasinATLAS or HydroBASINS watershed polygons
 - **Terrestrial**: Ecoregions2017 biogeographic regions
-- **Custom**: Any shapefile with geographic regions
+- **Custom**: Any polygon shapefile
 
 **Example: Freshwater organisms (Salmonidae)**
 ```bash
 boldgenotyper data/Salmonidae.tsv \
   --build-tree \
-  --custom-shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp \
-  --shp-field HYBAS_ID \
-  --geo-category freshwater_basin
+  --custom-shp shapefiles/BasinATLAS/BasinATLAS_lev03.shp \
+  --shp-field PFAF_ID \
+  --geo-category drainage_basin
 ```
 
 **Example: Terrestrial organisms (Pieridae butterflies)**
@@ -257,19 +257,40 @@ boldgenotyper data/Salmonidae.tsv \
 boldgenotyper data/Pieridae.tsv \
   --build-tree \
   --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
-  --shp-field ECO_NAME \
-  --geo-category ecoregion
+  --shp-field REALM \
+  --geo-category biogeographic_realm
 ```
 
 **Parameters**:
 - `--custom-shp`: Path to shapefile (.shp file)
-- `--shp-field`: Attribute field containing region names (default: `name`)
-- `--geo-category`: Category name for outputs (e.g., `freshwater_basin`, `ecoregion`)
+- `--shp-field`: Attribute field containing region labels (see field guidance below)
+- `--geo-category`: Label for the region type in outputs (e.g., `drainage_basin`, `biogeographic_realm`)
+
+#### Choosing `--shp-field`: What BOLDGenotyper handles vs. what you decide
+
+BOLDGenotyper performs the spatial assignment automatically given a shapefile and field name. For the three common use cases, recommended fields and the trade-offs between them are:
+
+| Shapefile | Recommended `--shp-field` | Regions (N) | Alternative fields | Notes |
+|-----------|--------------------------|-------------|-------------------|-------|
+| GOaS (marine default) | *(handled internally)* | 10 ocean basins | — | No flag needed; used by default |
+| BasinATLAS / HydroBASINS | `PFAF_ID` at level 03–04 | ~180–500 | `HYBAS_ID` (numeric IDs) | Choose level based on taxon range: level 03 for circumpolar taxa, level 04–05 for regional taxa |
+| Ecoregions2017 | `REALM` | 8 biogeographic realms | `BIOME_NAME` (14 biome types); `ECO_NAME` (847 individual ecoregions) | `REALM` is best for family/order-level or cosmopolitan taxa; `BIOME_NAME` for habitat-type framing; `ECO_NAME` only for highly localized taxa |
+
+**For your own shapefile**: Inspect the attribute table to identify region name fields:
+```python
+import geopandas as gpd
+gdf = gpd.read_file("your_shapefile.shp")
+print(gdf.columns.tolist())  # See available fields
+print(gdf.head())             # Preview values
+```
+
+The choice of field (and aggregation level) has biological consequences — it determines how samples are grouped for the bar charts, pop-gen exports, and Arlequin populations. Refer to your shapefile's documentation for field definitions.
 
 **Where to get shapefiles**:
-- HydroBASINS: https://www.hydrosheds.org/products/hydrobasins
+- BasinATLAS (global freshwater basins): https://www.hydrosheds.org/products/basinsatlas
+- HydroBASINS (by continent): https://www.hydrosheds.org/products/hydrobasins
 - Ecoregions2017: https://ecoregions.appspot.com/
-- Any compatible shapefile with polygon geometries
+- Any compatible polygon shapefile with `.shp`, `.shx`, `.dbf`, and `.prj` components
 
 ### Skipping Geographic Analysis
 
@@ -346,11 +367,21 @@ open {organism}_output/{organism}_summary_report.html
 
 ### Step 4: Advanced Workflows (Optional)
 
-**Explore haplotype structure** with parameter sweep:
+**Optimise singleton filtering with parameter sweep, then apply the result**:
 ```bash
+# Step 1: Find the optimal singleton distance threshold
 boldgenotyper-sweep data/Sphyrna_lewini.tsv \
-  --thresholds 0.01,0.015,0.02,0.03,0.05 \
-  --output parameter_sweep/
+  --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
+  --output parameter_sweep/Sphyrna_lewini/
+
+# Step 2: Read the recommended threshold from the output
+cat parameter_sweep/Sphyrna_lewini/recommendations.txt
+
+# Step 3: Re-run the full pipeline with the recommended threshold
+boldgenotyper data/Sphyrna_lewini.tsv \
+  --singleton-distance 0.015 \
+  --build-tree \
+  --output results/Sphyrna_lewini/
 ```
 
 **Compare species vs. family analysis** for contamination detection:
@@ -554,16 +585,15 @@ Beyond the main pipeline, BOLDGenotyper provides three additional commands for s
 
 #### Parameter Sweep (`boldgenotyper-sweep`)
 
-Systematically tests multiple singleton filtering thresholds to identify optimal settings for your dataset. The sweep analyzes:
-- Number of haplotypes vs. singleton threshold
-- Assignment success rate vs. threshold
-- Sample haplotype stability across thresholds
+Systematically tests multiple `--singleton-distance` thresholds to identify the optimal setting for your dataset. The sweep analyzes:
+- Number of haplotypes vs. singleton threshold (elbow-point detection)
+- Assignment coverage vs. threshold
+- Sample haplotype stability across thresholds (group membership tracking)
 - Identity score distributions
-- Automatic elbow-point detection
 
-**When to use**: Before running your final analysis, especially for datasets with many rare sequences.
+**When to use**: Before running your final analysis. The recommended workflow is: run the sweep → read `recommendations.txt` → pass the elbow-point threshold to `boldgenotyper --singleton-distance`.
 
-**Output**: Threshold recommendations, stability plots, group membership tracking
+**Output**: `recommendations.txt` (threshold + rationale), `elbow_plot.pdf`, `threshold_stability.pdf`, `sweep_summary.csv`, `group_membership_tracking.csv`
 
 See `parameter_sweep/README.md` for interpretation guide.
 
@@ -599,12 +629,14 @@ boldgenotyper <input_tsv> [options]
 
 ```bash
 # Full pipeline with all options
+# Run boldgenotyper-sweep first to determine --singleton-distance for your dataset
 boldgenotyper data/Sphyrna_lewini.tsv \
   --organism "Sphyrna_lewini" \
   --output results/Sphyrna_analysis \
   --similarity-threshold 0.50 \
   --tie-margin 0.003 \
   --tie-threshold 0.95 \
+  --singleton-distance 0.015 \
   --threads 8 \
   --build-tree \
   --log-level INFO
@@ -736,6 +768,7 @@ boldgenotyper --help
 | `--similarity-threshold` | Float | 0.50 | Minimum identity for haplotype assignment (0-1) |
 | `--tie-margin` | Float | 0.003 | Maximum identity difference to call a tie (0-1) |
 | `--tie-threshold` | Float | 0.95 | Minimum identity to consider tie detection (0-1) |
+| `--singleton-distance` | Float | 0.005 | Min divergence to retain a singleton haplotype (0-1); use `boldgenotyper-sweep` to optimise |
 | `--threads` | Integer | 4 | Number of parallel CPU threads |
 | `--build-tree` | Flag | False | Build phylogenetic tree with FastTree |
 | `--no-report` | Flag | False | Skip HTML report generation |
@@ -787,6 +820,35 @@ boldgenotyper --help
 **Example**:
 - Best match: 0.85, Second: 0.84 → Not flagged as tie (both below 0.95)
 - Best match: 0.97, Second: 0.96 → Flagged as tie (both above 0.95)
+
+#### `--singleton-distance` (default: 0.005)
+
+**What it controls**: The minimum divergence a singleton haplotype must have from its nearest neighbour to be retained. Singletons below this threshold are removed as likely sequencing or PCR errors.
+
+**Background**: Because ESV discovery treats every unique sequence as a distinct haplotype, error-derived sequences that differ by 1–2 bp from a true haplotype appear as spurious singletons. The default (0.5%) removes most such errors while retaining biologically real rare variants.
+
+**The recommended workflow is to run `boldgenotyper-sweep` first and use the reported elbow-point value here**:
+```bash
+# Step 1 — find the optimal threshold for your dataset
+boldgenotyper-sweep data/MySpecies.tsv \
+  --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
+  --output sweep_results/
+
+# Step 2 — read the recommendation
+cat sweep_results/recommendations.txt   # e.g. "PRIMARY: 0.015"
+
+# Step 3 — apply it to the full pipeline run
+boldgenotyper data/MySpecies.tsv \
+  --singleton-distance 0.015 \
+  --build-tree
+```
+
+**When to adjust**:
+- **Lower (0.001–0.005)**: Retain more rare variants; risk including sequencing errors
+- **Higher (0.02–0.10)**: Aggressively remove singletons; risk losing biologically real rare haplotypes
+- Values >0.05 are rarely needed and should be supported by the sweep elbow plot
+
+**Taxon-specific guidance**: Optimal values tend to be consistent within major taxonomic groups (marine vertebrates ≈ 0.015; insect families may require up to 0.085). Always validate with `boldgenotyper-sweep` for new datasets.
 
 #### `--threads`
 
@@ -1206,7 +1268,7 @@ BOLDGenotyper uses the **Exact Sequence Variant (ESV)** approach (Porter & Hajib
 - Can vary between populations (1-5% divergence)
 - Varies significantly between species (>5-10% divergence)
 
-**Error Filtering**: Singletons within 1 substitution of a larger haplotype are flagged as probable sequencing errors. Use `boldgenotyper-sweep` to empirically test singleton thresholds for your dataset.
+**Error Filtering and `--singleton-distance`**: Singleton ESVs that diverge from their nearest neighbour by less than `--singleton-distance` (default: 0.5%) are removed as probable sequencing or PCR errors. This threshold is the single most impactful parameter for controlling haplotype count. **Always run `boldgenotyper-sweep` first to identify the elbow-point threshold for your dataset**, then pass that value to `boldgenotyper --singleton-distance`. The sweep plots haplotype count vs. threshold and identifies the inflection point at which further increasing the threshold stops meaningfully reducing haplotype count — this is the recommended operating point. Optimal thresholds vary by taxon and sequence quality (empirically: marine vertebrates ≈ 0.015; some insect families ≈ 0.085).
 
 ### Understanding Similarity Threshold
 
@@ -1521,10 +1583,14 @@ boldgenotyper data/my_species.tsv  # omit --build-tree
 # Check the log for singleton filtering statistics
 tail -50 {organism}_output/{organism}_pipeline.log
 
-# Run parameter sweep to find optimal singleton threshold
+# Run parameter sweep to find the optimal threshold
 boldgenotyper-sweep data/my_species.tsv \
-  --thresholds 0.01,0.015,0.02,0.03,0.05 \
+  --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
   --output parameter_sweep/
+
+# Read the recommended threshold, then re-run with it applied
+cat parameter_sweep/recommendations.txt
+boldgenotyper data/my_species.tsv --singleton-distance 0.015
 ```
 
 **Problem**: Too few haplotypes (expected more diversity)

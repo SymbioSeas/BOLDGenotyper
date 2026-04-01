@@ -2,7 +2,7 @@ Singleton Distance Threshold — Sweep Results
 =============================================
 
 Dataset:                  Sphyrnidae
-Total Samples:            1085.0
+Total Samples:            1087.0
 Threshold Range Tested:   0.010 – 0.100
 Number of Thresholds:     19
 
@@ -16,24 +16,24 @@ more singletons; a lower threshold retains them.
 KEY FINDINGS
 ------------
 1. Haplotype count
-   At 0.010:               29.0 haplotypes
-   At 0.015 (elbow):         26.0 haplotypes
-   At 0.100:               25.0 haplotypes
+   At 0.010:               28.0 haplotypes
+   At 0.015 (elbow):         25.0 haplotypes
+   At 0.100:               24.0 haplotypes
 
 2. Singletons retained
-   At 0.010:               7.0
-   At 0.015 (elbow):         4.0
-   At 0.100:               3.0
+   At 0.010:               6.0
+   At 0.015 (elbow):         3.0
+   At 0.100:               2.0
 
-3. Assignment coverage at elbow:  77.0%
+3. Assignment coverage at elbow:  76.9%
    Potential misidentification rate:  0.3%
 
 RECOMMENDATIONS
 ---------------
 PRIMARY:  min_singleton_distance = 0.015
   • Elbow point in the haplotype-count curve
-  • 26.0 haplotypes, 4.0 singletons retained
-  • Assignment coverage: 77.0%
+  • 25.0 haplotypes, 3.0 singletons retained
+  • Assignment coverage: 76.9%
 
 ACCEPTABLE RANGE:  0.010 – 0.100
   • Haplotype count within ±20% of the elbow value
@@ -70,4 +70,4 @@ NEXT STEPS
 
 4. Document the threshold and its rationale in your methods section.
 
-Generated: 2026-02-04 14:22:15
+Generated: 2026-03-12 12:20:13

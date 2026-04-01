@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025
 
 ### Added
+- **`--singleton-distance` CLI flag**: Exposes `haplotype.min_singleton_distance` as a command-line parameter, closing the intended workflow of running `boldgenotyper-sweep` to identify the optimal threshold and passing it directly to the full pipeline run via `--singleton-distance`. Default: 0.005 (0.5%).
 - **Custom Shapefile Support**: `--custom-shp`, `--shp-field`, `--geo-category` for geographic analysis with any polygon shapefile (freshwater basins, ecoregions, watersheds, biomes, etc.)
 - **Metadata Analysis Module**: Automated haplotype-metadata association analysis with chi-square tests, coverage assessment, and temporal emergence timelines (`metadata_analysis.py`)
 - **Population Genetics Export**: Export to Arlequin (.arp), PopART/NEXUS, DnaSP (.fas), and generic CSV/FASTA via `--export-format`

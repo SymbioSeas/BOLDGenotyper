@@ -24,5 +24,7 @@
     "tie_margin": 0.003
   },
   "threads": 4,
-  "build_tree": false
+  "build_tree": false,
+  "geo_category": "ocean_basin",
+  "custom_shapefile": null
 }

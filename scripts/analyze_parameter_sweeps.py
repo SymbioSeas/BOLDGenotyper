@@ -49,7 +49,16 @@ if not all_data:
 
 # ---------------------------------------------------------------------------
 # Figure 1: Per-organism haplotype count vs threshold (2x3 grid)
+#
+# X-axis is standardized to 0.01–0.10 across all panels so elbow positions
+# are visually comparable.
 # ---------------------------------------------------------------------------
+
+# Compute shared x-axis limits across all datasets
+all_thresholds = [d['threshold'] for d in all_data.values()]
+x_min = min(t.min() for t in all_thresholds)
+x_max = 0.10   # standardize upper bound for cross-dataset comparison
+
 fig, axes = plt.subplots(2, 3, figsize=(15, 9))
 axes = axes.flatten()
 
@@ -65,6 +74,7 @@ for i, dataset in enumerate(datasets):
     ax.plot(df['threshold'], df['n_haplotypes'], 'o-', linewidth=2, markersize=6, color='steelblue')
     ax.plot(df['threshold'], df['n_singletons'], 's--', linewidth=1.5, markersize=5, color='coral', alpha=0.7)
 
+    ax.set_xlim(x_min - 0.002, x_max + 0.002)
     ax.set_xlabel('min_singleton_distance', fontsize=10)
     ax.set_ylabel('Count', fontsize=10)
     ax.set_title(f'{dataset}', fontsize=12, fontweight='bold')

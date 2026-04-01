@@ -2081,6 +2081,19 @@ Notes:
     )
 
     parser.add_argument(
+        '--singleton-distance',
+        type=float,
+        default=0.005,
+        dest='singleton_distance',
+        help='Minimum divergence threshold for retaining singleton haplotypes. '
+             'Singleton ESVs diverging by less than this value from their nearest '
+             'neighbour are removed as likely sequencing or PCR errors. '
+             'Default: 0.005 (0.5%%). Use boldgenotyper-sweep to identify the '
+             'optimal value for your dataset; the recommended threshold is reported '
+             'in recommendations.txt and the elbow plot.'
+    )
+
+    parser.add_argument(
         '--keep-intermediates',
         action='store_true',
         help='Keep intermediate files (default: remove after pipeline completion)'
@@ -2129,6 +2142,7 @@ Notes:
         genotype_assignment__min_identity=args.similarity_threshold,
         genotype_assignment__tie_margin=args.tie_margin,
         genotype_assignment__tie_threshold=args.tie_threshold,
+        haplotype__min_singleton_distance=args.singleton_distance,
         n_threads=args.threads,
         output_dir=output_dir,
         log_level=args.log_level,
@@ -2151,6 +2165,7 @@ Notes:
     print(f"  Similarity threshold: {args.similarity_threshold} ({args.similarity_threshold*100:.0f}% identity)")
     print(f"  Tie margin: {args.tie_margin} ({args.tie_margin*100:.1f}% difference)")
     print(f"  Tie threshold: {args.tie_threshold} ({args.tie_threshold*100:.0f}% identity)")
+    print(f"  Singleton distance: {args.singleton_distance} ({args.singleton_distance*100:.1f}% — use boldgenotyper-sweep to optimise)")
     print(f"  Threads: {args.threads}")
     print(f"  Build tree: {args.build_tree}")
     print(f"  Phylo outgroup FASTA: {args.phylo_outgroup_fasta or 'None'}")

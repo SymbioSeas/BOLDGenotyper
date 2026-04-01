@@ -102,13 +102,13 @@ print("Saved: Figure_Runtime_Drivers.png/pdf")
 # ---------------------------------------------------------------------------
 
 phase_cols = {
-    'Data & QC':       ['phase_1_sec', 'phase_2_sec'],
-    'Haplotyping':     ['phase_3_sec', 'phase_4_sec', 'phase_5_sec', 'phase_6_sec', 'phase_6_5_sec'],
-    'Geography':       ['phase_7_sec'],
-    'Phylogenetics':   ['phase_8_sec'],
-    'Divergence':      ['phase_9_sec'],
-    'Metadata':        ['phase_9_5_sec'],
-    'Visualization':   ['phase_10_sec'],
+    'Data & QC':                ['phase_1_sec', 'phase_2_sec'],
+    'Alignment & Dereplication':['phase_3_sec', 'phase_4_sec', 'phase_5_sec', 'phase_6_sec', 'phase_6_5_sec'],
+    'Geography':                ['phase_7_sec'],
+    'Phylogenetics':            ['phase_8_sec'],
+    'Divergence':               ['phase_9_sec'],
+    'Metadata':                 ['phase_9_5_sec'],
+    'Visualization':            ['phase_10_sec'],
 }
 
 # Aggregate: sum the raw phase columns, then take mean per organism
@@ -126,13 +126,13 @@ phase_means['_total'] = phase_means.sum(axis=1)
 phase_means = phase_means.sort_values('_total').drop(columns='_total')
 
 bucket_colors = {
-    'Data & QC':     '#4e79a7',
-    'Haplotyping':   '#f28e2b',
-    'Geography':     '#e15759',
-    'Phylogenetics':'#76b7b2',
-    'Divergence':    '#59a14f',
-    'Metadata':      '#edc948',
-    'Visualization':'#b07aa1',
+    'Data & QC':                 '#4e79a7',
+    'Alignment & Dereplication': '#f28e2b',
+    'Geography':                 '#e15759',
+    'Phylogenetics':             '#76b7b2',
+    'Divergence':                '#59a14f',
+    'Metadata':                  '#edc948',
+    'Visualization':             '#b07aa1',
 }
 
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -274,3 +274,33 @@ for pred in ['Input Sequences', 'Filtered Haplotypes']:
         .iloc[0]
     )
     print(f"\nBest R² for '{pred}': {best['organism']} (R²={best['R²']})")
+
+# ---------------------------------------------------------------------------
+# Salmonidae vs Carcharhiniformes phase-breakdown comparison
+# (manuscript discussion point: dataset structure drives runtime, not just size)
+# ---------------------------------------------------------------------------
+print("\n--- Salmonidae vs Carcharhiniformes phase breakdown (manuscript) ---")
+for org in ['Salmonidae', 'Carcharhiniformes']:
+    if org not in phase_means.index:
+        continue
+    row = phase_means.loc[org]
+    total = row.sum()
+    aln_pct   = row.get('Alignment & Dereplication', 0) / total * 100
+    meta_pct  = row.get('Metadata', 0) / total * 100
+    viz_pct   = row.get('Visualization', 0) / total * 100
+    geo_pct   = row.get('Geography', 0) / total * 100
+    print(f"\n  {org} (mean total across all subsample sizes: {total:.0f}s)")
+    print(f"    Alignment & Dereplication: {aln_pct:.1f}%")
+    print(f"    Geography:                 {geo_pct:.1f}%")
+    print(f"    Metadata:                  {meta_pct:.1f}%")
+    print(f"    Visualization:             {viz_pct:.1f}%")
+
+# Per-haplotype singleton rate: singletons removed / total haplotypes before filtering
+for org in ['Salmonidae', 'Carcharhiniformes']:
+    grp = df[df['organism'] == org]
+    raw   = grp['n_haplotypes_raw'].mean()
+    filt  = grp['n_haplotypes_filtered'].mean()
+    if raw > 0:
+        pct_removed = (raw - filt) / raw * 100
+        print(f"\n  {org}: mean raw haplotypes={raw:.0f}, filtered={filt:.0f}, "
+              f"singleton removal={pct_removed:.1f}% of raw")

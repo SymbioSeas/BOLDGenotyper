@@ -141,34 +141,88 @@ plt.savefig('benchmarking/runtime/Figure_Runtime_Scaling.pdf', bbox_inches='tigh
 print("\nSaved: Figure_Runtime_Scaling.png/pdf")
 
 # ---------------------------------------------------------------------------
-# Figure 2: Runtime per sequence (efficiency), coloured by organism
+# Figure 2: Seconds per sequence at the largest tested dataset size per organism
+#
+# For each organism, take all replicates at its maximum tested N and plot
+# mean ± std seconds/sequence as a bar chart.  Coloured by environment type.
 # ---------------------------------------------------------------------------
-df['time_per_sequence'] = df['total_time'] / df['n_sequences']
+env_colors = {
+    'Carcharhiniformes': '#3182bd',  # marine
+    'Panulirus':         '#3182bd',  # marine
+    'Sphyrnidae':        '#3182bd',  # marine
+    'Salmonidae':        '#31a354',  # freshwater
+    'Pieridae':          '#a63603',  # terrestrial
+}
+env_labels = {
+    'Carcharhiniformes': 'Marine',
+    'Panulirus':         'Marine',
+    'Sphyrnidae':        'Marine',
+    'Salmonidae':        'Freshwater',
+    'Pieridae':          'Terrestrial',
+}
 
-fig, ax = plt.subplots(figsize=(9, 5))
-sns.stripplot(
-    data=df, x='n_sequences', y='time_per_sequence',
-    hue='organism', dodge=True,
-    alpha=0.6, s=40, ax=ax
-)
-# Overlay mean markers per organism × size
-means['time_per_seq'] = means['mean_time'] / means['n_sequences']
+# For each organism get all replicates at the maximum tested N
+efficiency_rows = []
 for org in organisms:
-    grp = means[means['organism'] == org]
-    ax.plot(
-        grp['n_sequences'], grp['time_per_seq'],
-        'D', color=palette[org], markersize=8,
-        markeredgecolor='k', markeredgewidth=0.8,
-        label=None  # already in legend from stripplot
-    )
+    grp = df[df['organism'] == org]
+    max_n = grp['n_sequences'].max()
+    at_max = grp[grp['n_sequences'] == max_n].copy()
+    at_max['time_per_seq'] = at_max['total_time'] / at_max['n_sequences']
+    efficiency_rows.append({
+        'organism':      org,
+        'max_n':         max_n,
+        'mean_tps':      at_max['time_per_seq'].mean(),
+        'std_tps':       at_max['time_per_seq'].std(),
+        'color':         env_colors.get(org, '#999999'),
+        'env':           env_labels.get(org, 'Unknown'),
+    })
 
-ax.set_xlabel('Number of Sequences', fontsize=12)
-ax.set_ylabel('Runtime per Sequence (seconds)', fontsize=12)
-ax.set_title('Runtime Efficiency', fontsize=14, fontweight='bold')
-ax.legend(title='Organism', fontsize=8, title_fontsize=9)
-ax.grid(True, alpha=0.3, axis='y')
+eff_df = pd.DataFrame(efficiency_rows).sort_values('mean_tps', ascending=False)
 
-plt.tight_layout()
+fig, ax = plt.subplots(figsize=(8, 5))
+x = np.arange(len(eff_df))
+bars = ax.bar(
+    x, eff_df['mean_tps'],
+    yerr=eff_df['std_tps'],
+    color=eff_df['color'],
+    width=0.55,
+    edgecolor='white', linewidth=0.8,
+    capsize=5, error_kw=dict(elinewidth=1.2, capthick=1.2, ecolor='#333333'),
+    zorder=3,
+)
+
+# Annotate each bar with the max N tested and mean value
+for i, row in eff_df.reset_index(drop=True).iterrows():
+    ax.text(i, row['mean_tps'] + row['std_tps'] + ax.get_ylim()[1] * 0.01,
+            f"{row['mean_tps']:.2f}s",
+            ha='center', va='bottom', fontsize=8.5, fontweight='bold', color='#222222')
+    ax.text(i, -0.08, f"n={int(row['max_n']):,}",
+            ha='center', va='top', fontsize=7.5, color='#666666',
+            transform=ax.get_xaxis_transform())
+
+ax.set_xticks(x)
+ax.set_xticklabels(
+    [f"{row['organism']}" for _, row in eff_df.iterrows()],
+    fontsize=9
+)
+ax.set_ylabel('Seconds per Input Sequence\n(at largest tested dataset size)', fontsize=10)
+ax.set_title('Runtime Efficiency by Dataset', fontsize=12, fontweight='bold')
+ax.grid(axis='y', alpha=0.35, zorder=1)
+ax.set_axisbelow(True)
+
+# Environment legend
+import matplotlib.patches as mpatches
+legend_patches = [
+    mpatches.Patch(facecolor='#3182bd', edgecolor='white', label='Marine'),
+    mpatches.Patch(facecolor='#31a354', edgecolor='white', label='Freshwater'),
+    mpatches.Patch(facecolor='#a63603', edgecolor='white', label='Terrestrial'),
+]
+ax.legend(handles=legend_patches, loc='upper right', fontsize=9, framealpha=0.9)
+ax.text(0.99, 0.97, 'Error bars = std across replicates',
+        ha='right', va='top', transform=ax.transAxes,
+        fontsize=7.5, color='#666666', style='italic')
+
+plt.tight_layout(rect=[0, 0.04, 1, 1])
 plt.savefig('benchmarking/runtime/Figure_Runtime_Efficiency.png', dpi=300, bbox_inches='tight')
 plt.savefig('benchmarking/runtime/Figure_Runtime_Efficiency.pdf', bbox_inches='tight')
 print("Saved: Figure_Runtime_Efficiency.png/pdf")
