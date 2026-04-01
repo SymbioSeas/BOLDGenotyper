@@ -73,6 +73,12 @@ Thumbs.db
 # Personal notes (not part of the repository)
 notes/
 
+# Internal/draft documents with personal paths or unpublished content
+BOLDGenotyper_MER_draft.md
+memory/
+scripts/run_full_datasets.sh
+docs/guides/BENCHMARKING_QUICKSTART.md
+
 # Benchmarking outputs
 benchmarking/runtime/output/
 
