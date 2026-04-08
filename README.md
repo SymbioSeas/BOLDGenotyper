@@ -649,9 +649,16 @@ boldgenotyper data/Sphyrna_lewini.tsv \
 boldgenotyper data/Sphyrna_lewini.tsv --build-tree
 ```
 
-**2. Non-Marine Organism (Skip Geographic Analysis)**:
+**2. Invertebrate Organism**:
 ```bash
-boldgenotyper data/Anopheles_gambiae.tsv --no-geo --build-tree
+# Use --genetic-code 5 (invertebrate mitochondrial) for molluscs, crustaceans,
+# insects, worms, echinoderms, etc.
+boldgenotyper data/Crassostrea_virginica.tsv --genetic-code 5 --build-tree
+```
+
+**3. Non-Marine Invertebrate (Skip Geographic Analysis)**:
+```bash
+boldgenotyper data/Anopheles_gambiae.tsv --genetic-code 5 --no-geo --build-tree
 ```
 
 **3. Highly Diverse Taxon (Lower Assignment Threshold)**:
@@ -769,6 +776,7 @@ boldgenotyper --help
 | `--tie-margin` | Float | 0.003 | Maximum identity difference to call a tie (0-1) |
 | `--tie-threshold` | Float | 0.95 | Minimum identity to consider tie detection (0-1) |
 | `--singleton-distance` | Float | 0.005 | Min divergence to retain a singleton haplotype (0-1); use `boldgenotyper-sweep` to optimise |
+| `--genetic-code` | Integer | 2 | NCBI genetic code for ORF validation (2 = vertebrate mitochondrial; 5 = invertebrate mitochondrial) |
 | `--threads` | Integer | 4 | Number of parallel CPU threads |
 | `--build-tree` | Flag | False | Build phylogenetic tree with FastTree |
 | `--no-report` | Flag | False | Skip HTML report generation |
@@ -849,6 +857,31 @@ boldgenotyper data/MySpecies.tsv \
 - Values >0.05 are rarely needed and should be supported by the sweep elbow plot
 
 **Taxon-specific guidance**: Optimal values tend to be consistent within major taxonomic groups (marine vertebrates ≈ 0.015; insect families may require up to 0.085). Always validate with `boldgenotyper-sweep` for new datasets.
+
+#### `--genetic-code` (default: 2)
+
+**What it controls**: The NCBI genetic code table used for ORF validation during quality control. Sequences are translated in all six reading frames and the result is used to confirm they are valid COI amplicons and to select the correct orientation.
+
+**When to change**: The default (code 2, vertebrate mitochondrial) is correct for fish, sharks, mammals, birds, and reptiles. **Most invertebrates require code 5** (invertebrate mitochondrial). Using the wrong code causes 100% of sequences to fail ORF validation.
+
+| Code | Name | Example taxa |
+|------|------|-------------|
+| 2 | Vertebrate mitochondrial (default) | Fish, sharks, mammals, birds, reptiles |
+| 5 | Invertebrate mitochondrial | Molluscs, crustaceans, insects, worms, echinoderms |
+| 4 | Mold/Protozoan/Coelenterate mitochondrial | Cnidaria (jellyfish, corals), some fungi |
+
+Full table: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+
+```bash
+# Invertebrates (molluscs, crustaceans, insects, etc.)
+boldgenotyper data/Crassostrea_virginica.tsv --genetic-code 5
+
+# Cnidarians
+boldgenotyper data/Acropora_millepora.tsv --genetic-code 4
+
+# Vertebrates (default — flag not required)
+boldgenotyper data/Sphyrna_lewini.tsv
+```
 
 #### `--threads`
 
@@ -1528,6 +1561,25 @@ head -1 data/my_species.tsv
 # Option 2: Use sed/awk to rename headers
 ```
 
+**Problem**: All sequences fail ORF validation (100% of sequences excluded by QC)
+
+This is the most common issue when running BOLDGenotyper on invertebrates. The pipeline defaults to genetic code 2 (vertebrate mitochondrial), which produces incorrect translations for invertebrate COI and causes every sequence to fail ORF validation.
+
+```bash
+# Check the ORF validation report
+cat output/{organism}/intermediate/quality_control/{organism}_orf_validation.csv | head
+
+# Fix: specify the correct genetic code for your taxon
+boldgenotyper data/my_species.tsv --genetic-code 5   # most invertebrates
+boldgenotyper data/my_species.tsv --genetic-code 4   # cnidarians
+
+# Common codes:
+#   2 = vertebrate mitochondrial (default): fish, sharks, mammals, birds, reptiles
+#   5 = invertebrate mitochondrial: molluscs, crustaceans, insects, worms, echinoderms
+#   4 = mold/protozoan/coelenterate mitochondrial: cnidarians, some fungi
+# Full list: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+```
+
 **Problem**: `No haplotypes identified`
 
 ```bash
@@ -1537,7 +1589,7 @@ tail -100 {organism}_output/{organism}_pipeline.log
 # Possible causes:
 # 1. All sequences too short (<200bp) or too many Ns (>10%)
 # 2. MAFFT alignment failed
-# 3. No sequences passed quality control
+# 3. No sequences passed quality control (check --genetic-code for invertebrates)
 
 # Check sequence quality
 grep -c ">" data/my_species.fasta  # (if FASTA exists)
