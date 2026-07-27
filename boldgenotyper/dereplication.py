@@ -946,6 +946,16 @@ def identify_haplotypes(
 
     # Step 2: Load alignment
     logger.info("Step 2: Loading alignment...")
+    # Guard against empty FASTA (all sequences failed QC)
+    if aligned_fasta.stat().st_size == 0 or not any(
+        line.startswith(b">") for line in aligned_fasta.open("rb")
+    ):
+        raise ValueError(
+            "No sequences remain after quality control — cannot proceed with haplotype discovery. "
+            "All sequences failed ORF validation. If your organism is an invertebrate, try "
+            "--genetic-code 5 (invertebrate mitochondrial). Check the ORF validation report in "
+            "the intermediate/quality_control/ directory for details."
+        )
     alignment = list(AlignIO.read(str(aligned_fasta), "fasta"))
     aligned_seqs = [str(record.seq) for record in alignment]
     headers = [record.id for record in alignment]

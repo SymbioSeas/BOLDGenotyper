@@ -506,7 +506,9 @@ def run_pipeline(
 
         # Step 2.2: Orientation normalization and ORF validation
         logger.info("2.2: Normalizing sequence orientation and validating ORF...")
-        logger.info(f"  Using genetic code: {cfg.coi_validation.mitochondrial_code} (vertebrate mitochondrial)")
+        _code_names = {2: "vertebrate mitochondrial", 5: "invertebrate mitochondrial"}
+        _code_label = _code_names.get(cfg.coi_validation.mitochondrial_code, "NCBI genetic code")
+        logger.info(f"  Using genetic code: {cfg.coi_validation.mitochondrial_code} ({_code_label})")
         logger.info(f"  Minimum ORF coverage: {cfg.coi_validation.orf_min_coverage:.0%}")
         logger.info(f"  Maximum internal stops: {cfg.coi_validation.orf_max_internal_stops}")
 
@@ -2111,6 +2113,16 @@ Notes:
     )
 
     parser.add_argument(
+        '--genetic-code',
+        type=int,
+        default=2,
+        dest='genetic_code',
+        help='NCBI genetic code table for ORF validation (default: 2 = vertebrate mitochondrial). '
+             'Use 5 for most invertebrates (invertebrate mitochondrial). '
+             'See https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi for full list.'
+    )
+
+    parser.add_argument(
         '--version',
         action='version',
         version=f'BOLDGenotyper {__version__}'
@@ -2161,7 +2173,8 @@ Notes:
         phylogenetic__outgroup_fasta=args.phylo_outgroup_fasta,
         phylogenetic__outgroup_label=args.phylo_outgroup_label,
         phylogenetic__outgroup_taxon=args.phylo_outgroup_taxon,
-        keep_intermediates=args.keep_intermediates
+        keep_intermediates=args.keep_intermediates,
+        coi_validation__mitochondrial_code=args.genetic_code
     )
 
     # Print banner
@@ -2178,6 +2191,7 @@ Notes:
     print(f"  Tie threshold: {args.tie_threshold} ({args.tie_threshold*100:.0f}% identity)")
     print(f"  Singleton distance: {args.singleton_distance} ({args.singleton_distance*100:.1f}% — use boldgenotyper-sweep to optimise)")
     print(f"  Threads: {args.threads}")
+    print(f"  Genetic code: {args.genetic_code}")
     print(f"  Build tree: {args.build_tree}")
     print(f"  Phylo outgroup FASTA: {args.phylo_outgroup_fasta or 'None'}")
     print(f"  Phylo outgroup label: {args.phylo_outgroup_label or 'None'}")
