@@ -51,6 +51,18 @@ from . import __version__
 logger = logging.getLogger(__name__)
 
 
+# Shared help footer listing every installed BOLDGenotyper command, so running
+# --help on any one command surfaces the others. Referenced by each parser's
+# epilog; keep this the single source of truth for the command list.
+AVAILABLE_COMMANDS_EPILOG = """
+Available BOLDGenotyper commands:
+  boldgenotyper         Run the full haplotype-first genotyping pipeline
+  boldgenotyper-sweep   Optimise the singleton-distance threshold for a dataset
+  boldgenotyper-query   Assign new COI sequences to haplotypes from a prior run
+  Run '<command> --help' for the options and examples of any command.
+"""
+
+
 def extract_organism_from_path(path: Path) -> str:
     """
     Extract organism name from TSV filename and sanitize for consistent file naming.
@@ -1818,7 +1830,7 @@ def main_sweep(argv=None) -> int:
         prog="boldgenotyper-sweep",
         description="Sweep min_singleton_distance to optimise singleton error filtering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=AVAILABLE_COMMANDS_EPILOG + """
 Examples:
   # Test default threshold range
   boldgenotyper-sweep data/Sphyrna_lewini.tsv
@@ -1928,7 +1940,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='BOLDGenotyper: haplotype-first COI genotyping with optional phylogeny, divergence, and mapping outputs.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=AVAILABLE_COMMANDS_EPILOG + """
 Examples:
   # Basic usage (organism inferred from TSV filename)
   boldgenotyper data/Euprymna_scolopes.tsv
@@ -2345,7 +2357,7 @@ def main_query(argv=None) -> int:
         prog="boldgenotyper-query",
         description="Query new COI sequences against previously identified haplotypes",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=AVAILABLE_COMMANDS_EPILOG + """
 Examples:
   # Query single sequence
   boldgenotyper-query --query new_sample.fasta \\
