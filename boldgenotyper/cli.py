@@ -193,6 +193,75 @@ def get_viz_path(dirs: dict, filename: str, fmt: str, is_metadata: bool = False)
             return dirs['visualization_pdf'] / f"{filename}.{fmt}"
 
 
+def validate_shapefile_field(shapefile_path: Path, shapefile_field: Optional[str]) -> None:
+    """
+    Validate that shapefile_field exists in the given shapefile.
+
+    Prints available fields and exits with error if the field is not found.
+    When shapefile_field is None, returns immediately (auto-detection will occur later).
+
+    Parameters
+    ----------
+    shapefile_path : Path
+        Path to the .shp file
+    shapefile_field : str or None
+        The --shp-field value. None means auto-detect (always valid).
+
+    Raises
+    ------
+    SystemExit
+        If the field is specified but not found in the shapefile.
+    """
+    if shapefile_field is None:
+        return  # Auto-detection will handle this
+
+    try:
+        import geopandas as gpd
+        gdf = gpd.read_file(shapefile_path)
+        available = [c for c in gdf.columns if c != gdf.geometry.name]
+        if shapefile_field not in available:
+            available_str = ', '.join(available) if available else '(none — shapefile may be invalid)'
+            suggestion = (
+                f"\nRe-run with one of those fields, e.g.:\n"
+                f"  --shp-field {available[0]}"
+            ) if available else ""
+            print(
+                f"\nError: --shp-field '{shapefile_field}' not found in shapefile.\n"
+                f"  Shapefile: {shapefile_path}\n"
+                f"  Available fields: {available_str}"
+                f"{suggestion}",
+                file=sys.stderr
+            )
+            sys.exit(1)
+    except ImportError:
+        pass  # geopandas not available; geographic.py will raise a clear error later
+    except SystemExit:
+        raise  # Don't catch our own sys.exit()
+    except Exception as e:
+        print(
+            f"\nWarning: Could not pre-validate shapefile field: {e}\n"
+            f"Pipeline will attempt geographic analysis and report any errors.",
+            file=sys.stderr
+        )
+
+
+def _print_geo_failure_to_stderr(shapefile_path, error) -> None:
+    """Print a visible geographic analysis failure message to stderr."""
+    print(
+        f"\n{'='*60}\n"
+        f"WARNING: Geographic analysis was skipped.\n"
+        f"  Shapefile: {shapefile_path}\n"
+        f"  Reason: {error}\n"
+        f"\nNo distribution maps or geographic plots will be generated.\n"
+        f"To fix: check available shapefile fields with geopandas:\n"
+        f"  python -c \"import geopandas as gpd; "
+        f"gdf = gpd.read_file('{shapefile_path}'); print(gdf.columns.tolist())\"\n"
+        f"Then re-run with: --shp-field <correct_field_name>\n"
+        f"{'='*60}\n",
+        file=sys.stderr
+    )
+
+
 def run_pipeline(
     tsv_path: Path,
     organism: str,
@@ -207,7 +276,7 @@ def run_pipeline(
     normalize_sex: bool = False,
     temporal_analysis: bool = False,
     shapefile_path: Optional[Path] = None,
-    shapefile_field: str = 'name',
+    shapefile_field: Optional[str] = None,
     geo_category: str = 'ocean_basin',
 ) -> bool:
     """
@@ -389,6 +458,7 @@ def run_pipeline(
             except Exception as e:
                 logger.error(f"  ✗ Failed to load custom shapefile: {e}")
                 logger.warning("  Pipeline will continue without geographic analysis...")
+                _print_geo_failure_to_stderr(shapefile_path, e)
                 df_with_basins = df.copy()
                 df_with_basins[geo_category] = 'Unknown'
 
@@ -1297,7 +1367,8 @@ def run_pipeline(
                                 json.dump(bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Geographic region bar plot skipped: {e}")
+                        logger.warning(f"Geographic region bar plot skipped: {e}")
+                        logger.debug("Bar plot error details:", exc_info=True)
 
                 # Geographic region abundance bar plot (total counts)
                 if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
@@ -1315,7 +1386,8 @@ def run_pipeline(
                                 json.dump(total_bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Geographic region total abundance bar plot skipped: {e}")
+                        logger.warning(f"Geographic region total abundance bar plot skipped: {e}")
+                        logger.debug("Total bar plot error details:", exc_info=True)
 
                 # Species-level visualizations (if species data available)
                 species_assignments_csv = dirs['species_analysis'] / 'species_assignments.csv'
@@ -2034,11 +2106,14 @@ Notes:
     parser.add_argument(
         '--shp-field',
         type=str,
-        default='name',
+        default=None,
         dest='shapefile_field',
-        help='Name of shapefile attribute containing region labels (default: "name"). '
-             'Examples: "ECO_NAME" for Ecoregions2017, "HYBAS_ID" for HydroBASINS. '
-             'Use this to specify which field in your shapefile contains the region identifiers.'
+        help='Name of shapefile attribute containing region labels. '
+             'If not specified, the first available non-geometry field is auto-detected '
+             'and a warning is logged. '
+             'Examples: "ECO_NAME" for Ecoregions2017, "HYBAS_ID" for HydroBASINS, '
+             '"name" for GOaS. '
+             'Use this to specify which field contains the region identifiers.'
     )
 
     parser.add_argument(
@@ -2139,6 +2214,10 @@ Notes:
     if args.shapefile_path and not args.shapefile_path.exists():
         print(f"Error: Custom shapefile not found: {args.shapefile_path}", file=sys.stderr)
         return 1
+
+    # Pre-validate shapefile field before running pipeline
+    if args.shapefile_path:
+        validate_shapefile_field(args.shapefile_path, args.shapefile_field)
 
     # Resolve geo_category default: 'geographic_region' with custom shp, 'ocean_basin' with GOaS
     if args.geo_category is None:

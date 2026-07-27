@@ -90,7 +90,7 @@ def export_plot_data(
 
         # Add n_at_location for point sizing
         map_df = df[map_cols].copy()
-        map_df['location_key'] = map_df['lat'].round(4).astype(str) + '_' + map_df['lon'].round(4).astype(str)
+        map_df['location_key'] = pd.to_numeric(map_df['lat'], errors='coerce').round(4).astype(str) + '_' + pd.to_numeric(map_df['lon'], errors='coerce').round(4).astype(str)
         location_counts = map_df.groupby('location_key').size().rename('n_at_location')
         map_df = map_df.merge(location_counts, left_on='location_key', right_index=True)
         map_df = map_df.drop('location_key', axis=1)

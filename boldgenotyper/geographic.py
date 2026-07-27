@@ -599,7 +599,7 @@ def assign_ocean_basins(
 def assign_regions_from_shapefile(
     df: pd.DataFrame,
     shapefile_path: Union[str, Path],
-    shapefile_field: str = 'name',
+    shapefile_field: Optional[str] = None,
     output_column: str = 'geographic_region',
     lat_col: str = 'lat',
     lon_col: str = 'lon',
@@ -618,8 +618,9 @@ def assign_regions_from_shapefile(
         DataFrame with latitude/longitude coordinates
     shapefile_path : str or Path
         Path to shapefile containing geographic regions
-    shapefile_field : str, default='name'
-        Name of shapefile attribute containing region labels
+    shapefile_field : str or None, optional
+        Name of shapefile attribute containing region labels. If None (default),
+        the first non-geometry field is auto-detected and a warning is logged.
     output_column : str, default='geographic_region'
         Name of output column for region assignments
     lat_col : str, default='lat'
@@ -740,9 +741,25 @@ def assign_regions_from_shapefile(
         df_copy[output_column] = 'Unknown'
         return df_copy
 
+    # Auto-detect shapefile field if not provided
+    if shapefile_field is None:
+        geom_col = regions_gdf.geometry.name
+        non_geom_cols = [c for c in regions_gdf.columns if c != geom_col]
+        if not non_geom_cols:
+            raise ValueError(
+                "Shapefile has no non-geometry fields for region labeling. "
+                "Please verify the shapefile is valid."
+            )
+        shapefile_field = non_geom_cols[0]
+        logger.warning(
+            f"No --shp-field specified. Auto-detected field: '{shapefile_field}'. "
+            f"Available fields: {', '.join(non_geom_cols)}. "
+            f"Use --shp-field to explicitly choose a field."
+        )
+
     # Check if shapefile field exists
     if shapefile_field not in regions_gdf.columns:
-        available_fields = ', '.join(regions_gdf.columns)
+        available_fields = ', '.join(c for c in regions_gdf.columns if c != 'geometry')
         raise ValueError(
             f"Field '{shapefile_field}' not found in shapefile. "
             f"Available fields: {available_fields}"
@@ -774,8 +791,9 @@ def assign_regions_from_shapefile(
             predicate='within'
         )
 
-        # Extract region assignments
-        region_assignments = joined[shapefile_field].fillna('Unknown')
+        # Extract region assignments; convert to string so numeric fields (e.g. HYBAS_ID)
+        # are handled consistently throughout the rest of the pipeline.
+        region_assignments = joined[shapefile_field].fillna('Unknown').astype(str)
 
         # Assign to output dataframe
         df_copy.loc[has_coords, output_column] = region_assignments.values
@@ -795,7 +813,7 @@ def assign_regions_from_shapefile(
         # Show top regions
         if n_assigned > 0:
             top_regions = df_copy[df_copy[output_column] != 'Unknown'][output_column].value_counts().head(5)
-            logger.info(f"  Top regions: {', '.join(top_regions.index)}")
+            logger.info(f"  Top regions: {', '.join(str(r) for r in top_regions.index)}")
 
     except Exception as e:
         logger.error(f"Spatial join failed: {e}")

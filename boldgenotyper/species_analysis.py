@@ -238,7 +238,7 @@ def generate_species_geographic_summary(
 
     # Filter to confident species with coordinates
     confident = species_assignments[
-        (~species_assignments['is_ambiguous']) &
+        (~species_assignments['is_ambiguous'].fillna(False).astype(bool)) &
         (species_assignments['primary_species'].notna())
     ].copy()
 
@@ -335,7 +335,7 @@ def get_species_sample_list(
     mask = (
         (species_assignments['primary_species'] == species) &
         (species_assignments['primary_species_pct'] >= min_confidence) &
-        (~species_assignments['is_ambiguous'])
+        (~species_assignments['is_ambiguous'].fillna(False).astype(bool))
     )
     return species_assignments[mask]['processid'].tolist()
 
@@ -365,7 +365,7 @@ def get_species_haplotype_list(
     mask = (
         (species_assignments['primary_species'] == species) &
         (species_assignments['primary_species_pct'] >= min_confidence) &
-        (~species_assignments['is_ambiguous'])
+        (~species_assignments['is_ambiguous'].fillna(False).astype(bool))
     )
     return species_assignments[mask]['haplotype_id'].unique().tolist()
 
@@ -410,7 +410,7 @@ def generate_species_faceted_haplotype_subsets(
 
     # Filter to confident species assignments
     confident = species_assignments[
-        (~species_assignments['is_ambiguous']) &
+        (~species_assignments['is_ambiguous'].fillna(False).astype(bool)) &
         (species_assignments['primary_species'].notna())
     ].copy()
 

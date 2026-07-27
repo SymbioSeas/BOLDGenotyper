@@ -745,12 +745,12 @@ def mark_coordinate_quality(
 
     # 5. Create overall geographic quality flag
     # Geographic quality = no quality issues
-    df_marked['is_geographic_quality'] = ~(
+    df_marked['is_geographic_quality'] = (~(
         df_marked['has_missing_coords'] |
         df_marked['has_centroid_coords'] |
         df_marked['has_zero_coords'] |
         df_marked['has_invalid_coords']
-    )
+    )).astype(bool)
 
     n_total = len(df_marked)
     n_geo_quality = df_marked['is_geographic_quality'].sum()

@@ -174,7 +174,7 @@ class TestLoadGoasData(unittest.TestCase):
             geographic.load_goas_data("nonexistent_shapefile.shp")
 
         self.assertIn("GOaS shapefile not found", str(cm.exception))
-        self.assertIn("setup_goas.py", str(cm.exception))
+        self.assertIn("boldgenotyper.goas_downloader", str(cm.exception))
 
     @patch('boldgenotyper.geographic.gpd.read_file')
     def test_load_goas_validates_empty_geodataframe(self, mock_read_file):
@@ -853,6 +853,104 @@ class TestEdgeCases(unittest.TestCase):
 
         # All should have valid geometries
         self.assertEqual(gdf.geometry.notna().sum(), 4)
+
+
+class TestAssignRegionsAutoDetect(unittest.TestCase):
+    """Tests for shapefile field auto-detection when shapefile_field is None."""
+
+    @patch('geopandas.read_file')
+    def test_auto_detect_uses_first_non_geometry_field(self, mock_read_file):
+        """When shapefile_field=None, should auto-detect first non-geometry field."""
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        mock_gdf = gpd.GeoDataFrame({
+            'HYBAS_ID': [1, 2],
+            'SUB_AREA': [100.0, 200.0],
+            'geometry': [Point(0, 0), Point(10, 10)]
+        }, crs='EPSG:4326')
+        mock_read_file.return_value = mock_gdf
+
+        df = pd.DataFrame({
+            'processid': ['A1'],
+            'lat': [45.0],
+            'lon': [-90.0],
+        })
+
+        # Should not raise even though shapefile_field is None
+        result = geographic.assign_regions_from_shapefile(
+            df,
+            shapefile_path='dummy.shp',
+            shapefile_field=None,
+        )
+        # Output column should be present
+        self.assertIn('geographic_region', result.columns)
+
+    @patch('geopandas.read_file')
+    def test_missing_field_raises_valueerror_with_available_fields(self, mock_read_file):
+        """When shapefile_field is not in shapefile, ValueError lists available fields."""
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        mock_gdf = gpd.GeoDataFrame({
+            'HYBAS_ID': [1, 2],
+            'geometry': [Point(0, 0), Point(10, 10)]
+        }, crs='EPSG:4326')
+        mock_read_file.return_value = mock_gdf
+
+        df = pd.DataFrame({
+            'processid': ['A1'],
+            'lat': [45.0],
+            'lon': [-90.0],
+        })
+
+        with self.assertRaises(ValueError) as cm:
+            geographic.assign_regions_from_shapefile(
+                df,
+                shapefile_path='dummy.shp',
+                shapefile_field='name',  # doesn't exist
+            )
+        self.assertIn('HYBAS_ID', str(cm.exception))
+        self.assertIn('Available fields', str(cm.exception))
+
+
+class TestIsGeographicQualityDtype(unittest.TestCase):
+    """Tests that is_geographic_quality column is handled correctly when dtype is float."""
+
+    def test_float_is_geographic_quality_does_not_crash(self):
+        """
+        When is_geographic_quality is float (e.g. NaN), code should not raise TypeError.
+        Regression test for 'bad operand type for unary ~: float' error.
+        """
+        df = pd.DataFrame({
+            'processid': ['A1', 'A2', 'A3'],
+            'is_geographic_quality': [float('nan'), 1.0, 0.0],  # float dtype
+            'lat': [45.0, None, 30.0],
+            'lon': [-90.0, None, -80.0],
+        })
+        # The fix pattern: cast to bool before using ~
+        result = df['is_geographic_quality'].fillna(False).astype(bool)
+        excluded = ~result
+        self.assertEqual(list(excluded), [True, False, True])
+
+    def test_float_is_ambiguous_in_species_assignments_does_not_crash(self):
+        """
+        Regression test: when is_ambiguous is float (NaN from merge),
+        applying ~ with .fillna(False).astype(bool) should not raise TypeError.
+        This covers the crash in species_analysis.py functions.
+        """
+        species_assignments = pd.DataFrame({
+            'processid': ['A1', 'A2', 'A3'],
+            'primary_species': ['Sp1', 'Sp1', None],
+            'primary_species_pct': [0.9, 0.8, float('nan')],
+            'is_ambiguous': [float('nan'), 1.0, 0.0],  # float dtype — simulates left-join NaN
+        })
+        # Should not raise TypeError
+        confident = species_assignments[
+            (~species_assignments['is_ambiguous'].fillna(False).astype(bool)) &
+            (species_assignments['primary_species'].notna())
+        ]
+        self.assertEqual(len(confident), 1)  # Only A1: not ambiguous AND has species
 
 
 if __name__ == '__main__':

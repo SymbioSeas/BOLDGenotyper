@@ -71,7 +71,11 @@ def assess_geographic_coverage(
         n_total = len(group_df)
 
         # Get species
-        species = group_df[species_col].mode()[0] if species_col in group_df.columns else "Unknown"
+        if species_col in group_df.columns:
+            mode_result = group_df[species_col].mode()
+            species = mode_result.iloc[0] if len(mode_result) > 0 else "Unknown"
+        else:
+            species = "Unknown"
 
         # Count samples with different levels of geographic data
         has_lat_lon = 0
