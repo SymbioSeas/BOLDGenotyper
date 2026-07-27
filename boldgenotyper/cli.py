@@ -44,7 +44,7 @@ from . import (
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
-    metadata_analysis,
+    metadata_summary,
 )
 from . import __version__
 
@@ -202,7 +202,7 @@ def run_pipeline(
     skip_geo: bool = False,
     export_plot_data: bool = True,
     export_popgen_formats: Optional[list] = None,
-    metadata_analysis_enabled: bool = False,
+    metadata_summary_enabled: bool = False,
     metadata_fields: Optional[list] = None,
     normalize_sex: bool = False,
     temporal_analysis: bool = False,
@@ -1202,20 +1202,18 @@ def run_pipeline(
         logger.debug("Divergence analysis error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 9.5: Metadata Analysis
+    # PHASE 9.5: Metadata Summarization
     # ========================================================================
-    metadata_analysis_results = None
-    if metadata_analysis_enabled:
+    metadata_summary_results = None
+    if metadata_summary_enabled:
         logger.info("")
-        logger.info("PHASE 9.5: Metadata Analysis")
+        logger.info("PHASE 9.5: Metadata Summarization")
         logger.info("-" * 80)
 
         try:
-            # Build color map for consistent visualization
             color_map = visualization.build_genotype_colors_dict(df_final, 'haplotype_sp')
 
-            # Run metadata analysis (handles missing fields gracefully)
-            metadata_analysis_results = metadata_analysis.run_metadata_analysis(
+            metadata_summary_results = metadata_summary.run_metadata_summary(
                 annotated_df=df_final,
                 output_dir=output_dir,
                 organism=organism,
@@ -1226,20 +1224,20 @@ def run_pipeline(
                 haplotype_col='haplotype_sp'
             )
 
-            logger.info(f"  ✓ Metadata analysis complete")
-            logger.info(f"    - Fields analyzed: {metadata_analysis_results.get('n_fields_analyzed', 0)}")
-            logger.info(f"    - Visualizations created: {metadata_analysis_results.get('n_visualizations', 0)}")
-            if metadata_analysis_results.get('temporal_analysis'):
+            logger.info(f"  ✓ Metadata summarization complete")
+            logger.info(f"    - Fields tabulated: {metadata_summary_results.get('n_fields_tabulated', 0)}")
+            logger.info(f"    - Visualizations created: {metadata_summary_results.get('n_visualizations', 0)}")
+            if metadata_summary_results.get('temporal_analysis'):
                 logger.info(f"    - Temporal analysis: enabled")
-            if metadata_analysis_results.get('missing_fields'):
-                logger.info(f"    - Missing fields (skipped): {', '.join(metadata_analysis_results.get('missing_fields', []))}")
+            if metadata_summary_results.get('missing_fields'):
+                logger.info(f"    - Missing fields (skipped): {', '.join(metadata_summary_results.get('missing_fields', []))}")
 
         except Exception as e:
-            logger.warning(f"Metadata analysis failed (non-critical): {e}")
-            logger.debug("Metadata analysis error details:", exc_info=True)
+            logger.warning(f"Metadata summarization failed (non-critical): {e}")
+            logger.debug("Metadata summarization error details:", exc_info=True)
     else:
         logger.info("")
-        logger.info("PHASE 9.5: Metadata Analysis - SKIPPED (--no-metadata-analysis was specified)")
+        logger.info("PHASE 9.5: Metadata Summarization - SKIPPED (--no-metadata-summary was specified)")
 
     # ========================================================================
     # PHASE 10: Visualization
@@ -1626,8 +1624,8 @@ def run_pipeline(
                 output_dir=output_dir,
                 organism=organism,
                 formats=export_popgen_formats,
-                group_by='haplotype_id',
-                geo_category=geo_category
+                pop_column=geo_category,
+                haplotype_column='haplotype_id',
             )
 
             logger.info(f"  ✓ Population genetics formats exported to {output_dir / 'exports'}")
@@ -1990,11 +1988,19 @@ Notes:
     parser.add_argument(
         '--export-format',
         nargs='+',
+        default=['all'],
         choices=['arlequin', 'popart', 'dnasp', 'generic', 'all'],
-        help='Export genotypes to population genetics software formats. '
-             'Options: arlequin (Arlequin), popart (PopART/NEXUS), dnasp (DnaSP), '
-             'generic (CSV/FASTA), all (export all formats). '
+        help='Population genetics formats to export (default: all). '
+             'Options: arlequin (Arlequin .arp), popart (PopART/NEXUS), '
+             'dnasp (DnaSP .fas), generic (CSV/FASTA), all. '
+             'Populations in Arlequin and DnaSP are defined by --geo-category. '
+             'Use --no-export-format to skip popgen export entirely. '
              'Example: --export-format arlequin popart'
+    )
+    parser.add_argument(
+        '--no-export-format',
+        action='store_true',
+        help='Skip population genetics export entirely (overrides --export-format).'
     )
 
     parser.add_argument(
@@ -2045,18 +2051,23 @@ Notes:
              'and column names.'
     )
 
-    # Metadata Analysis Arguments (enabled by default)
+    # Metadata Summarization Arguments (enabled by default).
+    # Note: --no-metadata-analysis is retained as a deprecated alias of
+    # --no-metadata-summary to keep older invocations working.
     parser.add_argument(
+        '--no-metadata-summary',
         '--no-metadata-analysis',
+        dest='no_metadata_summary',
         action='store_true',
-        help='Disable metadata analysis module (enabled by default)'
+        help='Disable metadata summarization (enabled by default). '
+             'The legacy alias --no-metadata-analysis is also accepted.'
     )
 
     parser.add_argument(
         '--metadata-fields',
         nargs='+',
         default=None,
-        help='Metadata fields to analyze. Default: sex, life_stage, reproduction, '
+        help='Metadata fields to tabulate. Default: sex, life_stage, reproduction, '
              'country/ocean, country_iso, province/state, realm, biome, ecoregion, habitat, geoid'
     )
 
@@ -2194,8 +2205,8 @@ Notes:
             no_report=args.no_report,
             skip_geo=args.no_geo,
             export_plot_data=not args.no_export_plot_data,
-            export_popgen_formats=args.export_format,
-            metadata_analysis_enabled=not args.no_metadata_analysis,
+            export_popgen_formats=(None if args.no_export_format else args.export_format),
+            metadata_summary_enabled=not args.no_metadata_summary,
             metadata_fields=args.metadata_fields,
             normalize_sex=not args.no_normalize_sex,
             temporal_analysis=not args.no_temporal_analysis,

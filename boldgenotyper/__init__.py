@@ -50,7 +50,7 @@ from . import visualization
 from . import phylogenetics
 from . import divergence_analysis
 from . import species_analysis
-from . import metadata_analysis
+from . import metadata_summary
 from . import reports
 from . import plot_export
 from . import plot_regeneration
@@ -72,7 +72,7 @@ __all__ = [
     "phylogenetics",
     "divergence_analysis",
     "species_analysis",
-    "metadata_analysis",
+    "metadata_summary",
     "reports",
     "plot_export",
     "plot_regeneration",

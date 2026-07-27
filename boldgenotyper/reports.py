@@ -1456,7 +1456,7 @@ HTML_REPORT_TEMPLATE = """
                         <a href="#section-geographic" class="sidebar-nav-link">Geography</a>
                     </li>
                     <li class="sidebar-nav-item">
-                        <a href="#section-metadata-analysis" class="sidebar-nav-link">Metadata Analysis</a>
+                        <a href="#section-metadata-summary" class="sidebar-nav-link">Metadata Summary</a>
                     </li>
                 </ul>
             </nav>
@@ -3106,15 +3106,16 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
     return html
 
 
-def _build_metadata_analysis_section(
+def _build_metadata_summary_section(
     output_dir: Path,
     organism: str
 ) -> str:
     """
-    Build metadata analysis section for HTML report.
+    Build metadata summarization section for HTML report.
 
-    Includes coverage statistics, categorical field analyses,
-    temporal trends, and statistical association tests.
+    Includes coverage statistics, per-field categorical tabulations, and
+    temporal trends. Hypothesis testing (chi-square) was removed; see
+    metadata_summary.py module docstring for rationale.
 
     Parameters
     ----------
@@ -3126,12 +3127,12 @@ def _build_metadata_analysis_section(
     Returns
     -------
     str
-        HTML content for metadata analysis section
+        HTML content for metadata summary section
     """
-    html = '<div class="section" id="section-metadata-analysis">\n'
-    html += '<h2>Metadata Analysis</h2>\n'
+    html = '<div class="section" id="section-metadata-summary">\n'
+    html += '<h2>Metadata Summary</h2>\n'
 
-    metadata_dir = output_dir / 'metadata_analysis'
+    metadata_dir = output_dir / 'metadata_summary'
     viz_dir = output_dir / 'visualization' / 'metadata'
     viz_png_dir = viz_dir / 'png'
 
@@ -3143,15 +3144,15 @@ def _build_metadata_analysis_section(
                 return p
         return viz_dir / basename  # Default path even if not found
 
-    # Check if metadata analysis was performed
+    # Check if metadata summarization was performed
     if not metadata_dir.exists():
-        html += '<p class="alert alert-info">Metadata analysis not performed. '
-        html += 'Use <code>--metadata-analysis</code> flag to enable.</p>\n'
+        html += '<p class="alert alert-info">Metadata summarization not performed. '
+        html += 'It runs by default; use <code>--no-metadata-summary</code> to disable.</p>\n'
         html += '</div>\n'
         return html
 
     html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">'
-    html += f'📁 Full metadata analysis outputs available at: <code>metadata_analysis/</code></p>\n'
+    html += f'📁 Full metadata summary outputs available at: <code>metadata_summary/</code></p>\n'
 
     # 1. Coverage Overview
     coverage_json = metadata_dir / f'{organism}_metadata_coverage.json'
@@ -3206,38 +3207,7 @@ def _build_metadata_analysis_section(
                 html += f'<img src="{encoded}" alt="Metadata Coverage" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
-    # 2. Statistical Association Tests
-    assoc_tests = metadata_dir / 'statistical_tests' / f'{organism}_association_tests.csv'
-    if assoc_tests.exists():
-        html += '<h3>Statistical Association Tests</h3>\n'
-        html += '<p>Chi-square tests for association between haplotype distribution and metadata fields.</p>\n'
-
-        try:
-            assoc_df = pd.read_csv(assoc_tests)
-            if not assoc_df.empty:
-                # Format for display
-                display_df = assoc_df[['field', 'test_type', 'statistic', 'p_value', 'n_samples', 'warning']].copy()
-                display_df['p_value'] = display_df['p_value'].apply(
-                    lambda x: f'{x:.4f}' if pd.notna(x) else '-'
-                )
-                display_df['statistic'] = display_df['statistic'].apply(
-                    lambda x: f'{x:.2f}' if pd.notna(x) else '-'
-                )
-                display_df.columns = ['Field', 'Test', 'Statistic', 'P-value', 'N', 'Notes']
-
-                html += _dataframe_to_html(display_df, max_rows=15)
-
-                # Highlight significant results
-                significant = assoc_df[assoc_df['p_value'] < 0.05]
-                if len(significant) > 0:
-                    html += '<div class="alert alert-info">\n'
-                    html += '<strong>Significant Associations (p < 0.05):</strong> '
-                    html += ', '.join(significant['field'].tolist())
-                    html += '</div>\n'
-        except Exception as e:
-            html += f'<p class="alert alert-warning">Could not load association tests: {e}</p>\n'
-
-    # 3. Temporal Analysis
+    # 2. Temporal Analysis
     temporal_summary = metadata_dir / f'{organism}_temporal_summary.csv'
     emergence_csv = metadata_dir / f'{organism}_haplotype_emergence.csv'
 
@@ -3293,7 +3263,7 @@ def _build_metadata_analysis_section(
     if categorical_files:
         html += '<h3>Categorical Field Analyses</h3>\n'
         html += '<p>Haplotype distribution across selected metadata categories. '
-        html += 'Full analyses available in <code>metadata_analysis/</code> directory.</p>\n'
+        html += 'Full tabulations available in <code>metadata_summary/</code> directory.</p>\n'
 
         # Create tabs for each categorical analysis
         html += '<div class="subtabs">\n'
@@ -4358,7 +4328,7 @@ def generate_html_report(
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
         builder.add_section(_build_species_composition_section(species_comp_dir, organism, annotated_df))
         builder.add_section(_build_geographic_section(annotated_df))
-        builder.add_section(_build_metadata_analysis_section(output_dir, organism))
+        builder.add_section(_build_metadata_summary_section(output_dir, organism))
 
         # Render HTML
         html_content = builder.render()

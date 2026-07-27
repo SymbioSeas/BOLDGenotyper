@@ -1,10 +1,20 @@
 """
 Population Genetics Export Module for BOLDGenotyper
 
-This module exports genotyping results to various population genetics software formats,
-enabling seamless integration with downstream analysis tools. Geographic region columns
-are handled generically via a ``geo_category`` parameter, supporting ocean basins (GOaS),
-freshwater drainage basins, ecoregions, or any custom polygon-based classification.
+Exports BOLDGenotyper haplotype assignments to standard population-genetics
+software formats. Populations are defined by a user-specified geographic
+region column (``pop_column``), which by default is ``geo_category`` (e.g.,
+'ocean_basin', 'PFAF_ID', 'REALM') — i.e., the same shapefile field used in
+Phase 5 to assign samples to populations. Samples without a population
+assignment are excluded from formats that require structured populations
+(Arlequin, DnaSP); they are retained for haplotype-network visualization
+(PopART) where region is encoded as a coloring trait rather than a
+population definition.
+
+Because BOLDGenotyper dereplicates ESVs at 100% identity, samples assigned
+to a given haplotype have identical trimmed core sequences. The haplotype
+consensus sequence is therefore equivalent to each member sample's trimmed
+sequence, and is used as the per-sample sequence in all exports.
 
 Supported formats:
 - Arlequin (.arp): Population genetics and genomics analysis
@@ -29,31 +39,55 @@ from Bio.SeqRecord import SeqRecord
 logger = logging.getLogger(__name__)
 
 
+# Sentinel strings used by geographic.py for samples that could not be assigned.
+# These are treated as equivalent to a missing population in all formats that
+# require a structured population partition (Arlequin, DnaSP). Case-insensitive.
+_UNASSIGNED_SENTINELS = {"unknown", "unassigned", "na", "n/a", "none", ""}
+
+
+def _has_population(value: Any) -> bool:
+    """Return True iff value is a real population label (not null/sentinel)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip().lower() not in _UNASSIGNED_SENTINELS
+
+
 def export_arlequin(
     df: pd.DataFrame,
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group',
-    geo_category: str = 'ocean_basin'
+    pop_column: str = 'ocean_basin',
+    haplotype_column: str = 'haplotype_id'
 ) -> Path:
     """
     Export data in Arlequin format (.arp).
 
+    Each population in the .arp file corresponds to one unique value of
+    ``pop_column`` (e.g., one ocean basin, drainage basin, or ecoregion).
+    Samples lacking a value in ``pop_column`` are excluded.
+
     Parameters
     ----------
     df : pd.DataFrame
-        Annotated dataframe with genotype assignments
+        Annotated dataframe with haplotype assignments
     consensus_seqs : dict
-        Dictionary mapping consensus group IDs to sequences
+        Dictionary mapping haplotype IDs to consensus sequences
     output_dir : Path
         Output directory for Arlequin files
     organism : str
         Organism name
-    group_by : str
-        Column to use for population grouping (default: 'consensus_group')
-    geo_category : str
-        Column name for geographic region (default: 'ocean_basin')
+    pop_column : str
+        Column whose unique values define populations (default: 'ocean_basin').
+        Typically the same column used in Phase 5 geographic assignment.
+    haplotype_column : str
+        Column holding each sample's haplotype assignment, used to look up
+        the sequence in ``consensus_seqs`` (default: 'haplotype_id').
 
     Returns
     -------
@@ -63,83 +97,118 @@ def export_arlequin(
     output_dir.mkdir(parents=True, exist_ok=True)
     arp_file = output_dir / f"{organism}.arp"
 
-    # Filter to samples with assignments
-    df_assigned = df[df[group_by].notna()].copy()
-
-    if len(df_assigned) == 0:
-        logger.warning("No samples with genotype assignments to export")
+    if pop_column not in df.columns:
+        logger.warning(
+            f"Arlequin export skipped: population column '{pop_column}' not found "
+            f"in dataframe (available: geographic assignment may have been disabled)"
+        )
         return arp_file
 
-    # Get unique populations/genotypes
-    populations = sorted(df_assigned[group_by].unique())
+    # Keep samples with BOTH a haplotype assignment and a real population label
+    # (excluding sentinels like "Unknown" used for samples that couldn't be assigned).
+    pop_mask = df[pop_column].map(_has_population)
+    df_eligible = df[df[haplotype_column].notna() & pop_mask].copy()
+
+    n_total = int(df[haplotype_column].notna().sum())
+    n_dropped = n_total - len(df_eligible)
+    if n_dropped > 0:
+        logger.info(
+            f"  Arlequin: {n_dropped} haplotype-assigned samples lack an assigned '{pop_column}' "
+            f"and were excluded from .arp export"
+        )
+
+    if len(df_eligible) == 0:
+        logger.warning(
+            f"No samples have both a haplotype assignment and a '{pop_column}' value; "
+            f"Arlequin .arp will not be written."
+        )
+        return arp_file
+
+    populations = sorted(df_eligible[pop_column].astype(str).unique())
     n_populations = len(populations)
 
-    # Start building Arlequin file
-    content = f"""[Profile]
-    Title="{organism} genotypes from BOLD - exported by BOLDGenotyper"
-    NbSamples={n_populations}
-    DataType=DNA
-    GenotypicData=0
-    LocusSeparator=NONE
-    MissingData='?'
+    # Arlequin .arp header
+    content = (
+        f"[Profile]\n"
+        f"    Title=\"{organism} populations exported by BOLDGenotyper "
+        f"(populations = {pop_column})\"\n"
+        f"    NbSamples={n_populations}\n"
+        f"    DataType=DNA\n"
+        f"    GenotypicData=0\n"
+        f"    LocusSeparator=NONE\n"
+        f"    MissingData='?'\n"
+        f"\n"
+        f"[Data]\n"
+        f"    [[Samples]]\n"
+        f"\n"
+    )
 
-[Data]
-    [[Samples]]
-
-"""
-
-    # Add each population
+    # One SampleData block per population
+    skipped_no_seq = 0
     for pop in populations:
-        pop_df = df_assigned[df_assigned[group_by] == pop]
-        sample_size = len(pop_df)
+        pop_df = df_eligible[df_eligible[pop_column].astype(str) == pop]
 
-        content += f"""    SampleName="{pop}"
-    SampleSize={sample_size}
-    SampleData= {{
-"""
-
-        # Add sequences for this population
-        for idx, row in pop_df.iterrows():
-            sample_id = row['processid']
-            # Use the consensus sequence if available, otherwise try to get individual sequence
-            if pop in consensus_seqs:
-                seq = consensus_seqs[pop]
-            elif 'nuc' in row and pd.notna(row['nuc']):
-                seq = str(row['nuc'])
-            else:
+        rows = []
+        for _, row in pop_df.iterrows():
+            sample_id = str(row['processid']).replace(' ', '_')
+            hap = row[haplotype_column]
+            seq = consensus_seqs.get(hap)
+            if seq is None:
+                skipped_no_seq += 1
                 continue
+            # Arlequin sequence-data syntax: sample_name  count  sequence
+            rows.append(f"        {sample_id} 1 {seq}")
 
-            # Arlequin format: frequency sample_name haplotype_id sequence
-            content += f"        1 {sample_id} 1 {seq}\n"
+        if not rows:
+            continue
 
-        content += "    }\n    \n"
+        pop_safe = str(pop).replace(' ', '_').replace('"', '')
+        content += (
+            f"    SampleName=\"{pop_safe}\"\n"
+            f"    SampleSize={len(rows)}\n"
+            f"    SampleData= {{\n"
+        )
+        content += "\n".join(rows) + "\n"
+        content += "    }\n\n"
 
-    # Write file
+    # Structure block: one group containing all populations (enables AMOVA out of the box)
+    content += "[[Structure]]\n"
+    content += f"    StructureName=\"All populations\"\n"
+    content += f"    NbGroups=1\n"
+    content += f"    Group={{\n"
+    for pop in populations:
+        pop_safe = str(pop).replace(' ', '_').replace('"', '')
+        content += f"        \"{pop_safe}\"\n"
+    content += "    }\n"
+
     with open(arp_file, 'w') as f:
         f.write(content)
 
-    logger.info(f"  ✓ Arlequin format exported: {arp_file}")
+    logger.info(
+        f"  ✓ Arlequin .arp exported: {arp_file} "
+        f"({n_populations} populations, {len(df_eligible)} samples"
+        + (f", {skipped_no_seq} samples skipped for missing consensus)" if skipped_no_seq else ")")
+    )
 
-    # Also create a populations definition file
-    pop_file = output_dir / "populations.txt"
-    pop_mapping = df_assigned.groupby(group_by).agg({
-        'processid': 'count',
-        'species': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown'
-    }).reset_index()
-    pop_mapping.columns = ['population', 'n_samples', 'species']
-
-    if geo_category in df_assigned.columns:
-        region_mapping = df_assigned.groupby(group_by)[geo_category].agg(
-            lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown'
-        )
-        pop_mapping = pop_mapping.merge(
-            region_mapping.rename(geo_category),
-            left_on='population',
-            right_index=True,
-            how='left'
-        )
-
-    pop_mapping.to_csv(pop_file, index=False)
+    # Companion populations.csv with per-population summary (samples, haplotypes, dominant species)
+    pop_file = output_dir / "populations.csv"
+    summary_rows = []
+    for pop in populations:
+        pop_df = df_eligible[df_eligible[pop_column].astype(str) == pop]
+        n_samples = len(pop_df)
+        n_haps = pop_df[haplotype_column].nunique()
+        if 'species' in pop_df.columns:
+            mode_sp = pop_df['species'].mode()
+            dom_species = mode_sp.iloc[0] if len(mode_sp) > 0 else 'Unknown'
+        else:
+            dom_species = 'Unknown'
+        summary_rows.append({
+            'population': pop,
+            'n_samples': n_samples,
+            'n_haplotypes': n_haps,
+            'dominant_species': dom_species,
+        })
+    pd.DataFrame(summary_rows).to_csv(pop_file, index=False)
 
     return arp_file
 
@@ -149,130 +218,123 @@ def export_popart_nexus(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group',
-    geo_category: str = 'ocean_basin'
+    pop_column: str = 'ocean_basin',
+    haplotype_column: str = 'haplotype_id'
 ) -> Tuple[Path, Path]:
     """
-    Export data in PopART/NEXUS format.
+    Export data in PopART/NEXUS format for haplotype-network construction.
+
+    All samples with a haplotype assignment are included as taxa. Geographic
+    region is encoded as a trait (used by PopART to color network nodes)
+    rather than as a hard population partition; samples lacking a
+    ``pop_column`` value are retained with region='Unassigned' so the network
+    still shows them.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Annotated dataframe with genotype assignments
+        Annotated dataframe with haplotype assignments
     consensus_seqs : dict
-        Dictionary mapping consensus group IDs to sequences
+        Dictionary mapping haplotype IDs to consensus sequences
     output_dir : Path
         Output directory
     organism : str
         Organism name
-    group_by : str
-        Column to use for population grouping
-    geo_category : str
-        Column name for geographic region (default: 'ocean_basin')
+    pop_column : str
+        Column whose values are used as the region trait (default: 'ocean_basin')
+    haplotype_column : str
+        Column holding each sample's haplotype assignment (default: 'haplotype_id')
 
     Returns
     -------
     tuple
-        Paths to .nexus file and .traits file
+        Paths to .nexus file and .traits file (.traits is currently empty;
+        traits are written inline in the .nexus)
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     nexus_file = output_dir / f"{organism}.nexus"
     traits_file = output_dir / f"{organism}.traits"
 
-    # Filter to samples with assignments
-    df_assigned = df[df[group_by].notna()].copy()
+    df_assigned = df[df[haplotype_column].notna()].copy()
 
     if len(df_assigned) == 0:
-        logger.warning("No samples with genotype assignments to export")
+        logger.warning("No samples with haplotype assignments to export")
         return nexus_file, traits_file
 
-    # Build taxa list with unique sample IDs
-    taxa = []
-    sequences = []
-    traits = []
+    has_pop = pop_column in df_assigned.columns
 
-    sample_counter = {}  # Track sample number within each genotype
+    taxa: List[str] = []
+    sequences: List[str] = []
+    traits: List[Tuple[str, str, str, str]] = []
+    sample_counter: Dict[str, int] = {}
+    skipped_no_seq = 0
 
-    for idx, row in df_assigned.iterrows():
-        genotype = row[group_by]
-        sample_id = row['processid']
+    for _, row in df_assigned.iterrows():
+        hap = row[haplotype_column]
+        if hap not in consensus_seqs:
+            skipped_no_seq += 1
+            continue
 
-        # Create unique taxon name: genotype_samplenum
-        if genotype not in sample_counter:
-            sample_counter[genotype] = 0
-        sample_counter[genotype] += 1
-
-        taxon_name = f"{genotype}_{sample_counter[genotype]:03d}"
+        sample_counter[hap] = sample_counter.get(hap, 0) + 1
+        taxon_name = f"{hap}_{sample_counter[hap]:03d}"
         taxa.append(taxon_name)
+        sequences.append(consensus_seqs[hap])
 
-        # Get sequence - use consensus for this genotype
-        if genotype in consensus_seqs:
-            seq = consensus_seqs[genotype]
-        elif 'nuc' in row and pd.notna(row['nuc']):
-            seq = str(row['nuc'])
+        species_val = row.get('species')
+        species = (str(species_val).replace(' ', '_')
+                   if pd.notna(species_val) else 'Unknown')
+
+        if has_pop and _has_population(row.get(pop_column)):
+            region = str(row[pop_column]).replace(' ', '_')
         else:
-            seq = '?' * 650  # placeholder
+            region = 'Unassigned'
 
-        sequences.append(seq)
+        traits.append((taxon_name, str(hap), species, region))
 
-        # Build traits
-        species = row.get('species', 'Unknown') if pd.notna(row.get('species')) else 'Unknown'
-        species = species.replace(' ', '_')
+    if not taxa:
+        logger.warning("No taxa produced for PopART NEXUS export.")
+        return nexus_file, traits_file
 
-        region = row.get(geo_category, 'Unknown') if pd.notna(row.get(geo_category)) else 'Unknown'
-        region = region.replace(' ', '_')
+    seq_length = max(len(s) for s in sequences)
 
-        traits.append((taxon_name, genotype, species, region))
+    nexus_content = "#NEXUS\n\n"
+    nexus_content += "BEGIN TAXA;\n"
+    nexus_content += f"    DIMENSIONS NTAX={len(taxa)};\n"
+    nexus_content += "    TAXLABELS\n"
+    nexus_content += "        " + " ".join(taxa) + "\n"
+    nexus_content += "    ;\nEND;\n\n"
 
-    # Get sequence length
-    seq_length = max(len(s) for s in sequences) if sequences else 650
-
-    # Write NEXUS file
-    nexus_content = f"""#NEXUS
-BEGIN TAXA;
-    DIMENSIONS NTAX={len(taxa)};
-    TAXLABELS
-        {' '.join(taxa)}
-    ;
-END;
-
-BEGIN CHARACTERS;
-    DIMENSIONS NCHAR={seq_length};
-    FORMAT DATATYPE=DNA MISSING=? GAP=-;
-    MATRIX
-"""
-
+    nexus_content += "BEGIN CHARACTERS;\n"
+    nexus_content += f"    DIMENSIONS NCHAR={seq_length};\n"
+    nexus_content += "    FORMAT DATATYPE=DNA MISSING=? GAP=-;\n"
+    nexus_content += "    MATRIX\n"
     for taxon, seq in zip(taxa, sequences):
-        # Pad sequences to same length
         seq_padded = seq.ljust(seq_length, '?')
         nexus_content += f"        {taxon}  {seq_padded}\n"
+    nexus_content += "    ;\nEND;\n\n"
 
-    nexus_content += f"""    ;
-END;
-
-BEGIN TRAITS;
-    DIMENSIONS NTRAITS=3;
-    FORMAT LABELS=YES MISSING=? SEPARATOR=COMMA;
-    TRAITLABELS genotype species {geo_category};
-    MATRIX
-"""
-
-    for taxon, genotype, species, region in traits:
-        nexus_content += f"        {taxon},{genotype},{species},{region}\n"
-
-    nexus_content += """    ;
-END;
-"""
+    nexus_content += "BEGIN TRAITS;\n"
+    nexus_content += "    DIMENSIONS NTRAITS=3;\n"
+    nexus_content += "    FORMAT LABELS=YES MISSING=? SEPARATOR=COMMA;\n"
+    nexus_content += f"    TRAITLABELS haplotype species {pop_column};\n"
+    nexus_content += "    MATRIX\n"
+    for taxon, hap, species, region in traits:
+        nexus_content += f"        {taxon},{hap},{species},{region}\n"
+    nexus_content += "    ;\nEND;\n"
 
     with open(nexus_file, 'w') as f:
         f.write(nexus_content)
 
-    logger.info(f"  ✓ PopART NEXUS format exported: {nexus_file}")
+    msg = f"  ✓ PopART NEXUS exported: {nexus_file} ({len(taxa)} taxa)"
+    if skipped_no_seq:
+        msg += f"; {skipped_no_seq} samples skipped for missing consensus"
+    logger.info(msg)
 
-    # Also create a populations CSV file
-    pop_csv = output_dir / "populations.csv"
-    pop_df = pd.DataFrame(traits, columns=['sample', 'genotype', 'species', geo_category])
-    pop_df.to_csv(pop_csv, index=False)
+    # Companion CSV (one row per sample/taxon)
+    pop_csv = output_dir / "popart_traits.csv"
+    pd.DataFrame(traits, columns=['taxon', 'haplotype', 'species', pop_column]).to_csv(
+        pop_csv, index=False
+    )
 
     return nexus_file, traits_file
 
@@ -282,26 +344,30 @@ def export_dnasp(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group',
-    geo_category: str = 'ocean_basin'
+    pop_column: str = 'ocean_basin',
+    haplotype_column: str = 'haplotype_id'
 ) -> Path:
     """
-    Export data in DnaSP format (FASTA with pop labels).
+    Export data in DnaSP-compatible FASTA format with population labels.
+
+    FASTA record IDs use the convention ``{population}|{processid}`` so DnaSP's
+    "Define Sequence Sets" → "Auto-detect by name" reads populations directly
+    from the header. Samples lacking a value in ``pop_column`` are excluded.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Annotated dataframe with genotype assignments
+        Annotated dataframe with haplotype assignments
     consensus_seqs : dict
-        Dictionary mapping consensus group IDs to sequences
+        Dictionary mapping haplotype IDs to consensus sequences
     output_dir : Path
         Output directory
     organism : str
         Organism name
-    group_by : str
-        Column to use for population grouping
-    geo_category : str
-        Column name for geographic region (default: 'ocean_basin')
+    pop_column : str
+        Column whose unique values define populations (default: 'ocean_basin')
+    haplotype_column : str
+        Column holding each sample's haplotype assignment (default: 'haplotype_id')
 
     Returns
     -------
@@ -311,55 +377,63 @@ def export_dnasp(
     output_dir.mkdir(parents=True, exist_ok=True)
     fas_file = output_dir / f"{organism}.fas"
 
-    # Filter to samples with assignments
-    df_assigned = df[df[group_by].notna()].copy()
+    if pop_column not in df.columns:
+        logger.warning(
+            f"DnaSP export skipped: population column '{pop_column}' not found in dataframe."
+        )
+        return fas_file
 
-    if len(df_assigned) == 0:
-        logger.warning("No samples with genotype assignments to export")
+    pop_mask = df[pop_column].map(_has_population)
+    df_eligible = df[df[haplotype_column].notna() & pop_mask].copy()
+    n_total = int(df[haplotype_column].notna().sum())
+    n_dropped = n_total - len(df_eligible)
+    if n_dropped > 0:
+        logger.info(
+            f"  DnaSP: {n_dropped} haplotype-assigned samples lack an assigned '{pop_column}' "
+            f"and were excluded from .fas export"
+        )
+
+    if len(df_eligible) == 0:
+        logger.warning(
+            f"No samples have both a haplotype assignment and a '{pop_column}' value; "
+            f"DnaSP .fas will not be written."
+        )
         return fas_file
 
     records = []
-    sample_counter = {}
+    skipped_no_seq = 0
 
-    for idx, row in df_assigned.iterrows():
-        genotype = row[group_by]
-        sample_id = row['processid']
-
-        # Create unique sample name
-        if genotype not in sample_counter:
-            sample_counter[genotype] = 0
-        sample_counter[genotype] += 1
-        unique_id = f"{genotype}_{sample_counter[genotype]:03d}"
-
-        # Get sequence
-        if genotype in consensus_seqs:
-            seq = consensus_seqs[genotype]
-        elif 'nuc' in row and pd.notna(row['nuc']):
-            seq = str(row['nuc'])
-        else:
+    for _, row in df_eligible.iterrows():
+        hap = row[haplotype_column]
+        seq = consensus_seqs.get(hap)
+        if seq is None:
+            skipped_no_seq += 1
             continue
 
-        # Build metadata string
-        species = row.get('species', 'Unknown') if pd.notna(row.get('species')) else 'Unknown'
-        species = species.replace(' ', '_')
-
-        region = row.get(geo_category, 'Unknown') if pd.notna(row.get(geo_category)) else 'Unknown'
-        region = region.replace(' ', '_')
-
-        # DnaSP format: >sample_id [key=value;key=value;...]
-        description = f"[genotype={genotype};species={species};region={region};processid={sample_id}]"
+        sample_id = str(row['processid']).replace(' ', '_')
+        pop = str(row[pop_column]).replace(' ', '_')
+        species_val = row.get('species')
+        species = (str(species_val).replace(' ', '_')
+                   if pd.notna(species_val) else 'Unknown')
 
         record = SeqRecord(
             Seq(seq),
-            id=unique_id,
-            description=description
+            id=f"{pop}|{sample_id}",
+            description=(
+                f"[haplotype={hap};species={species};{pop_column}={pop};processid={sample_id}]"
+            ),
         )
         records.append(record)
 
-    # Write FASTA file
     SeqIO.write(records, fas_file, 'fasta')
 
-    logger.info(f"  ✓ DnaSP format exported: {fas_file}")
+    msg = (
+        f"  ✓ DnaSP .fas exported: {fas_file} "
+        f"({len(records)} samples across {df_eligible[pop_column].nunique()} populations)"
+    )
+    if skipped_no_seq:
+        msg += f"; {skipped_no_seq} skipped for missing consensus"
+    logger.info(msg)
 
     return fas_file
 
@@ -369,26 +443,30 @@ def export_generic(
     consensus_seqs: Dict[str, str],
     output_dir: Path,
     organism: str,
-    group_by: str = 'consensus_group',
-    geo_category: str = 'ocean_basin'
+    pop_column: str = 'ocean_basin',
+    haplotype_column: str = 'haplotype_id'
 ) -> Dict[str, Path]:
     """
-    Export generic formats: CSV membership table, FASTA alignment, haplotypes table.
+    Export generic formats: membership CSV, consensus FASTA, haplotype summary.
+
+    Includes all samples with a haplotype assignment regardless of whether they
+    have a population (``pop_column``) value. Useful for users who want to
+    pull haplotype assignments into custom scripts.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Annotated dataframe with genotype assignments
+        Annotated dataframe with haplotype assignments
     consensus_seqs : dict
-        Dictionary mapping consensus group IDs to sequences
+        Dictionary mapping haplotype IDs to consensus sequences
     output_dir : Path
         Output directory
     organism : str
         Organism name
-    group_by : str
-        Column to use for population grouping
-    geo_category : str
-        Column name for geographic region (default: 'ocean_basin')
+    pop_column : str
+        Column whose values are reported as the population label
+    haplotype_column : str
+        Column holding each sample's haplotype assignment
 
     Returns
     -------
@@ -396,92 +474,73 @@ def export_generic(
         Paths to created files
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    files = {}
+    files: Dict[str, Path] = {}
 
-    # Filter to samples with assignments
-    df_assigned = df[df[group_by].notna()].copy()
-
+    df_assigned = df[df[haplotype_column].notna()].copy()
     if len(df_assigned) == 0:
-        logger.warning("No samples with genotype assignments to export")
+        logger.warning("No samples with haplotype assignments to export")
         return files
 
-    # 1. Genotype membership table
-    membership_file = output_dir / "genotype_membership.csv"
-
-    membership_cols = ['processid', group_by]
+    # 1. Sample → haplotype membership table
+    membership_file = output_dir / "haplotype_membership.csv"
+    membership_cols = ['processid', haplotype_column]
     if 'species' in df_assigned.columns:
         membership_cols.append('species')
     if 'lat' in df_assigned.columns and 'lon' in df_assigned.columns:
         membership_cols.extend(['lat', 'lon'])
-    if geo_category in df_assigned.columns:
-        membership_cols.append(geo_category)
-    if 'country' in df_assigned.columns:
-        membership_cols.append('country')
+    if pop_column in df_assigned.columns:
+        membership_cols.append(pop_column)
+    if 'country/ocean' in df_assigned.columns:
+        membership_cols.append('country/ocean')
 
     membership_df = df_assigned[membership_cols].copy()
-
-    # Add consensus sequence if available
-    membership_df['consensus_sequence'] = membership_df[group_by].map(consensus_seqs)
+    membership_df['consensus_sequence'] = membership_df[haplotype_column].map(consensus_seqs)
     membership_df['sequence_length'] = membership_df['consensus_sequence'].apply(
-        lambda x: len(x) if pd.notna(x) else 0
+        lambda x: len(x) if isinstance(x, str) else 0
     )
-
     membership_df.to_csv(membership_file, index=False)
     files['membership'] = membership_file
 
-    # 2. Alignment FASTA (consensus sequences)
-    alignment_file = output_dir / "alignment.fasta"
+    # 2. Consensus FASTA (one record per haplotype)
+    alignment_file = output_dir / "haplotype_consensus.fasta"
     records = []
-
-    for genotype, seq in consensus_seqs.items():
-        # Get metadata for this genotype
-        genotype_df = df_assigned[df_assigned[group_by] == genotype]
-        if len(genotype_df) == 0:
+    for hap, seq in consensus_seqs.items():
+        sub = df_assigned[df_assigned[haplotype_column] == hap]
+        if len(sub) == 0:
             continue
-
-        n_samples = len(genotype_df)
-        species = genotype_df['species'].mode()[0] if 'species' in genotype_df.columns and len(genotype_df['species'].mode()) > 0 else 'Unknown'
-
-        record = SeqRecord(
-            Seq(seq),
-            id=genotype,
-            description=f"n={n_samples} species={species}"
-        )
-        records.append(record)
-
+        species_mode = sub['species'].mode() if 'species' in sub.columns else pd.Series(dtype=object)
+        species = species_mode.iloc[0] if len(species_mode) else 'Unknown'
+        records.append(SeqRecord(
+            Seq(seq), id=str(hap),
+            description=f"n={len(sub)} species={species}"
+        ))
     SeqIO.write(records, alignment_file, 'fasta')
     files['alignment'] = alignment_file
 
-    # 3. Haplotypes table
-    haplotypes_file = output_dir / "haplotypes.csv"
-
-    haplotypes = []
-    for genotype, seq in consensus_seqs.items():
-        genotype_df = df_assigned[df_assigned[group_by] == genotype]
-        if len(genotype_df) == 0:
+    # 3. Haplotype summary table (one row per haplotype)
+    haplotypes_file = output_dir / "haplotype_summary.csv"
+    rows = []
+    for hap, seq in consensus_seqs.items():
+        sub = df_assigned[df_assigned[haplotype_column] == hap]
+        if len(sub) == 0:
             continue
-
-        haplotype_info = {
-            'haplotype_id': genotype,
+        species_mode = sub['species'].mode() if 'species' in sub.columns else pd.Series(dtype=object)
+        info = {
+            'haplotype_id': hap,
             'sequence': seq,
             'sequence_length': len(seq),
-            'n_samples': len(genotype_df),
-            'species': genotype_df['species'].mode()[0] if 'species' in genotype_df.columns and len(genotype_df['species'].mode()) > 0 else 'Unknown'
+            'n_samples': len(sub),
+            'species': species_mode.iloc[0] if len(species_mode) else 'Unknown',
         }
-
-        if geo_category in genotype_df.columns:
-            regions = genotype_df[geo_category].value_counts()
-            haplotype_info['primary_region'] = regions.index[0]
-            haplotype_info['n_regions'] = len(regions)
-
-        haplotypes.append(haplotype_info)
-
-    haplotypes_df = pd.DataFrame(haplotypes)
-    haplotypes_df.to_csv(haplotypes_file, index=False)
+        if pop_column in sub.columns:
+            counts = sub[pop_column].dropna().value_counts()
+            info['primary_population'] = counts.index[0] if len(counts) else 'Unassigned'
+            info['n_populations'] = len(counts)
+        rows.append(info)
+    pd.DataFrame(rows).to_csv(haplotypes_file, index=False)
     files['haplotypes'] = haplotypes_file
 
-    logger.info(f"  ✓ Generic formats exported: {len(files)} files")
-
+    logger.info(f"  ✓ Generic exports written: {len(files)} files")
     return files
 
 
@@ -650,8 +709,8 @@ def export_population_genetics_formats(
     output_dir: Path,
     organism: str,
     formats: Optional[List[str]] = None,
-    group_by: str = 'consensus_group',
-    geo_category: str = 'ocean_basin'
+    pop_column: str = 'ocean_basin',
+    haplotype_column: str = 'haplotype_id'
 ) -> Dict[str, Any]:
     """
     Master function to export to multiple population genetics formats.
@@ -659,20 +718,22 @@ def export_population_genetics_formats(
     Parameters
     ----------
     df : pd.DataFrame
-        Annotated dataframe with genotype assignments
+        Annotated dataframe with haplotype assignments
     consensus_fasta_path : Path
-        Path to consensus sequences FASTA file
+        Path to consensus sequences FASTA file (Phase 2 output)
     output_dir : Path
-        Base output directory (will create subdirectories for each format)
+        Base output directory (will create ``exports/`` and per-format subdirs)
     organism : str
         Organism name
     formats : list, optional
-        List of formats to export. Options: 'arlequin', 'popart', 'dnasp', 'generic', 'all'
-        Default is ['all']
-    group_by : str
-        Column to use for population grouping (default: 'consensus_group')
-    geo_category : str
-        Column name for geographic region (default: 'ocean_basin')
+        List of formats to export. Options: 'arlequin', 'popart', 'dnasp',
+        'generic', 'all'. Default is ['all'].
+    pop_column : str
+        Column whose unique values define populations in Arlequin/DnaSP, and
+        the region trait for PopART. Default 'ocean_basin'; typically the
+        same column used in Phase 5 geographic assignment.
+    haplotype_column : str
+        Column holding each sample's haplotype assignment (default: 'haplotype_id')
 
     Returns
     -------
@@ -682,49 +743,52 @@ def export_population_genetics_formats(
     if formats is None or 'all' in formats:
         formats = ['arlequin', 'popart', 'dnasp', 'generic']
 
-    logger.info("Exporting population genetics formats...")
+    logger.info(
+        f"Exporting population genetics formats (populations defined by '{pop_column}')..."
+    )
 
-    # Create exports directory
     exports_dir = output_dir / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
 
-    results = {'formats': formats, 'files': {}}
+    results: Dict[str, Any] = {'formats': formats, 'pop_column': pop_column, 'files': {}}
 
     # Load consensus sequences
-    consensus_seqs = {}
-    if consensus_fasta_path.exists():
-        for record in SeqIO.parse(consensus_fasta_path, 'fasta'):
+    consensus_seqs: Dict[str, str] = {}
+    cfp = Path(consensus_fasta_path)
+    if cfp.exists():
+        for record in SeqIO.parse(str(cfp), 'fasta'):
             consensus_seqs[record.id] = str(record.seq)
     else:
-        logger.warning(f"Consensus FASTA not found: {consensus_fasta_path}")
-        logger.warning("Will attempt to use sequences from dataframe")
+        logger.warning(f"Consensus FASTA not found: {cfp}; popgen export may be empty.")
 
-    # Export each requested format
     if 'arlequin' in formats:
-        arlequin_dir = exports_dir / "arlequin"
-        arp_file = export_arlequin(df, consensus_seqs, arlequin_dir, organism, group_by, geo_category)
-        results['files']['arlequin'] = arp_file
+        results['files']['arlequin'] = export_arlequin(
+            df, consensus_seqs, exports_dir / "arlequin", organism,
+            pop_column=pop_column, haplotype_column=haplotype_column,
+        )
 
     if 'popart' in formats:
-        popart_dir = exports_dir / "popart"
-        nexus_file, traits_file = export_popart_nexus(df, consensus_seqs, popart_dir, organism, group_by, geo_category)
+        nexus_file, traits_file = export_popart_nexus(
+            df, consensus_seqs, exports_dir / "popart", organism,
+            pop_column=pop_column, haplotype_column=haplotype_column,
+        )
         results['files']['popart_nexus'] = nexus_file
         results['files']['popart_traits'] = traits_file
 
     if 'dnasp' in formats:
-        dnasp_dir = exports_dir / "dnasp"
-        fas_file = export_dnasp(df, consensus_seqs, dnasp_dir, organism, group_by, geo_category)
-        results['files']['dnasp'] = fas_file
+        results['files']['dnasp'] = export_dnasp(
+            df, consensus_seqs, exports_dir / "dnasp", organism,
+            pop_column=pop_column, haplotype_column=haplotype_column,
+        )
 
     if 'generic' in formats:
-        generic_dir = exports_dir / "generic"
-        generic_files = export_generic(df, consensus_seqs, generic_dir, organism, group_by, geo_category)
-        results['files']['generic'] = generic_files
+        results['files']['generic'] = export_generic(
+            df, consensus_seqs, exports_dir / "generic", organism,
+            pop_column=pop_column, haplotype_column=haplotype_column,
+        )
 
-    # Create README
     readme_path = create_export_readme(exports_dir, organism, formats, results['files'])
     results['files']['readme'] = readme_path
 
     logger.info(f"✓ Population genetics exports complete: {exports_dir}")
-
     return results

@@ -1,12 +1,23 @@
 """
-Metadata Analysis Module
+Metadata Summarization Module
 
-This module provides comprehensive analysis of haplotype associations with
-non-geographic metadata fields. It addresses two key use cases:
-1. Datasets where geographic coordinates are sparse but other metadata is informative
-2. Studies incorporating additional metadata variables of interest beyond geography
+Descriptive summaries of how BOLDGenotyper haplotype assignments distribute
+across non-geographic BOLD metadata fields. This module is purely
+diagnostic: it produces per-field tabulations (haplotype × value counts)
+and temporal coverage (haplotype emergence timeline, collection-date
+trends) to help users assess sampling bias and coverage in a BOLD pull.
 
-Categorical Fields Analyzed:
+It does NOT perform haplotype × metadata hypothesis tests. The historical
+chi-square independence tests were removed because (a) the contingency
+tables produced by BOLD-scale data are too sparse for the chi-square
+approximation to be valid (>20% of expected counts < 5 in every case
+study we tested), (b) there is no biologically grounded null hypothesis
+being evaluated, and (c) running 10+ tests per dataset with no
+multiple-testing correction is statistically indefensible. Users who
+require formal tests of population structure should use the population
+genetics exports (Arlequin .arp, DnaSP .fas) downstream.
+
+Categorical Fields Tabulated:
 - sex: Specimen sex
 - life_stage: Developmental stage
 - reproduction: Reproductive status
@@ -20,9 +31,9 @@ Temporal Field:
 - collection_date_start: Collection date (various formats supported)
 
 Philosophy:
-Values are presented as-is without standardization. Users know their data best
-and should decide how to standardize values. Optional sex normalization is
-available via the --normalize-sex flag.
+Values are presented as-is without standardization. Users know their data
+best and should decide how to standardize values. Optional sex
+normalization is available via the --normalize-sex flag.
 
 Author: Steph Smith (symbioseas@outlook.com)
 """
@@ -36,8 +47,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
-from scipy import stats
-import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -379,95 +388,10 @@ def analyze_categorical_field(
     return results_df
 
 
-def test_haplotype_association(
-    df: pd.DataFrame,
-    field: str,
-    haplotype_col: str = 'haplotype_sp'
-) -> Dict[str, Any]:
-    """
-    Perform chi-square test for haplotype × field association.
-
-    Tests whether haplotype distribution is independent of the
-    categorical metadata field.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame with haplotype assignments and metadata
-    field : str
-        Metadata field to test
-    haplotype_col : str, optional
-        Column containing haplotype labels (default: 'haplotype_sp')
-
-    Returns
-    -------
-    Dict[str, Any]
-        Test results including:
-        - field: Field name
-        - test_type: 'chi_square' or 'fisher_exact'
-        - statistic: Test statistic
-        - p_value: P-value
-        - degrees_of_freedom: Degrees of freedom (chi-square only)
-        - n_samples: Sample size used in test
-        - n_haplotypes: Number of haplotypes
-        - n_categories: Number of category values
-        - warning: Any warnings about test validity
-    """
-    result = {
-        'field': field,
-        'test_type': None,
-        'statistic': np.nan,
-        'p_value': np.nan,
-        'degrees_of_freedom': np.nan,
-        'n_samples': 0,
-        'n_haplotypes': 0,
-        'n_categories': 0,
-        'warning': None
-    }
-
-    if field not in df.columns or haplotype_col not in df.columns:
-        result['warning'] = 'Required column(s) not found'
-        return result
-
-    # Filter to valid rows
-    valid_df = df[[haplotype_col, field]].dropna()
-    valid_df = valid_df[valid_df[field] != '']
-
-    if valid_df.empty:
-        result['warning'] = 'No valid data for test'
-        return result
-
-    # Create contingency table
-    contingency_table = pd.crosstab(valid_df[haplotype_col], valid_df[field])
-
-    result['n_samples'] = len(valid_df)
-    result['n_haplotypes'] = len(contingency_table.index)
-    result['n_categories'] = len(contingency_table.columns)
-
-    # Check minimum requirements
-    if result['n_haplotypes'] < 2 or result['n_categories'] < 2:
-        result['warning'] = 'Insufficient categories for test (need at least 2×2)'
-        return result
-
-    # Perform chi-square test
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            chi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)
-
-        result['test_type'] = 'chi_square'
-        result['statistic'] = chi2
-        result['p_value'] = p_value
-        result['degrees_of_freedom'] = dof
-
-        # Check expected frequencies
-        if (expected < 5).sum() > expected.size * 0.2:
-            result['warning'] = 'More than 20% of expected frequencies < 5; results may be unreliable'
-
-    except Exception as e:
-        result['warning'] = f'Test failed: {str(e)}'
-
-    return result
+# NOTE: The historical chi-square haplotype × metadata association test was
+# removed in the manuscript-prep refactor (see module docstring for rationale).
+# Users who require formal hypothesis testing of population structure should
+# use the Arlequin / DnaSP exports from popgen_export.py downstream.
 
 
 # =============================================================================
@@ -1905,7 +1829,7 @@ def plot_emergence_timeline_country_faceted(
 # Export Functions
 # =============================================================================
 
-def export_metadata_analysis(
+def export_metadata_summary(
     df: pd.DataFrame,
     output_dir: Path,
     organism: str,
@@ -1945,7 +1869,7 @@ def export_metadata_analysis(
         Mapping of output names to file paths
     """
     output_dir = Path(output_dir)
-    metadata_dir = output_dir / 'metadata_analysis'
+    metadata_dir = output_dir / 'metadata_summary'
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
     # Visualization directories organized by format
@@ -1957,9 +1881,6 @@ def export_metadata_analysis(
     viz_json_dir.mkdir(parents=True, exist_ok=True)
     # Keep backward compatible reference
     viz_dir = viz_pdf_dir
-
-    stats_dir = metadata_dir / 'statistical_tests'
-    stats_dir.mkdir(parents=True, exist_ok=True)
 
     plots_data_dir = output_dir / 'plots' / 'data'
     plots_data_dir.mkdir(parents=True, exist_ok=True)
@@ -2010,9 +1931,8 @@ def export_metadata_analysis(
     plot_metadata_coverage(coverage_stats, coverage_plot_path)
     outputs['coverage_plot'] = coverage_plot_path.with_suffix('.png')
 
-    # 2. Categorical Field Analysis
-    logger.info("Analyzing categorical fields...")
-    association_results = []
+    # 2. Categorical Field Tabulation (descriptive only — no hypothesis tests)
+    logger.info("Tabulating haplotype × metadata distributions...")
 
     for field in fields:
         if field not in df.columns:
@@ -2024,29 +1944,18 @@ def export_metadata_analysis(
             logger.debug(f"Skipping {field}: insufficient data")
             continue
 
-        # Analyze field
+        # Per-haplotype × per-value count table
         analysis_df = analyze_categorical_field(df, field, haplotype_col)
         if not analysis_df.empty:
-            analysis_path = metadata_dir / f'{organism}_{field.replace("/", "_")}_analysis.csv'
+            analysis_path = metadata_dir / f'{organism}_{field.replace("/", "_")}_tabulation.csv'
             analysis_df.to_csv(analysis_path, index=False)
-            outputs[f'{field}_analysis'] = analysis_path
-
-        # Statistical test
-        test_result = test_haplotype_association(df, field, haplotype_col)
-        association_results.append(test_result)
+            outputs[f'{field}_tabulation'] = analysis_path
 
         # Plot if enough categories
         if field_stats.get('n_unique', 0) >= 2:
             plot_path = viz_dir / f'{organism}_{field.replace("/", "_")}_by_haplotype'
             plot_categorical_by_haplotype(df, field, plot_path, color_map, haplotype_col)
             outputs[f'{field}_plot'] = plot_path.with_suffix('.png')
-
-    # Save association test results
-    if association_results:
-        assoc_df = pd.DataFrame(association_results)
-        assoc_path = stats_dir / f'{organism}_association_tests.csv'
-        assoc_df.to_csv(assoc_path, index=False)
-        outputs['association_tests'] = assoc_path
 
     # 3. Metadata Heatmap
     available_fields = [f for f in fields if f in df.columns and df[f].notna().any()]
@@ -2160,12 +2069,12 @@ def export_metadata_analysis(
 
     outputs['_temporal_analysis_performed'] = temporal_analysis_performed
 
-    logger.info(f"Metadata analysis complete. {len(outputs)} files exported to {metadata_dir}")
+    logger.info(f"Metadata summarization complete. {len(outputs)} files exported to {metadata_dir}")
 
     return outputs
 
 
-def run_metadata_analysis(
+def run_metadata_summary(
     annotated_df: pd.DataFrame,
     output_dir: Path,
     organism: str,
@@ -2176,9 +2085,12 @@ def run_metadata_analysis(
     haplotype_col: str = 'haplotype_sp'
 ) -> Dict[str, Any]:
     """
-    Main entry point for running metadata analysis.
+    Main entry point for running metadata summarization.
 
-    This function is called from the CLI pipeline.
+    Produces descriptive (non-statistical) summaries of how haplotype
+    assignments distribute across BOLD metadata fields, plus temporal
+    coverage if a collection-date column is present. Called from the
+    CLI pipeline.
 
     Parameters
     ----------
@@ -2189,11 +2101,11 @@ def run_metadata_analysis(
     organism : str
         Organism name
     fields : List[str], optional
-        Metadata fields to analyze
+        Metadata fields to tabulate
     normalize_sex : bool, optional
         Whether to normalize sex values
     temporal_analysis : bool, optional
-        Whether to include temporal analysis
+        Whether to include temporal coverage analysis
     color_map : Dict[str, str], optional
         Haplotype color mapping
     haplotype_col : str, optional
@@ -2204,13 +2116,11 @@ def run_metadata_analysis(
     Dict[str, Any]
         Results including file paths and summary statistics
     """
-    logger.info("Starting metadata analysis...")
+    logger.info("Starting metadata summarization...")
 
-    # Use default fields if none specified
     if fields is None:
         fields = DEFAULT_CATEGORICAL_FIELDS
 
-    # Track which fields are available and which are missing
     available_fields = [f for f in fields if f in annotated_df.columns]
     missing_fields = [f for f in fields if f not in annotated_df.columns]
 
@@ -2218,31 +2128,28 @@ def run_metadata_analysis(
         logger.info(f"Metadata fields not found in data (skipping): {', '.join(missing_fields)}")
 
     if not available_fields:
-        logger.warning("No metadata fields found in data. Metadata analysis will be limited.")
+        logger.warning("No metadata fields found in data. Metadata summary will be limited.")
 
-    # Check for temporal analysis field
     temporal_field_available = DATE_FIELD in annotated_df.columns
     if temporal_analysis and not temporal_field_available:
-        logger.info(f"Temporal analysis field '{DATE_FIELD}' not found. Temporal analysis will be skipped.")
+        logger.info(f"Temporal field '{DATE_FIELD}' not found. Temporal analysis will be skipped.")
 
-    # Export all analyses (handles missing fields gracefully)
-    outputs = export_metadata_analysis(
+    outputs = export_metadata_summary(
         df=annotated_df,
         output_dir=output_dir,
         organism=organism,
         color_map=color_map,
-        fields=fields,  # Pass all fields; function handles missing ones
+        fields=fields,
         haplotype_col=haplotype_col,
         normalize_sex=normalize_sex,
         temporal_analysis=temporal_analysis
     )
 
-    # Build results summary
     temporal_performed = outputs.pop('_temporal_analysis_performed', False)
 
     results = {
         'output_files': outputs,
-        'n_fields_analyzed': len([k for k in outputs if '_analysis' in k and not k.startswith('_')]),
+        'n_fields_tabulated': len([k for k in outputs if k.endswith('_tabulation')]),
         'n_visualizations': len([k for k in outputs if '_plot' in k or 'faceted' in k]),
         'temporal_analysis': temporal_performed,
         'available_fields': available_fields,
@@ -2250,8 +2157,10 @@ def run_metadata_analysis(
         'temporal_field_available': temporal_field_available,
     }
 
-    logger.info(f"Metadata analysis complete: {results['n_fields_analyzed']} fields analyzed, "
-                f"{results['n_visualizations']} visualizations created")
+    logger.info(
+        f"Metadata summarization complete: {results['n_fields_tabulated']} fields tabulated, "
+        f"{results['n_visualizations']} visualizations created"
+    )
 
     if missing_fields:
         logger.info(f"Missing fields: {', '.join(missing_fields)}")

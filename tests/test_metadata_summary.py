@@ -1,8 +1,9 @@
 """
-Unit tests for metadata_analysis.py module.
+Unit tests for metadata_summary.py module.
 
-Tests metadata coverage analysis, categorical field analysis,
-temporal analysis, and statistical association tests.
+Tests metadata coverage analysis, categorical field tabulation, and
+temporal coverage analysis. (Chi-square hypothesis-testing was removed
+during the manuscript-prep refactor; see metadata_summary.py docstring.)
 
 Author: Steph Smith (symbioseas@outlook.com)
 """
@@ -16,7 +17,7 @@ import numpy as np
 import json
 import shutil
 
-from boldgenotyper import metadata_analysis
+from boldgenotyper import metadata_summary as metadata_analysis  # type: ignore  # backward-compat alias for tests
 
 
 class TestMetadataCoverage(unittest.TestCase):
@@ -177,72 +178,6 @@ class TestCategoricalAnalysis(unittest.TestCase):
         self.assertTrue(result.empty)
 
 
-class TestAssociationTests(unittest.TestCase):
-    """Tests for statistical association tests."""
-
-    def setUp(self):
-        """Create test data with clear associations."""
-        # Create data where sex is strongly associated with haplotype
-        self.associated_df = pd.DataFrame({
-            'processid': list(range(100)),
-            'haplotype_sp': ['h1'] * 50 + ['h2'] * 50,
-            'sex': ['M'] * 40 + ['F'] * 10 + ['F'] * 40 + ['M'] * 10,  # Strong association
-        })
-
-        # Create data with no association
-        self.independent_df = pd.DataFrame({
-            'processid': list(range(100)),
-            'haplotype_sp': ['h1'] * 50 + ['h2'] * 50,
-            'sex': ['M', 'F'] * 50,  # No association
-        })
-
-    def test_association_test_returns_expected_fields(self):
-        """Test that association test returns expected fields."""
-        result = metadata_analysis.test_haplotype_association(
-            self.associated_df, 'sex', 'haplotype_sp'
-        )
-
-        self.assertIn('field', result)
-        self.assertIn('test_type', result)
-        self.assertIn('statistic', result)
-        self.assertIn('p_value', result)
-        self.assertIn('n_samples', result)
-
-    def test_significant_association(self):
-        """Test detection of significant association."""
-        result = metadata_analysis.test_haplotype_association(
-            self.associated_df, 'sex', 'haplotype_sp'
-        )
-
-        # Strong association should yield low p-value
-        self.assertLess(result['p_value'], 0.05)
-
-    def test_no_association(self):
-        """Test when there's no association."""
-        result = metadata_analysis.test_haplotype_association(
-            self.independent_df, 'sex', 'haplotype_sp'
-        )
-
-        # No association should yield higher p-value
-        # (though this is probabilistic, with 100 samples should be clear)
-        self.assertGreater(result['p_value'], 0.01)
-
-    def test_insufficient_categories(self):
-        """Test handling of insufficient categories."""
-        df_single_value = pd.DataFrame({
-            'processid': ['A', 'B', 'C'],
-            'haplotype_sp': ['h1', 'h1', 'h1'],
-            'sex': ['M', 'M', 'M']
-        })
-
-        result = metadata_analysis.test_haplotype_association(
-            df_single_value, 'sex', 'haplotype_sp'
-        )
-
-        self.assertIn('warning', result)
-        self.assertTrue(pd.isna(result['p_value']))
-
-
 class TestTemporalAnalysis(unittest.TestCase):
     """Tests for temporal analysis functions."""
 
@@ -386,11 +321,11 @@ class TestExport(unittest.TestCase):
         """Clean up temp directory."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_export_metadata_analysis(self):
-        """Test full metadata analysis export."""
+    def test_export_metadata_summary(self):
+        """Test full metadata summarization export."""
         output_dir = Path(self.temp_dir)
 
-        outputs = metadata_analysis.export_metadata_analysis(
+        outputs = metadata_analysis.export_metadata_summary(
             df=self.df,
             output_dir=output_dir,
             organism='TestOrganism',
@@ -400,18 +335,18 @@ class TestExport(unittest.TestCase):
         )
 
         # Check that output directory was created
-        metadata_dir = output_dir / 'metadata_analysis'
+        metadata_dir = output_dir / 'metadata_summary'
         self.assertTrue(metadata_dir.exists())
 
         # Check that key files were created
         self.assertIn('coverage_csv', outputs)
         self.assertIn('coverage_json', outputs)
 
-    def test_run_metadata_analysis(self):
+    def test_run_metadata_summary(self):
         """Test main entry point function."""
         output_dir = Path(self.temp_dir)
 
-        results = metadata_analysis.run_metadata_analysis(
+        results = metadata_analysis.run_metadata_summary(
             annotated_df=self.df,
             output_dir=output_dir,
             organism='TestOrganism',
@@ -421,7 +356,7 @@ class TestExport(unittest.TestCase):
         )
 
         self.assertIn('output_files', results)
-        self.assertIn('n_fields_analyzed', results)
+        self.assertIn('n_fields_tabulated', results)
 
 
 class TestLastDetection(unittest.TestCase):
@@ -495,11 +430,11 @@ class TestMissingFieldsTracking(unittest.TestCase):
         """Clean up temp directory."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_run_metadata_analysis_returns_missing_fields(self):
-        """Test that run_metadata_analysis tracks missing fields."""
+    def test_run_metadata_summary_returns_missing_fields(self):
+        """Test that run_metadata_summary tracks missing fields."""
         output_dir = Path(self.temp_dir)
 
-        results = metadata_analysis.run_metadata_analysis(
+        results = metadata_analysis.run_metadata_summary(
             annotated_df=self.df,
             output_dir=output_dir,
             organism='TestOrganism',
@@ -535,16 +470,6 @@ class TestEdgeCases(unittest.TestCase):
         coverage = metadata_analysis.analyze_metadata_coverage(df, ['sex'])
         self.assertEqual(coverage['fields']['sex']['n_with_value'], 0)
         self.assertEqual(coverage['fields']['sex']['pct_coverage'], 0.0)
-
-    def test_single_haplotype(self):
-        """Test handling of single haplotype."""
-        df = pd.DataFrame({
-            'haplotype_sp': ['h1', 'h1', 'h1'],
-            'sex': ['M', 'F', 'M']
-        })
-
-        result = metadata_analysis.test_haplotype_association(df, 'sex', 'haplotype_sp')
-        self.assertIn('warning', result)
 
     def test_special_characters_in_field_names(self):
         """Test handling of fields with special characters."""
