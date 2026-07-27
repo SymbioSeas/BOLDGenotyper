@@ -265,8 +265,8 @@ def load_haplotype_metadata(analysis_dir: Path) -> Optional[pd.DataFrame]:
     Load haplotype metadata from previous analysis.
 
     Attempts to load and merge:
+    - Haplotype taxonomy (assigned_sp, assignment_level, haplotype_sp)
     - Haplotype stats (n_members, is_singleton, is_suspect)
-    - Species composition (primary_species)
 
     Parameters
     ----------
@@ -280,69 +280,50 @@ def load_haplotype_metadata(analysis_dir: Path) -> Optional[pd.DataFrame]:
 
     Examples
     --------
-    >>> metadata = load_haplotype_metadata(Path("data/Sphyrnidae_test_2"))
+    >>> metadata = load_haplotype_metadata(Path("analysis/Carcharhiniformes_full"))
     >>> metadata.columns
-    Index(['haplotype_id', 'n_members', 'is_singleton', 'is_suspect', 'primary_species'])
+    Index(['haplotype_id', 'assigned_sp', 'assignment_level', 'haplotype_sp', 'n_members', ...])
     """
     analysis_path = Path(analysis_dir)
 
-    # Try to find haplotype stats file
     stats_file = None
-    species_file = None
+    taxonomy_file = None
 
-    # Look in common locations
-    possible_stats_paths = [
-        analysis_path / "haplotypes" / "*_haplotype_stats.csv",
-        analysis_path / "*_haplotype_stats.csv",
-    ]
-
-    possible_species_paths = [
-        analysis_path / "haplotype_assignments" / "*_species_composition.csv",
-        analysis_path / "assignments" / "*_species_composition.csv",
-        analysis_path / "*_species_composition.csv",
-    ]
-
-    # Find stats file
-    for pattern in possible_stats_paths:
-        matches = list(analysis_path.parent.glob(str(pattern)))
+    for pattern in ["haplotypes/*_haplotype_stats.csv", "*_haplotype_stats.csv"]:
+        matches = list(analysis_path.glob(pattern))
         if matches:
             stats_file = matches[0]
             break
 
-    # Find species composition file
-    for pattern in possible_species_paths:
-        matches = list(analysis_path.parent.glob(str(pattern)))
+    for pattern in ["taxonomy/*_haplotype_taxonomy.csv", "*_haplotype_taxonomy.csv"]:
+        matches = list(analysis_path.glob(pattern))
         if matches:
-            species_file = matches[0]
+            taxonomy_file = matches[0]
             break
 
-    if not stats_file:
+    if not stats_file and not taxonomy_file:
         logger.warning(
-            f"Could not find haplotype stats file in {analysis_dir}. "
-            "Metadata enrichment will be limited."
+            f"Could not find haplotype stats or taxonomy files in {analysis_dir}. "
+            "Metadata enrichment will be skipped."
         )
         return None
 
     try:
-        # Load stats
-        stats_df = pd.read_csv(stats_file)
-        logger.info(f"Loaded haplotype stats from {stats_file}")
+        metadata = None
 
-        # Load species composition if available
-        if species_file:
-            species_df = pd.read_csv(species_file)
-            logger.info(f"Loaded species composition from {species_file}")
+        if stats_file:
+            metadata = pd.read_csv(stats_file)
+            logger.info(f"Loaded haplotype stats from {stats_file}")
 
-            # Merge on haplotype_id
-            # Handle different naming conventions (haplotype_id vs haplotype_h1_n218 format)
-            metadata = stats_df.merge(
-                species_df[[col for col in species_df.columns if 'haplotype' in col.lower() or 'species' in col.lower() or 'n_' in col]],
-                on='haplotype_id',
-                how='left',
-                suffixes=('', '_species')
-            )
-        else:
-            metadata = stats_df
+        if taxonomy_file:
+            taxonomy_df = pd.read_csv(taxonomy_file)
+            logger.info(f"Loaded haplotype taxonomy from {taxonomy_file}")
+            tax_cols = [c for c in ['haplotype_id', 'assigned_sp', 'assignment_level', 'haplotype_sp']
+                        if c in taxonomy_df.columns]
+            if metadata is not None:
+                metadata = metadata.merge(taxonomy_df[tax_cols], on='haplotype_id', how='left')
+            else:
+                metadata = taxonomy_df[tax_cols]
 
         return metadata
 
@@ -552,14 +533,14 @@ def results_to_dataframe(
             how='left'
         )
 
-    # Reorder columns
-    col_order = ['query_id', 'rank', 'haplotype_id', 'identity_pct', 'matches',
+    # Reorder columns — species diagnostics immediately after haplotype_id
+    core_cols = ['query_id', 'rank', 'haplotype_id', 'assigned_sp', 'haplotype_sp',
+                 'assignment_level', 'identity_pct', 'match_quality', 'matches',
                  'aligned_length', 'query_length', 'haplotype_length', 'divergence',
-                 'alignment_score', 'match_quality']
-
-    # Add metadata columns if present
-    metadata_cols = [c for c in df.columns if c not in col_order]
-    col_order.extend(metadata_cols)
+                 'alignment_score']
+    col_order = [c for c in core_cols if c in df.columns]
+    extra_cols = [c for c in df.columns if c not in col_order]
+    col_order.extend(extra_cols)
 
     return df[col_order]
 
@@ -777,10 +758,12 @@ def write_text_report(
                 hap_meta = metadata[metadata['haplotype_id'] == best.haplotype_id]
                 if not hap_meta.empty:
                     meta_row = hap_meta.iloc[0]
-                    if 'primary_species' in meta_row:
-                        species = meta_row['primary_species']
+                    species = meta_row.get('assigned_sp', meta_row.get('primary_species', ''))
+                    if species:
                         n_members = meta_row.get('n_members', meta_row.get('n_total_samples', 'unknown'))
-                        f.write(f"Species: {species} ({n_members} samples)\n")
+                        level = meta_row.get('assignment_level', '')
+                        level_str = f", {level}-level assignment" if level and level != 'species' else ''
+                        f.write(f"Species: {species} ({n_members} samples{level_str})\n")
 
             f.write("\n")
             f.write(f"Alignment ({best.aligned_length} bp):\n")
@@ -792,9 +775,16 @@ def write_text_report(
             if len(query_results) > 1:
                 f.write(f"\nOther Top Matches:\n")
                 for i, result in enumerate(query_results[1:], 2):
+                    sp_str = ''
+                    if metadata is not None and 'haplotype_id' in metadata.columns:
+                        hap_meta = metadata[metadata['haplotype_id'] == result.haplotype_id]
+                        if not hap_meta.empty:
+                            sp = hap_meta.iloc[0].get('assigned_sp', hap_meta.iloc[0].get('primary_species', ''))
+                            if sp:
+                                sp_str = f" — {sp}"
                     f.write(
                         f"  {i}. {result.haplotype_id}: {result.identity_pct:.2f}% "
-                        f"({result.match_quality})\n"
+                        f"({result.match_quality}){sp_str}\n"
                     )
 
             f.write("\n" + "-" * 80 + "\n\n")
