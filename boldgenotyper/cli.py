@@ -2515,6 +2515,22 @@ For more information:
     )
 
     parser.add_argument(
+        '--assign-identity',
+        type=float,
+        default=0.97,
+        help='Minimum identity (fraction, 0-1) to call a match assignable '
+             '(default: 0.97).'
+    )
+
+    parser.add_argument(
+        '--tie-margin',
+        type=float,
+        default=0.005,
+        help='Haplotypes within this fraction of the best match are tied with it '
+             '(default: 0.005).'
+    )
+
+    parser.add_argument(
         '--min-length',
         type=int,
         default=100,
@@ -2558,18 +2574,28 @@ For more information:
     logger.info("")
 
     try:
-        # Import haplotype_query module
-        from . import haplotype_query
+        # Import query modules
+        from . import haplotype_query, query_assignment
+
+        # Resolve the reference: --haplotypes may be a FASTA file or a run directory
+        try:
+            reference_fasta, analysis_dir = query_assignment.resolve_reference(
+                args.haplotypes, args.analysis_dir)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
         # Run query
         logger.info("Starting haplotype query analysis...")
-        results, metadata = haplotype_query.query_against_haplotypes(
+        results, metadata, verdicts = haplotype_query.query_against_haplotypes(
             query_fasta=args.query,
-            haplotype_fasta=args.haplotypes,
-            analysis_dir=args.analysis_dir,
+            haplotype_fasta=reference_fasta,
+            analysis_dir=analysis_dir,
             top_n=args.top_n,
             min_length=args.min_length,
-            max_length=args.max_length
+            max_length=args.max_length,
+            min_identity=args.assign_identity,
+            tie_margin=args.tie_margin,
         )
 
         # Write results
@@ -2578,8 +2604,11 @@ For more information:
             results=results,
             output_dir=output_dir,
             metadata=metadata,
-            haplotype_file=args.haplotypes,
-            analysis_dir=args.analysis_dir
+            haplotype_file=reference_fasta,
+            analysis_dir=analysis_dir,
+            verdicts=verdicts,
+            min_identity=args.assign_identity,
+            tie_margin=args.tie_margin,
         )
 
         logger.info("")
@@ -2590,6 +2619,7 @@ For more information:
         logger.info("")
         logger.info("Output files:")
         logger.info(f"  - {output_dir / 'query_results.csv'}")
+        logger.info(f"  - {output_dir / 'query_summary.csv'}")
         logger.info(f"  - {output_dir / 'query_results.json'}")
         logger.info(f"  - {output_dir / 'query_results_detailed.txt'}")
         logger.info("")
