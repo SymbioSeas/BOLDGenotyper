@@ -192,3 +192,29 @@ def test_write_template_refuses_overwrite(tmp_path):
     target.write_text("shapefiles: {}\n")
     with pytest.raises(FileExistsError):
         sr.write_template(target)
+
+
+# ---------------------------------------------------------------------------
+# Task 6: CLI integration
+# ---------------------------------------------------------------------------
+from boldgenotyper import cli as _cli
+
+
+def test_cli_parses_shp_flags_without_prefix_collision():
+    # --shp must resolve to shp_name and coexist with --shp-field.
+    parser = _cli._build_main_parser()
+    ns = parser.parse_args(["data.tsv", "--shp", "Eco", "--shp-field", "REALM"])
+    assert ns.shp_name == "Eco"
+    assert ns.shapefile_field == "REALM"
+
+
+def test_cli_init_writes_template(tmp_path, monkeypatch):
+    import sys
+    target = tmp_path / "shapefiles.yaml"
+    monkeypatch.setattr(sys, "argv", [
+        "boldgenotyper", "--init-shapefile-config",
+        "--shapefile-config", str(target),
+    ])
+    rc = _cli.main()
+    assert rc == 0
+    assert target.exists()

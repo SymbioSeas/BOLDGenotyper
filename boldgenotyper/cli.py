@@ -44,7 +44,7 @@ from . import (
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
-    metadata_summary,
+    metadata_summary, shapefile_registry,
 )
 from . import __version__
 
@@ -1935,8 +1935,8 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
         return 1
 
 
-def main():
-    """Main CLI entry point."""
+def _build_main_parser() -> argparse.ArgumentParser:
+    """Build the main boldgenotyper argument parser."""
     parser = argparse.ArgumentParser(
         description='BOLDGenotyper: haplotype-first COI genotyping with optional phylogeny, divergence, and mapping outputs.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1986,6 +1986,8 @@ Notes:
     parser.add_argument(
         'tsv',
         type=Path,
+        nargs='?',
+        default=None,
         help='Input BOLD TSV file with sequence and metadata'
     )
 
@@ -2140,6 +2142,35 @@ Notes:
              'and column names.'
     )
 
+    parser.add_argument(
+        '--shp',
+        type=str,
+        default=None,
+        dest='shp_name',
+        help='Shorthand name of a shapefile registered in your shapefiles.yaml '
+             '(see --init-shapefile-config). Resolves its path, field, and '
+             'geo-category. Explicit --shp-field/--geo-category override the '
+             'registered values. Cannot be combined with --custom-shp.'
+    )
+
+    parser.add_argument(
+        '--shapefile-config',
+        type=Path,
+        default=None,
+        dest='shapefile_config',
+        help='Path to a shapefile registry file. Overrides the '
+             'BOLDGENOTYPER_SHAPEFILE_CONFIG env var and the default '
+             '(~/.config/boldgenotyper/shapefiles.yaml).'
+    )
+
+    parser.add_argument(
+        '--init-shapefile-config',
+        action='store_true',
+        dest='init_shapefile_config',
+        help='Write a commented shapefiles.yaml template to the target config '
+             'path (--shapefile-config if given, else the default location) and exit.'
+    )
+
     # Metadata Summarization Arguments (enabled by default).
     # Note: --no-metadata-analysis is retained as a deprecated alias of
     # --no-metadata-summary to keep older invocations working.
@@ -2215,7 +2246,56 @@ Notes:
         version=f'BOLDGenotyper {__version__}'
     )
 
+    return parser
+
+
+def main():
+    """Main CLI entry point."""
+    parser = _build_main_parser()
     args = parser.parse_args()
+
+    # Handle --init-shapefile-config: write template and exit (no TSV needed).
+    if args.init_shapefile_config:
+        target = args.shapefile_config or shapefile_registry.default_config_path()
+        try:
+            written = shapefile_registry.write_template(target)
+        except FileExistsError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        print(f"Wrote shapefile config template to: {written}")
+        print("Edit it to register your shapefiles, then use: --shp <name>")
+        return 0
+
+    # A TSV is required for every run except --init-shapefile-config.
+    if args.tsv is None:
+        print("Error: the following argument is required: tsv (input BOLD TSV file)",
+              file=sys.stderr)
+        return 1
+
+    # Resolve a registered shapefile shorthand (--shp), if given.
+    goas_path_override = None
+    try:
+        selection = shapefile_registry.resolve_selection(
+            shp_name=args.shp_name,
+            custom_shp=args.shapefile_path,
+            explicit_field=args.shapefile_field,
+            explicit_geo_category=args.geo_category,
+            config_path=args.shapefile_config,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if selection is not None:
+        args.geo_category = selection.geo_category
+        if selection.is_goas:
+            # Route through the existing GOaS ocean-basin logic; override the
+            # GOaS shapefile path so the registered copy is used.
+            args.shapefile_path = None
+            goas_path_override = selection.path
+        else:
+            args.shapefile_path = selection.path
+            args.shapefile_field = selection.field
 
     # Validate input file
     if not args.tsv.exists():
@@ -2267,6 +2347,9 @@ Notes:
         keep_intermediates=args.keep_intermediates,
         coi_validation__mitochondrial_code=args.genetic_code
     )
+
+    if goas_path_override is not None:
+        cfg = cfg.update(geographic__goas_shapefile_path=goas_path_override)
 
     # Print banner
     print("=" * 80)
