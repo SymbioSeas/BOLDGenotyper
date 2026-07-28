@@ -764,6 +764,17 @@ boldgenotyper-query \
   --output query_results/
 ```
 
+**Query Against a Previous Run Directory (simplest)**:
+```bash
+# Point --haplotypes at a previous run directory; BOLDGenotyper finds the
+# reference FASTA under <dir>/haplotypes/ and uses that run's taxonomy for
+# species assignment automatically (no separate --analysis-dir needed).
+boldgenotyper-query \
+  --query new_samples.fasta \
+  --haplotypes boldgenotyper_Penaeidae \
+  --output query_results/
+```
+
 **Customize Top Matches and Length Filters**:
 ```bash
 # Report top 20 matches, filter by sequence length
@@ -777,12 +788,29 @@ boldgenotyper-query \
 ```
 
 **Query Output Files**:
-All three formats are generated automatically:
-- `query_results.csv`: Machine-readable table with identity metrics
+- `query_summary.csv`: One row per query with the assignment verdict (see below)
+- `query_results.csv`: Machine-readable table of the top-N matches with identity metrics
 - `query_results.json`: Structured data for programmatic access
-- `query_results_detailed.txt`: Human-readable report with alignments
+- `query_results_detailed.txt`: Human-readable report with the verdict and alignments
 
-**Match Quality Classification**:
+**Reading the Verdict (`query_summary.csv`)**:
+Each query gets a two-level call, so you can tell a confident assignment from an ambiguous one:
+
+- `haplotype_call`:
+  - **confident**: one clear best haplotype above the identity threshold
+  - **tied**: several haplotypes within `--tie-margin` of the best (all listed in `assigned_haplotypes`)
+  - **no_confident_match**: the best match is below `--assign-identity`
+- `species_call`:
+  - **confident**: the assigned or tied haplotypes all resolve to one species (`assigned_species`) — a query can be species-confident even when the haplotype is tied
+  - **ambiguous**: the tied haplotypes span multiple species (listed in `candidate_species`)
+  - **unassigned**: no confident haplotype match
+  - **unknown**: a confident haplotype match, but no taxonomy metadata was available to name the species (supply `--analysis-dir` or a run directory)
+
+**Assignment Thresholds**:
+- `--assign-identity` (default 0.97): minimum identity (fraction, 0-1) to call a match assignable
+- `--tie-margin` (default 0.005): haplotypes within this fraction of the best match are tied with it
+
+**Match Quality Classification** (per-match label in `query_results.csv`):
 - **perfect** (100%): Exact haplotype match
 - **high** (≥99.5%): Likely same haplotype, minor sequencing variation
 - **good** (≥97%): Same species, possibly different haplotype
