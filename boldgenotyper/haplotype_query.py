@@ -43,6 +43,8 @@ from Bio.Align import PairwiseAligner
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+from . import query_assignment
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -342,8 +344,10 @@ def query_against_haplotypes(
     analysis_dir: Optional[Path] = None,
     top_n: int = 10,
     min_length: int = 100,
-    max_length: int = 2000
-) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame]]:
+    max_length: int = 2000,
+    min_identity: float = 0.97,
+    tie_margin: float = 0.005,
+) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame], List["query_assignment.QueryVerdict"]]:
     """
     Query sequences against haplotype consensuses.
 
@@ -383,7 +387,7 @@ def query_against_haplotypes(
 
     Examples
     --------
-    >>> results, metadata = query_against_haplotypes(
+    >>> results, metadata, verdicts = query_against_haplotypes(
     ...     Path("query.fasta"),
     ...     Path("analysis/haplotypes/Organism_haplotypes.fasta"),
     ...     analysis_dir=Path("analysis/")
@@ -444,9 +448,16 @@ def query_against_haplotypes(
     if analysis_dir:
         metadata = load_haplotype_metadata(analysis_dir)
 
+    species_by_haplotype = {}
+    if metadata is not None and 'haplotype_id' in metadata.columns and 'assigned_sp' in metadata.columns:
+        for _, row in metadata.iterrows():
+            sp = row['assigned_sp']
+            species_by_haplotype[row['haplotype_id']] = sp if pd.notna(sp) and str(sp).strip() else None
+
     # Perform alignments
     logger.info(f"Performing alignments: {len(valid_queries)} queries × {len(haplotype_records)} haplotypes")
     all_results = []
+    verdicts = []
 
     for query_record in valid_queries:
         query_seq = str(query_record.seq)
@@ -464,8 +475,12 @@ def query_against_haplotypes(
             )
             query_results.append(result)
 
-        # Sort by identity (descending) and keep top N
+        # Sort by identity (descending); compute the verdict from the full list
+        # before truncating to top N for display.
         query_results.sort(key=lambda x: x.identity_pct, reverse=True)
+        verdicts.append(query_assignment.assign_query(
+            query_id, query_results, species_by_haplotype, min_identity, tie_margin
+        ))
         all_results.extend(query_results[:top_n])
 
         # Log best match
@@ -477,7 +492,7 @@ def query_against_haplotypes(
 
     logger.info(f"Alignment complete: {len(all_results)} results generated")
 
-    return all_results, metadata
+    return all_results, metadata, verdicts
 
 
 # ============================================================================
@@ -597,7 +612,10 @@ def write_results(
     output_dir: Path,
     metadata: Optional[pd.DataFrame] = None,
     haplotype_file: Path = None,
-    analysis_dir: Path = None
+    analysis_dir: Path = None,
+    verdicts=None,
+    min_identity: float = 0.97,
+    tie_margin: float = 0.005,
 ) -> None:
     """
     Write query results in all output formats.
@@ -638,8 +656,35 @@ def write_results(
 
     # Write detailed text report
     txt_file = output_dir / "query_results_detailed.txt"
-    write_text_report(results, txt_file, metadata, haplotype_file, analysis_dir)
+    write_text_report(results, txt_file, metadata, haplotype_file, analysis_dir, verdicts)
     logger.info(f"Wrote detailed report to {txt_file}")
+
+    # Write per-query verdict summary
+    if verdicts is not None:
+        write_query_summary(verdicts, output_dir, min_identity, tie_margin)
+
+
+def write_query_summary(verdicts, output_dir, min_identity, tie_margin):
+    """Write one-row-per-query verdict summary to query_summary.csv."""
+    rows = []
+    for v in verdicts:
+        rows.append({
+            'query_id': v.query_id,
+            'haplotype_call': v.haplotype_call,
+            'assigned_haplotypes': ';'.join(v.assigned_haplotypes),
+            'best_identity': round(v.best_identity, 4),
+            'n_tied': v.n_tied,
+            'species_call': v.species_call,
+            'assigned_species': v.assigned_species or '',
+            'candidate_species': ';'.join(v.candidate_species),
+            'reason': v.reason,
+            'assign_identity': min_identity,
+            'tie_margin': tie_margin,
+        })
+    summary_file = Path(output_dir) / "query_summary.csv"
+    pd.DataFrame(rows).to_csv(summary_file, index=False)
+    logger.info(f"Wrote query verdict summary: {summary_file}")
+    return summary_file
 
 
 def write_json_results(
@@ -699,7 +744,8 @@ def write_text_report(
     output_file: Path,
     metadata: Optional[pd.DataFrame] = None,
     haplotype_file: Path = None,
-    analysis_dir: Path = None
+    analysis_dir: Path = None,
+    verdicts=None
 ) -> None:
     """Write detailed text report with alignments."""
     # Group by query
@@ -726,7 +772,29 @@ def write_text_report(
         # Summary
         f.write("Query Summary:\n")
         f.write("-" * 80 + "\n")
+        verdict_by_id = {v.query_id: v for v in (verdicts or [])}
         for query_id, query_results in queries_dict.items():
+            v = verdict_by_id.get(query_id)
+            if v is not None:
+                if v.haplotype_call == "confident":
+                    hap = f"CONFIDENT: {v.assigned_haplotypes[0]} ({v.best_identity:.2f}%)"
+                elif v.haplotype_call == "tied":
+                    hap = (f"TIED among {v.n_tied} haplotypes "
+                           f"({', '.join(v.assigned_haplotypes)}) at {v.best_identity:.2f}%")
+                else:
+                    hap = f"NO CONFIDENT MATCH (best {v.best_identity:.2f}%)"
+                if v.species_call == "confident":
+                    sp = f"SPECIES: confident ({v.assigned_species})"
+                elif v.species_call == "ambiguous":
+                    sp = f"SPECIES: ambiguous ({', '.join(v.candidate_species)})"
+                elif v.species_call == "unknown":
+                    sp = "SPECIES: unknown (no metadata)"
+                else:
+                    sp = "SPECIES: unassigned"
+                f.write(f"{query_id} : {hap}\n")
+                f.write(f"{' ' * len(query_id)}   {sp}\n")
+                continue
+
             best = query_results[0]
             quality_desc = {
                 'perfect': 'Perfect match',

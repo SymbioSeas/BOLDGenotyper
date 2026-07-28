@@ -112,7 +112,7 @@ class TestRealData:
 
         try:
             # Run query
-            results, metadata = haplotype_query.query_against_haplotypes(
+            results, metadata, _verdicts = haplotype_query.query_against_haplotypes(
                 query_fasta=Path(temp_query),
                 haplotype_fasta=haplotype_file,
                 analysis_dir=Path("data/Sphyrnidae_test_2"),
