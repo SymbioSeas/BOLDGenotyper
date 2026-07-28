@@ -243,6 +243,56 @@ BOLDGenotyper supports custom shapefiles for **freshwater and terrestrial organi
 - **Terrestrial**: Ecoregions2017 biogeographic regions
 - **Custom**: Any polygon shapefile
 
+#### Registering shapefiles (recommended)
+
+Rather than passing `--custom-shp`, `--shp-field`, and `--geo-category` on every run, register each shapefile once under a shorthand name and select it with a single flag. This also works from any working directory, so you can run BOLDGenotyper across different projects without editing paths.
+
+Create a starter config:
+```bash
+boldgenotyper --init-shapefile-config
+```
+This writes a commented template to `~/.config/boldgenotyper/shapefiles.yaml` (`%APPDATA%\boldgenotyper\shapefiles.yaml` on Windows). Edit it to register your shapefiles:
+```yaml
+# Optional base dir for resolving the relative paths below.
+# If omitted, relative paths resolve against this file's own directory.
+shapefiles_dir: ~/boldgenotyper-data/shapefiles
+
+shapefiles:
+  GOaS_v1_20211214:
+    path: GOaS_v1_20211214/goas_v01.shp
+    field: name
+    geo_category: ocean_basin
+    type: goas
+  Ecoregions2017:
+    path: Ecoregions2017/Ecoregions2017.shp
+    field: REALM
+    geo_category: biogeographic_realm
+  BasinATLAS_v10:
+    path: BasinATLAS/BasinATLAS_lev03.shp
+    field: PFAF_ID
+    geo_category: drainage_basin
+```
+Then select a registered shapefile by name:
+```bash
+boldgenotyper data/Salmonidae.tsv --shp BasinATLAS_v10 --build-tree
+```
+
+**How the config is found** (first match wins):
+1. `--shapefile-config <path>`
+2. `BOLDGENOTYPER_SHAPEFILE_CONFIG` environment variable
+3. `~/.config/boldgenotyper/shapefiles.yaml` (the default)
+
+**Path resolution**: absolute paths and `~`/environment variables are used as given; relative paths resolve against `shapefiles_dir` if set, otherwise against the config file's own directory. Keep the config and the (large) shapefile data wherever you like.
+
+**Notes**:
+- Explicit `--shp-field` or `--geo-category` override the registered values, so you can register defaults and tweak per run: `--shp Ecoregions2017 --geo-category biome`.
+- `--shp` and `--custom-shp` cannot be combined.
+- GOaS is pre-registered so `--shp GOaS_v1_20211214` works uniformly; GOaS is still used automatically when no `--shp` is given.
+
+#### Passing flags directly (alternative)
+
+If you prefer not to keep a config, pass the three flags on each run.
+
 **Example: Freshwater organisms (Salmonidae)**
 ```bash
 boldgenotyper data/Salmonidae.tsv \
