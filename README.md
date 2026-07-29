@@ -745,6 +745,8 @@ After completing a BOLD analysis, you can query new COI sequences against the id
 - Validating reference genomes against field samples
 - Cross-study comparison and longitudinal monitoring
 
+**Query input**: Provide one consensus sequence per specimen (one per sample) in a single multi-FASTA — not raw forward/reverse Sanger reads. Build consensus sequences in your preferred tool (e.g. Geneious) first.
+
 **Basic Query (Single or Multi-FASTA)**:
 ```bash
 # Query new sequence(s) against identified haplotypes
