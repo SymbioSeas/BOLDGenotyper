@@ -31,7 +31,9 @@ import sys
 import os
 import logging
 import json
+import shlex
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import pandas as pd
@@ -2329,6 +2331,9 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     utils.setup_logging(log_level=args.log_level, log_file=str(log_file))
+    logger.info(f"BOLDGenotyper {__version__} run started "
+                f"{datetime.now().astimezone().isoformat(timespec='seconds')}")
+    logger.info(f"Command: {shlex.join(sys.argv)}")
 
     # Load and configure pipeline
     cfg = config.get_default_config()

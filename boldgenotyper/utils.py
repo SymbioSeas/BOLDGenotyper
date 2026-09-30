@@ -57,6 +57,7 @@ def setup_logging(
     log_level: str = "INFO",
     log_file: Optional[str] = None,
     format_string: Optional[str] = None,
+    mode: str = "w",
 ) -> logging.Logger:
     """
     Configure logging for BOLDGenotyper.
@@ -73,6 +74,10 @@ def setup_logging(
         Path to log file. If None, logs only to console (default: None)
     format_string : str, optional
         Custom format string for log messages. If None, uses default format
+    mode : str, optional
+        File mode for the log file: 'w' starts a fresh log (default), 'a'
+        appends to an existing one. A fresh log per run keeps an interrupted
+        earlier run from appearing in the new run's log.
 
     Returns
     -------
@@ -93,8 +98,11 @@ def setup_logging(
     package_logger = logging.getLogger("boldgenotyper")
     package_logger.setLevel(getattr(logging, log_level.upper()))
 
-    # Remove existing handlers to avoid duplicates
-    package_logger.handlers.clear()
+    # Close and remove existing handlers so a new run does not write to (or
+    # hold open) a previous run's log file.
+    for handler in list(package_logger.handlers):
+        handler.close()
+        package_logger.removeHandler(handler)
 
     # Default format
     if format_string is None:
@@ -113,7 +121,7 @@ def setup_logging(
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+        file_handler = logging.FileHandler(log_file, mode=mode, encoding='utf-8')
         file_handler.setLevel(getattr(logging, log_level.upper()))
         file_handler.setFormatter(formatter)
         package_logger.addHandler(file_handler)
