@@ -93,3 +93,10 @@ shapefiles/
 
 # Environment
 environment.yml.backup
+
+# Test run logs
+tests/*.log
+
+# Word documents and lock files
+*.docx
+~$*
