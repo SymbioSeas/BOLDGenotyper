@@ -24,15 +24,19 @@ import pandas as pd
 from io import StringIO
 import logging
 
-# Mock problematic cartopy imports BEFORE importing boldgenotyper modules
-cartopy_mock = MagicMock()
-sys.modules['cartopy'] = cartopy_mock
-sys.modules['cartopy.crs'] = MagicMock()
-sys.modules['cartopy.io'] = MagicMock()
-sys.modules['cartopy.io.shapereader'] = MagicMock()
-sys.modules['cartopy.feature'] = MagicMock()
-sys.modules['cartopy.mpl'] = MagicMock()
-sys.modules['cartopy.mpl.ticker'] = MagicMock()
+# Mock cartopy only when it cannot be imported. Replacing it in sys.modules
+# unconditionally leaked the mocks into every test collected after this module.
+try:
+    import cartopy.crs  # noqa: F401
+except Exception:
+    cartopy_mock = MagicMock()
+    sys.modules['cartopy'] = cartopy_mock
+    sys.modules['cartopy.crs'] = MagicMock()
+    sys.modules['cartopy.io'] = MagicMock()
+    sys.modules['cartopy.io.shapereader'] = MagicMock()
+    sys.modules['cartopy.feature'] = MagicMock()
+    sys.modules['cartopy.mpl'] = MagicMock()
+    sys.modules['cartopy.mpl.ticker'] = MagicMock()
 
 from boldgenotyper import metadata, geographic, utils
 

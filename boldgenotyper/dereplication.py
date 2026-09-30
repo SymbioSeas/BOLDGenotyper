@@ -66,14 +66,17 @@ import logging
 import subprocess
 import shutil
 import os
-import re
 from collections import Counter
+from dataclasses import dataclass
 
 import pandas as pd
 import numpy as np
 from Bio import SeqIO, AlignIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+
+from . import haplotype_ids
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,29 @@ class DereplicationError(Exception):
 class AlignmentError(DereplicationError):
     """Error during sequence alignment."""
     pass
+
+
+@dataclass
+class DiscoveryDetails:
+    """Values computed during haplotype discovery that a run must report.
+
+    error_singletons has one row per member of an error-filtered singleton:
+    processid, status (assigned_corrected | excluded_error_singleton),
+    haplotype_id (display ID when assigned), nearest_haplotype (display ID when
+    the nearest retained haplotype is unique), distance_to_nearest (p-distance),
+    tied_haplotypes (';'-joined display IDs when equidistant, else '').
+    """
+    core_region_length_bp: int
+    core_reference_length_bp: float
+    min_sequence_length_bp: float
+    excluded_core_coverage: List[str]
+    error_singletons: pd.DataFrame
+    n_corrected_beyond_threshold: int
+
+
+def _member_counts(mapping: pd.DataFrame) -> Dict[str, int]:
+    """Current member count per haplotype key, from the mapping table."""
+    return mapping.groupby("haplotype_id").size().astype(int).to_dict()
 
 
 
@@ -197,47 +223,44 @@ def identify_unique_haplotypes(
     aligned_seqs = {}  # ungapped_seq -> aligned_seq
 
     for header, seq in zip(headers, core_alignment):
-        # Ungapped sequence for haplotype ID
-        ungapped = seq.replace('-', '')
+        # Ungapped, uppercase core sequence defines the haplotype
+        ungapped = seq.replace('-', '').upper()
         haplotype_groups[ungapped].append(header)
         # Store aligned version (first occurrence)
         if ungapped not in aligned_seqs:
             aligned_seqs[ungapped] = seq
 
-    # Create haplotype records
+    # Create haplotype records, keyed by seq_md5. Display IDs (H0001, ...) are
+    # assigned at the end of identify_haplotypes, once final member counts are
+    # known. Order: member count descending, ties in order of first appearance
+    # (sorted() is stable); the zero-divergence merge depends on this order.
     haplotype_records = []
     haplotype_mapping = []
 
-    haplotype_id = 1
     for ungapped_seq, members in sorted(haplotype_groups.items(), key=lambda x: -len(x[1])):
         n_members = len(members)
+        key = haplotype_ids.seq_md5(ungapped_seq)
 
-        # Create haplotype ID (simplified format: h1_n8)
-        hap_id = f"h{haplotype_id}_n{n_members}"
-
-        # Create SeqRecord with ALIGNED sequence (for distance calculation)
-        # The aligned version is needed for pairwise distance matrix
+        # SeqRecord holds the ALIGNED sequence (needed for pairwise distances)
         seq_record = SeqRecord(
             Seq(aligned_seqs[ungapped_seq]),
-            id=hap_id,
+            id=key,
             description=""
         )
         haplotype_records.append(seq_record)
 
-        # Record mapping
         for processid in members:
             haplotype_mapping.append({
                 'processid': processid,
-                'haplotype_id': hap_id,
-                'haplotype_number': haplotype_id,
+                'haplotype_id': key,
                 'n_members': n_members,
                 'is_singleton': n_members == 1
             })
 
-        haplotype_id += 1
-
     # Convert mapping to DataFrame
-    haplotype_df = pd.DataFrame(haplotype_mapping)
+    haplotype_df = pd.DataFrame(
+        haplotype_mapping, columns=['processid', 'haplotype_id', 'n_members', 'is_singleton']
+    )
 
     # Merge with ORF validation if provided and contains non-null data
     if orf_validation_results is not None and len(orf_validation_results) > 0:
@@ -259,7 +282,7 @@ def identify_unique_haplotypes(
                 )
 
     logger.info(f"Identified {len(haplotype_records)} unique haplotypes from {len(headers)} sequences")
-    n_singletons = sum(1 for h in haplotype_records if h.id.endswith("_n1"))
+    n_singletons = sum(1 for n in _member_counts(haplotype_df).values() if n == 1)
     logger.info(f"  Singletons: {n_singletons} ({n_singletons/len(haplotype_records)*100:.1f}%)")
 
     return haplotype_records, haplotype_df
@@ -369,7 +392,7 @@ def filter_error_singletons(
     haplotype_records: List[SeqRecord],
     haplotype_mapping: pd.DataFrame,
     min_singleton_distance: float = 0.005
-) -> Tuple[List[SeqRecord], pd.DataFrame, Dict[str, int]]:
+) -> Tuple[List[SeqRecord], pd.DataFrame, Dict[str, int], list]:
     """
     Filter likely sequencing/PCR error-derived singleton haplotypes.
 
@@ -389,10 +412,13 @@ def filter_error_singletons(
 
     Returns
     -------
-    Tuple[List[SeqRecord], pd.DataFrame, Dict[str, int]]
+    Tuple[List[SeqRecord], pd.DataFrame, Dict[str, int], list]
         - Filtered haplotype records
         - Filtered haplotype mapping (with removed samples excluded)
         - Statistics dictionary with filtering counts
+        - Removed singletons: (haplotype_key, aligned_core_sequence,
+          member_processids) for each, so they can be assigned to their
+          nearest retained haplotype (assign_error_singletons)
 
     Notes
     -----
@@ -431,14 +457,16 @@ def filter_error_singletons(
     Edgar (2013). UPARSE: highly accurate OTU sequences from microbial amplicon reads.
     Nature Methods, 10(10), 996-998.
     """
+    counts = _member_counts(haplotype_mapping)
+
     if min_singleton_distance <= 0.0:
         # Filtering disabled
         return haplotype_records, haplotype_mapping, {
             'n_total': len(haplotype_records),
-            'n_singletons': sum(1 for r in haplotype_records if '_n1' in r.id),
+            'n_singletons': sum(1 for r in haplotype_records if counts.get(r.id, 0) == 1),
             'n_filtered': 0,
             'n_retained': len(haplotype_records)
-        }
+        }, []
 
     # Calculate pairwise distances
     distance_matrix_condensed = calculate_pairwise_distances(haplotype_records)
@@ -448,14 +476,14 @@ def filter_error_singletons(
     # Identify singletons to keep
     records_to_keep = []
     haplotype_ids_to_keep = []
+    removed = []
 
     n_singletons = 0
     n_filtered = 0
 
     for i, record in enumerate(haplotype_records):
         hap_id = record.id
-        n_members = int(re.search(r'_n(\d+)', hap_id).group(1))
-        is_singleton = n_members == 1
+        is_singleton = counts.get(hap_id, 0) == 1
 
         if is_singleton:
             n_singletons += 1
@@ -472,6 +500,10 @@ def filter_error_singletons(
             # Filter if below threshold
             if nearest_neighbor_dist <= min_singleton_distance:
                 n_filtered += 1
+                members = haplotype_mapping.loc[
+                    haplotype_mapping['haplotype_id'] == hap_id, 'processid'
+                ].tolist()
+                removed.append((hap_id, str(record.seq), members))
                 continue  # Don't keep this singleton
 
         # Keep this haplotype (multi-member or distant singleton)
@@ -498,7 +530,7 @@ def filter_error_singletons(
     logger.info(f"  Filtered (likely errors): {stats['n_filtered']} ({stats['filter_rate']*100:.1f}% of singletons)")
     logger.info(f"  Retained haplotypes: {stats['n_retained']} ({stats['n_retained']/stats['n_total']*100:.1f}%)")
 
-    return records_to_keep, mapping_filtered, stats
+    return records_to_keep, mapping_filtered, stats, removed
 
 
 def flag_suspect_haplotypes(
@@ -556,6 +588,7 @@ def flag_suspect_haplotypes(
     distance_matrix = squareform(distance_matrix_condensed)
 
     # For each haplotype, find nearest neighbor distance
+    counts = _member_counts(haplotype_df)
     haplotype_stats = []
 
     for i, record in enumerate(haplotype_records):
@@ -568,9 +601,9 @@ def flag_suspect_haplotypes(
         else:
             nearest_neighbor_dist = np.nan
 
-        # Extract haplotype info from description
+        # Member count comes from the mapping, never from the ID
         hap_id = record.id
-        n_members = int(re.search(r'_n(\d+)', hap_id).group(1))
+        n_members = counts.get(hap_id, 0)
         is_singleton = n_members == 1
 
         haplotype_stats.append({
@@ -789,7 +822,10 @@ def merge_zero_divergence_haplotypes(
         root = find(hap_id)
         groups[root].append(hap_id)
 
-    # For each group, select representative (largest member count)
+    # For each group, select representative (largest member count). Groups
+    # list members in record order, so max() keeps the first record with the
+    # largest count, as in v1; the representative's sequence is the one kept.
+    member_counts = _member_counts(haplotype_mapping)
     haplotype_merges = {}  # old_id -> new_id
     representatives = {}   # new_id -> SeqRecord
 
@@ -801,11 +837,6 @@ def merge_zero_divergence_haplotypes(
             representatives[hap_id] = record
         else:
             # Select representative: largest member count, or first if tied
-            member_counts = {}
-            for hap_id in group_members:
-                n_members = int(re.search(r'_n(\d+)', hap_id).group(1))
-                member_counts[hap_id] = n_members
-
             representative_id = max(group_members, key=lambda x: member_counts[x])
             representative_record = next(r for r in haplotype_records if r.id == representative_id)
 
@@ -828,19 +859,16 @@ def merge_zero_divergence_haplotypes(
         haplotype_mapping = haplotype_mapping.copy()
         haplotype_mapping['haplotype_id'] = haplotype_mapping['haplotype_id'].replace(haplotype_merges)
 
-    # Recalculate member counts and update records
-    member_counts = haplotype_mapping.groupby('haplotype_id').size()
+    # Recompute member counts in the mapping: merged members now belong to the
+    # representative (v1 left the pre-merge counts in place).
+    haplotype_mapping = haplotype_mapping.copy()
+    new_counts = haplotype_mapping['haplotype_id'].map(_member_counts(haplotype_mapping))
+    haplotype_mapping['n_members'] = new_counts.astype(int)
+    haplotype_mapping['is_singleton'] = haplotype_mapping['n_members'] == 1
 
     merged_records = []
     for hap_id, record in representatives.items():
-        n_members = member_counts.get(hap_id, 0)
-        hap_number = int(re.search(r'h(\d+)', hap_id).group(1))
-
-        updated_record = SeqRecord(
-            record.seq,
-            id=hap_id,
-            description=f"Haplotype {hap_number} with {n_members} sequences"
-        )
+        updated_record = SeqRecord(record.seq, id=hap_id, description="")
         merged_records.append(updated_record)
 
     logger.info(f"  Merged {len(haplotype_merges)} haplotypes with zero divergence")
@@ -856,6 +884,80 @@ def merge_zero_divergence_haplotypes(
     return merged_records, haplotype_mapping, stats
 
 
+def _encode_bases(seqs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
+    """Uppercase byte matrix of equal-length aligned sequences, plus a mask of
+    positions holding A, C, G or T (the sites _compute_distance compares)."""
+    arr = np.array([np.frombuffer(s.upper().encode("ascii"), dtype=np.uint8) for s in seqs])
+    valid = np.isin(arr, np.frombuffer(b"ACGT", dtype=np.uint8))
+    return arr, valid
+
+
+def distances_to_references(seq: str, references: List[str]) -> np.ndarray:
+    """p-distance from seq to each reference, with the same definition as
+    _compute_distance: 1 - matches / valid_sites over positions where both
+    sequences have A/C/G/T, and 1.0 when there are no such positions."""
+    ref_arr, ref_valid = _encode_bases(references)
+    q_arr, q_valid = _encode_bases([seq])
+    both = ref_valid & q_valid
+    n_valid = both.sum(axis=1)
+    n_match = ((ref_arr == q_arr) & both).sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        d = 1.0 - (n_match / n_valid)
+    d[n_valid == 0] = 1.0
+    return d
+
+
+def assign_error_singletons(removed, retained_records, assign_corrected=True):
+    """Assign each removed error singleton's members to the nearest retained haplotype.
+
+    Parameters
+    ----------
+    removed : list of (haplotype_key, aligned_core_sequence, member_processids)
+        As returned by filter_error_singletons.
+    retained_records : List[SeqRecord]
+        Retained haplotypes after the zero-divergence merge (aligned core
+        sequences, same length as the removed ones; ids are haplotype keys).
+    assign_corrected : bool
+        If False, every member is left unassigned (excluded_error_singleton),
+        but the nearest haplotype and distance are still reported.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per member processid: processid, status
+        (assigned_corrected | excluded_error_singleton), haplotype_key (None
+        unless assigned), nearest_key (None when tied), distance_to_nearest,
+        tied_keys (';'-joined keys when equidistant, else '').
+    """
+    columns = ["processid", "status", "haplotype_key", "nearest_key",
+               "distance_to_nearest", "tied_keys"]
+    if not removed or not retained_records:
+        rows = [{"processid": pid, "status": "excluded_error_singleton", "haplotype_key": None,
+                 "nearest_key": None, "distance_to_nearest": float("nan"), "tied_keys": ""}
+                for _key, _seq, members in removed for pid in members]
+        return pd.DataFrame(rows, columns=columns)
+
+    keys = [r.id for r in retained_records]
+    refs = [str(r.seq) for r in retained_records]
+    rows = []
+    for _key, seq, members in removed:
+        d = np.round(distances_to_references(seq, refs), 12)
+        best = float(d.min())
+        nearest = [keys[i] for i in np.flatnonzero(d == best)]
+        tied = len(nearest) > 1
+        assigned = assign_corrected and not tied
+        for pid in members:
+            rows.append({
+                "processid": pid,
+                "status": "assigned_corrected" if assigned else "excluded_error_singleton",
+                "haplotype_key": nearest[0] if assigned else None,
+                "nearest_key": None if tied else nearest[0],
+                "distance_to_nearest": best,
+                "tied_keys": ";".join(nearest) if tied else "",
+            })
+    return pd.DataFrame(rows, columns=columns)
+
+
 def identify_haplotypes(
     tsv_path: Union[str, Path],
     fasta_path: Union[str, Path],
@@ -866,8 +968,11 @@ def identify_haplotypes(
     min_singleton_distance: float = 0.005,
     max_singleton_distance: float = 0.05,
     orf_validation_df: Optional[pd.DataFrame] = None,
-    cleanup_intermediates: bool = False
-) -> Tuple[List[SeqRecord], pd.DataFrame, pd.DataFrame]:
+    cleanup_intermediates: bool = False,
+    min_sequence_coverage: float = 0.95,
+    assign_corrected: bool = True,
+    return_details: bool = False,
+) -> tuple:
     """
     Main haplotype-first workflow: identify ESVs from core region.
     Includes two-stage singleton quality control to remove sequencing/PCR errors
@@ -899,13 +1004,26 @@ def identify_haplotypes(
         ORF validation results from quality control
     cleanup_intermediates : bool, optional
         Remove intermediate files (default: False)
+    min_sequence_coverage : float, optional
+        Per-sequence core cutoff passed to extract_core_region (default: 0.95)
+    assign_corrected : bool, optional
+        Assign error-filtered singletons to their nearest retained haplotype
+        (default: True). Equidistant singletons are never assigned.
+    return_details : bool, optional
+        Also return a DiscoveryDetails with the cutoffs applied, the records
+        excluded for core coverage, and the error-singleton outcomes.
 
     Returns
     -------
-    Tuple[List[SeqRecord], pd.DataFrame, pd.DataFrame]
-        - haplotype_records: Unique haplotype sequences (after filtering)
-        - haplotype_mapping: Sample-to-haplotype mapping (after filtering)
-        - haplotype_stats: Haplotype-level statistics with flags
+    tuple
+        - haplotype_records: retained haplotypes (aligned core sequences) with
+          display IDs (H0001, ...) and description "seq_md5=... n_members=..."
+        - haplotype_mapping: one row per assigned record (exact and corrected):
+          processid, haplotype_id, seq_md5, n_members, is_singleton, assignment
+        - haplotype_stats: one row per haplotype: haplotype_id, seq_md5,
+          core_length, n_exact, n_corrected, n_members, is_singleton, and the
+          suspect flags
+        - details (only with return_details=True): DiscoveryDetails
 
     Notes
     -----
@@ -926,8 +1044,11 @@ def identify_haplotypes(
     2. Mask gappy columns (>gap_mask_threshold gaps) to remove insertion artifacts
     3. Extract core shared region (covered by ≥min_core_coverage of sequences)
     4. Identify unique haplotypes (ESVs)
-    4.5. Filter error-derived singletons (NEW)
+    4.5. Filter error-derived singletons
     5. Calculate distances and flag suspects
+    5.5. Merge zero-divergence haplotypes
+    5.6. Assign error-filtered singletons to their nearest retained haplotype
+    5.7. Assign display IDs from final member counts
     6. Write output files
     """
     from boldgenotyper.utils import extract_core_region
@@ -969,7 +1090,9 @@ def identify_haplotypes(
         headers,
         min_coverage=min_core_coverage,
         gap_threshold=gap_mask_threshold,
-        min_core_length=min_core_length
+        min_core_length=min_core_length,
+        min_sequence_coverage=min_sequence_coverage,
+        return_details=True,
     )
 
     if core_result is None:
@@ -979,7 +1102,7 @@ def identify_haplotypes(
             "Consider checking sequence quality and alignment coverage."
         )
 
-    core_seqs, core_headers = core_result
+    core_seqs, core_headers, core_details = core_result
     logger.info(f"Core region: {len(core_seqs)} sequences, {len(core_seqs[0])} positions")
 
     # Step 4: Identify unique haplotypes
@@ -992,7 +1115,7 @@ def identify_haplotypes(
 
     # Step 4.5: Filter error-derived singletons
     logger.info("Step 4.5: Filtering error-derived singletons...")
-    haplotype_records, haplotype_mapping, filter_stats = filter_error_singletons(
+    haplotype_records, haplotype_mapping, filter_stats, removed_singletons = filter_error_singletons(
         haplotype_records,
         haplotype_mapping,
         min_singleton_distance=min_singleton_distance
@@ -1024,19 +1147,91 @@ def identify_haplotypes(
             max_singleton_distance=max_singleton_distance
         )
 
+    # Step 5.6: Assign error-filtered singletons to their nearest retained haplotype
+    logger.info("Step 5.6: Assigning error-filtered singletons to their nearest retained haplotype...")
+    corrections = assign_error_singletons(removed_singletons, haplotype_records,
+                                          assign_corrected=assign_corrected)
+    corrected = corrections[corrections['status'] == 'assigned_corrected']
+    n_tied = int((corrections['tied_keys'] != '').sum())
+    if assign_corrected:
+        logger.info(f"  {len(corrected)} records assigned to their nearest retained haplotype; "
+                    f"{n_tied} equidistant from two or more haplotypes (left unassigned)")
+    else:
+        logger.info(f"  Correction disabled: {len(corrections)} error-singleton records left unassigned")
+
+    # Step 5.7: Final member counts and display IDs
+    record_keys = [r.id for r in haplotype_records]
+    n_exact = _member_counts(haplotype_mapping)
+    n_corr = corrected.groupby('haplotype_key').size().astype(int).to_dict()
+    n_members = {k: n_exact.get(k, 0) + n_corr.get(k, 0) for k in record_keys}
+    display = haplotype_ids.assign_display_ids(n_members)
+
+    haplotype_mapping = haplotype_mapping.copy()
+    haplotype_mapping['seq_md5'] = haplotype_mapping['haplotype_id']
+    haplotype_mapping['assignment'] = 'exact'
+    if len(corrected):
+        corrected_rows = pd.DataFrame({
+            'processid': corrected['processid'].values,
+            'seq_md5': corrected['haplotype_key'].values,
+            'assignment': 'corrected',
+        })
+        haplotype_mapping = pd.concat([haplotype_mapping, corrected_rows], ignore_index=True)
+    haplotype_mapping['haplotype_id'] = haplotype_mapping['seq_md5'].map(display)
+    haplotype_mapping['n_members'] = haplotype_mapping['seq_md5'].map(n_members).astype(int)
+    haplotype_mapping['is_singleton'] = haplotype_mapping['n_members'] == 1
+    front = ['processid', 'haplotype_id', 'seq_md5', 'n_members', 'is_singleton', 'assignment']
+    haplotype_mapping = haplotype_mapping[front + [c for c in haplotype_mapping.columns if c not in front]]
+
+    haplotype_stats = haplotype_stats.copy()
+    haplotype_stats['seq_md5'] = haplotype_stats['haplotype_id']
+    haplotype_stats['haplotype_id'] = haplotype_stats['seq_md5'].map(display)
+    core_length = {r.id: len(str(r.seq).replace('-', '')) for r in haplotype_records}
+    haplotype_stats['core_length'] = haplotype_stats['seq_md5'].map(core_length)
+    haplotype_stats['n_exact'] = haplotype_stats['seq_md5'].map(n_exact).fillna(0).astype(int)
+    haplotype_stats['n_corrected'] = haplotype_stats['seq_md5'].map(n_corr).fillna(0).astype(int)
+    haplotype_stats['n_members'] = haplotype_stats['seq_md5'].map(n_members).astype(int)
+    haplotype_stats['is_singleton'] = haplotype_stats['n_members'] == 1
+    haplotype_stats = haplotype_stats.sort_values('haplotype_id').reset_index(drop=True)
+    front = ['haplotype_id', 'seq_md5', 'core_length', 'n_exact', 'n_corrected', 'n_members', 'is_singleton']
+    haplotype_stats = haplotype_stats[front + [c for c in haplotype_stats.columns if c not in front]]
+
+    haplotype_records = sorted(
+        (SeqRecord(r.seq, id=display[r.id],
+                   description=f"seq_md5={r.id} n_members={n_members[r.id]}")
+         for r in haplotype_records),
+        key=lambda r: r.id,
+    )
+
+    def _display_or_none(key):
+        return display.get(key) if isinstance(key, str) and key else None
+
+    error_singletons = pd.DataFrame({
+        'processid': corrections['processid'],
+        'status': corrections['status'],
+        'haplotype_id': corrections['haplotype_key'].map(_display_or_none),
+        'nearest_haplotype': corrections['nearest_key'].map(_display_or_none),
+        'distance_to_nearest': corrections['distance_to_nearest'],
+        'tied_haplotypes': corrections['tied_keys'].map(
+            lambda s: ';'.join(sorted(display[k] for k in s.split(';'))) if s else ''),
+    })
+    details = DiscoveryDetails(
+        core_region_length_bp=core_details['core_region_length_bp'],
+        core_reference_length_bp=core_details['core_reference_length_bp'],
+        min_sequence_length_bp=core_details['min_sequence_length_bp'],
+        excluded_core_coverage=list(core_details['excluded_headers']),
+        error_singletons=error_singletons,
+        n_corrected_beyond_threshold=int(
+            (corrected['distance_to_nearest'] > min_singleton_distance).sum()),
+    )
+
     # Step 6: Write haplotype FASTA (ungapped for downstream use)
     haplotype_fasta = output_path / f"{Path(tsv_path).stem}_haplotypes.fasta"
 
-    # Create ungapped versions for writing to FASTA
-    ungapped_records = []
-    for rec in haplotype_records:
-        ungapped_seq = str(rec.seq).replace('-', '')
-        ungapped_rec = SeqRecord(
-            Seq(ungapped_seq),
-            id=rec.id,
-            description=rec.description
-        )
-        ungapped_records.append(ungapped_rec)
+    # Ungapped sequences; header ">H0001 seq_md5=... n_members=..."
+    ungapped_records = [
+        SeqRecord(Seq(str(rec.seq).replace('-', '')), id=rec.id, description=rec.description)
+        for rec in haplotype_records
+    ]
 
     SeqIO.write(ungapped_records, haplotype_fasta, "fasta")
     logger.info(f"Wrote {len(ungapped_records)} haplotypes to {haplotype_fasta}")
@@ -1070,4 +1265,6 @@ def identify_haplotypes(
     logger.info("Haplotype-first workflow completed successfully")
     logger.info("=" * 70)
 
+    if return_details:
+        return haplotype_records, haplotype_mapping, haplotype_stats, details
     return haplotype_records, haplotype_mapping, haplotype_stats

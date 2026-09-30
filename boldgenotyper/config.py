@@ -219,8 +219,14 @@ class CoreRegionConfig:
     Attributes
     ----------
     core_min_coverage : float
-        Minimum fraction of sequences that must cover a position (default: 0.8).
-        Positions covered by <80% of sequences are masked.
+        Column rule: minimum fraction of sequences that must cover a position
+        for it to be part of the core region (default: 0.8).
+
+    min_sequence_coverage : float
+        Per-sequence rule: a sequence is kept only if its ungapped core length
+        is at least this fraction of the reference core length (the 95th
+        percentile of ungapped core lengths) (default: 0.95). Sequences below
+        it get status excluded_core_coverage.
 
     core_min_length : int
         Minimum length of core region to retain (default: 150 bp).
@@ -250,6 +256,7 @@ class CoreRegionConfig:
     Min & Hickey (2007). Assessing the effect of alignment...
     """
     core_min_coverage: float = 0.8
+    min_sequence_coverage: float = 0.95
     core_min_length: int = 150
     mask_gap_threshold: float = 0.5
     codon_aware_alignment: bool = False
@@ -258,6 +265,8 @@ class CoreRegionConfig:
         """Validate configuration parameters."""
         if not 0 < self.core_min_coverage <= 1:
             raise ValueError("core_min_coverage must be between 0 and 1")
+        if not 0 < self.min_sequence_coverage <= 1:
+            raise ValueError("min_sequence_coverage must be between 0 and 1")
         if self.core_min_length < 50:
             raise ValueError("core_min_length must be at least 50")
         if not 0 < self.mask_gap_threshold <= 1:

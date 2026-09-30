@@ -765,7 +765,7 @@ def run_pipeline(
 
         # Merge haplotype assignments with QC-passed metadata
         df_with_haplotypes = df_qc_passed.merge(
-            haplotype_mapping_clean[['processid_base', 'haplotype_id', 'haplotype_number', 'n_members', 'is_singleton']],
+            haplotype_mapping_clean[['processid_base', 'haplotype_id', 'n_members', 'is_singleton']],
             left_on='processid',
             right_on='processid_base',
             how='left'

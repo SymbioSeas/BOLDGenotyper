@@ -1400,8 +1400,10 @@ def extract_core_region(
     headers: List[str],
     min_coverage: float = 0.8,
     gap_threshold: float = 0.5,
-    min_core_length: int = 200
-) -> Optional[Tuple[List[str], List[str]]]:
+    min_core_length: int = 200,
+    min_sequence_coverage: float = 0.95,
+    return_details: bool = False,
+) -> Optional[tuple]:
     """
     Extract core shared region from variable-length alignment.
 
@@ -1423,11 +1425,21 @@ def extract_core_region(
         Set to 1.0 to disable gap masking.
     min_core_length : int, optional
         Minimum core region length (default: 200 bp)
+    min_sequence_coverage : float, optional
+        Per-sequence rule: a sequence is kept only if its ungapped core length
+        is at least this fraction of the reference core length (the 95th
+        percentile of ungapped core lengths). Default 0.95. Distinct from
+        min_coverage, which decides which alignment columns form the core.
+    return_details : bool, optional
+        If True, also return a dict with the values applied (default: False)
 
     Returns
     -------
-    Optional[Tuple[List[str], List[str]]]
-        (core_sequences, headers) if core region found, None otherwise
+    Optional[tuple]
+        (core_sequences, headers) if a core region is found, None otherwise.
+        With return_details=True: (core_sequences, headers, details), where
+        details has core_region_length_bp, core_reference_length_bp,
+        min_sequence_length_bp and excluded_headers.
 
     Examples
     --------
@@ -1542,15 +1554,17 @@ def extract_core_region(
     # Use 95th percentile as reference (handles outliers better than max)
     import numpy as np
     reference_length = np.percentile(ungapped_lengths, 95)
-    min_coverage_threshold = 0.95  # Require 95% of reference length
+    min_coverage_threshold = min_sequence_coverage
     min_required_length = reference_length * min_coverage_threshold
 
     logger.info(
         f"Core region coverage filter: reference length = {reference_length:.0f} bp, "
-        f"minimum required = {min_required_length:.0f} bp ({min_coverage_threshold:.0%})"
+        f"minimum required = {min_required_length:.0f} bp "
+        f"(min_sequence_coverage {min_coverage_threshold:.0%} of reference)"
     )
 
     removed_count = 0
+    excluded_headers = []
     for seq, header in zip(core_sequences, headers):
         ungapped_seq = seq.replace('-', '')
         ungapped_length = len(ungapped_seq)
@@ -1559,6 +1573,7 @@ def extract_core_region(
             # All-gap sequence
             logger.debug(f"Removed all-gap sequence from core: {header}")
             removed_count += 1
+            excluded_headers.append(header)
         elif ungapped_length < min_required_length:
             # Insufficient coverage - this prevents identical sequences with different
             # lengths from being treated as unique haplotypes
@@ -1567,6 +1582,7 @@ def extract_core_region(
                 f"({ungapped_length:.0f} bp < {min_required_length:.0f} bp minimum)"
             )
             removed_count += 1
+            excluded_headers.append(header)
         else:
             filtered_core.append(seq)
             filtered_headers.append(header)
@@ -1579,4 +1595,12 @@ def extract_core_region(
         f"{len(filtered_core[0])} positions"
     )
 
+    if return_details:
+        details = {
+            "core_region_length_bp": int(core_length),
+            "core_reference_length_bp": float(reference_length),
+            "min_sequence_length_bp": float(min_required_length),
+            "excluded_headers": excluded_headers,
+        }
+        return filtered_core, filtered_headers, details
     return filtered_core, filtered_headers
