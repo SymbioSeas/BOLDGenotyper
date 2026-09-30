@@ -535,7 +535,7 @@ def build_phylogeny(
                 run_trimal(aligned_fasta, trimmed_fasta, method=trim_method)
                 tree_input = trimmed_fasta
             except RuntimeError as e:
-                logger.warning(f"trimAl failed: {e}")
+                logger.warning(f"trimAl failed: {e}", extra={"step_failure": "8 phylogeny"})
                 logger.warning("Proceeding with untrimmed alignment")
                 tree_input = aligned_fasta
         else:
@@ -977,7 +977,7 @@ def reroot_tree_by_label(tree_file: str, outgroup_label: str, output_file: Optio
         logger.info(f"  ✓ Rerooted tree on '{outgroup_label}': {output_path}")
         return str(output_path)
     except Exception as e:
-        logger.warning(f"Failed to reroot tree on '{outgroup_label}': {e}")
+        logger.warning(f"Failed to reroot tree on '{outgroup_label}': {e}", extra={"step_failure": "8 phylogeny reroot"})
         return None
 
 
@@ -1005,7 +1005,7 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
     try:
         tax_df = pd.read_csv(tax_path)
     except Exception as e:
-        logger.warning(f"Cannot reroot by taxon: failed to read taxonomy CSV: {e}")
+        logger.warning(f"Cannot reroot by taxon: failed to read taxonomy CSV: {e}", extra={"step_failure": "8 phylogeny reroot"})
         return None
 
     # Collect haplotype_ids whose assigned_sp or haplotype_sp contains the query
@@ -1053,5 +1053,5 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
         logger.info(f"  ✓ Rerooted tree on taxon '{taxon_query}' (n={len(tip_matches)} tips): {output_path}")
         return str(output_path)
     except Exception as e:
-        logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}")
+        logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}", extra={"step_failure": "8 phylogeny reroot"})
         return None

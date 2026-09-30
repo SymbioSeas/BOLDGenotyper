@@ -2025,7 +2025,7 @@ def export_metadata_summary(
                         )
                         outputs['temporal_composition_species_faceted'] = species_comp_path.with_suffix('.png')
                     except Exception as e:
-                        logger.warning(f"Species-faceted temporal composition failed: {e}")
+                        logger.warning(f"Species-faceted temporal composition failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
                     # Species-faceted emergence timeline
                     species_emergence_path = viz_dir / f'{organism}_emergence_timeline_species_faceted'
@@ -2035,7 +2035,7 @@ def export_metadata_summary(
                         )
                         outputs['emergence_timeline_species_faceted'] = species_emergence_path.with_suffix('.png')
                     except Exception as e:
-                        logger.warning(f"Species-faceted emergence timeline failed: {e}")
+                        logger.warning(f"Species-faceted emergence timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
             # 6. Country/Ocean-Faceted Temporal Plots (if geographic data available)
             country_col = 'country/ocean'
@@ -2052,7 +2052,7 @@ def export_metadata_summary(
                         )
                         outputs['temporal_composition_country_faceted'] = country_comp_path.with_suffix('.png')
                     except Exception as e:
-                        logger.warning(f"Country-faceted temporal composition failed: {e}")
+                        logger.warning(f"Country-faceted temporal composition failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
                     # Country-faceted emergence timeline
                     country_emergence_path = viz_dir / f'{organism}_emergence_timeline_country_faceted'
@@ -2062,7 +2062,7 @@ def export_metadata_summary(
                         )
                         outputs['emergence_timeline_country_faceted'] = country_emergence_path.with_suffix('.png')
                     except Exception as e:
-                        logger.warning(f"Country-faceted emergence timeline failed: {e}")
+                        logger.warning(f"Country-faceted emergence timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
     elif temporal_analysis and DATE_FIELD not in df.columns:
         logger.info(f"Temporal analysis skipped: '{DATE_FIELD}' field not found in data")

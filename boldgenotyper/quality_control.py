@@ -931,7 +931,7 @@ def generate_quality_control_report(
         create_contamination_heatmap(df, heatmap_path, group_col, species_col)
         results['contamination_heatmap'] = heatmap_path
     except Exception as e:
-        logger.warning(f"Could not create contamination heatmap: {e}")
+        logger.warning(f"Could not create contamination heatmap: {e}", extra={"step_failure": "6 post-assignment QC"})
 
     # 5. Purity distribution
     purity_path = output_dir / "purity_distribution.pdf"
@@ -939,7 +939,7 @@ def generate_quality_control_report(
         create_purity_distribution(contamination_summary, purity_path)
         results['purity_distribution'] = purity_path
     except Exception as e:
-        logger.warning(f"Could not create purity distribution: {e}")
+        logger.warning(f"Could not create purity distribution: {e}", extra={"step_failure": "6 post-assignment QC"})
 
     # 6. Summary statistics
     n_groups = len(contamination_summary)

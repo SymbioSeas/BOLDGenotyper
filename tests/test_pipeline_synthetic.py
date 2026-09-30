@@ -52,3 +52,10 @@ def test_input_parsed_once(tmp_path):
         ok, _ = run_synthetic(tmp_path)
     assert ok
     assert spy.call_count == 1
+
+
+def test_log_ends_with_run_status(synthetic_run):
+    """P0-6: the last log line says whether the run had warnings."""
+    last = (synthetic_run / f"{ORGANISM}_pipeline.log").read_text().strip().splitlines()[-1]
+    assert last.endswith(f"Pipeline completed successfully for {ORGANISM}") or \
+        "Pipeline completed with" in last

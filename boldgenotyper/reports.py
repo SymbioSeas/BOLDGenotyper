@@ -3349,7 +3349,7 @@ def _encode_image_to_base64(image_path: Path) -> Optional[str]:
         return f"data:{mime_type};base64,{encoded}"
 
     except Exception as e:
-        logger.warning(f"Failed to encode image {image_path}: {e}")
+        logger.warning(f"Failed to encode image {image_path}: {e}", extra={"step_failure": "12 HTML report"})
         return None
 
 
@@ -3488,7 +3488,7 @@ def _build_visualizations_section(
                             viz_data['plot_data'] = plot_data
                             logger.debug(f"Loaded plot data for {viz['title']}: {json_path}")
                         except Exception as e:
-                            logger.warning(f"Failed to load plot data from {json_path}: {e}")
+                            logger.warning(f"Failed to load plot data from {json_path}: {e}", extra={"step_failure": "12 HTML report"})
 
                 available_viz.append(viz_data)
 
@@ -3865,7 +3865,7 @@ def _parse_pipeline_log(log_file: Path) -> dict:
                 pass
 
     except Exception as e:
-        logger.warning(f"Could not parse log file: {e}")
+        logger.warning(f"Could not parse log file: {e}", extra={"step_failure": "12 HTML report"})
 
     return metrics
 
@@ -4296,7 +4296,7 @@ def generate_html_report(
             try:
                 annotated_df = pd.read_csv(annotated_file, low_memory=False, quoting=1)
             except Exception as e:
-                logger.warning(f"Could not load annotated CSV: {e}")
+                logger.warning(f"Could not load annotated CSV: {e}", extra={"step_failure": "12 HTML report"})
 
         diagnostics_df = pd.DataFrame()
         if diagnostics_file.exists():

@@ -314,6 +314,16 @@ def get_genotype_colors(n_genotypes: int) -> List[str]:
     return out
 
 
+def _add_map_gridlines(ax):
+    """Draw coordinate labels on a map without visible grid lines.
+
+    Width-0 lines hide the grid while keeping labels. The line style must be
+    solid: matplotlib scales dash patterns by line width, and a dashed style at
+    width 0 fails with "At least one value in the dash list must be positive".
+    """
+    return ax.gridlines(draw_labels=True, linewidth=0, color="gray", alpha=0.5, linestyle="-")
+
+
 def _add_cartopy_background(ax, detail_level: str = "full"):
     """
     Add cartopy map background features with configurable detail level.
@@ -442,7 +452,7 @@ def _save_individual_facet(
             logger.debug(f"Saved individual facet: {output_path}")
 
         except Exception as e:
-            logger.warning(f"Failed to save individual facet '{facet_value}' as {fmt}: {e}")
+            logger.warning(f"Failed to save individual facet '{facet_value}' as {fmt}: {e}", extra={"step_failure": "10.1 faceted plots"})
 
     return saved_files
 
@@ -540,7 +550,7 @@ def plot_distribution_map(
         # Add cartopy background with configurable detail level
         _add_cartopy_background(ax, detail_level=map_background_detail)
         # Add gridlines with labels (PlateCarree projection supports proper gridline labels)
-        gl = ax.gridlines(draw_labels=True, linewidth=0, color="gray", alpha=0.5, linestyle='--')
+        gl = _add_map_gridlines(ax)
         gl.top_labels = False
         gl.right_labels = False
         gl.xlabel_style = {'size': 10}
@@ -588,7 +598,7 @@ def plot_distribution_map(
             logger.warning(f"Distribution map file appears damaged (size={out.stat().st_size} bytes), removing: {out}")
             out.unlink()
     except Exception as e:
-        logger.warning(f"Failed to save distribution map: {e}")
+        logger.warning(f"Failed to save distribution map: {e}", extra={"step_failure": "10.1 distribution map"})
         if out.exists():
             out.unlink()
     finally:
@@ -1241,7 +1251,7 @@ def plot_distribution_map_faceted(
         else:
             logger.info(f"Saved faceted distribution map: {out}")
     except Exception as e:
-        logger.warning(f"Failed to save faceted distribution map: {e}")
+        logger.warning(f"Failed to save faceted distribution map: {e}", extra={"step_failure": "10.1 faceted plots"})
         if out.exists():
             out.unlink()
     finally:
@@ -2255,7 +2265,7 @@ def plot_haplotypes_by_species_maps(
                 logger.info(f"  ✓ {species}: {n_haplotypes} haplotypes, {len(group)} samples")
 
         except Exception as e:
-            logger.warning(f"  ⚠ Failed to create map for {species}: {e}")
+            logger.warning(f"  ⚠ Failed to create map for {species}: {e}", extra={"step_failure": "10.1 species plots"})
 
     logger.info(f"  ✓ Created maps for {len(results)} species")
 
@@ -2357,7 +2367,7 @@ def plot_haplotypes_by_species_basin_bars(
                 logger.info(f"  ✓ {species}: {n_haplotypes} haplotypes, {len(group)} samples")
 
         except Exception as e:
-            logger.warning(f"  ⚠ Failed to create bar chart for {species}: {e}")
+            logger.warning(f"  ⚠ Failed to create bar chart for {species}: {e}", extra={"step_failure": "10.1 species plots"})
 
     logger.info(f"  ✓ Created bar charts for {len(results)} species")
 

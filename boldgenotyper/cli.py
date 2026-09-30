@@ -46,7 +46,7 @@ from . import (
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
-    metadata_summary, shapefile_registry,
+    metadata_summary, shapefile_registry, provenance,
 )
 from . import __version__
 
@@ -335,6 +335,9 @@ def run_pipeline(
     logger.info(f"Output directory: {output_dir}")
     logger.info("")
 
+    # Collect step and figure failures for the end-of-run summary (P0-6)
+    step_warnings = provenance.StepWarnings().attach()
+
     # Setup directory structure
     dirs = setup_directories(output_dir)
 
@@ -470,8 +473,8 @@ def run_pipeline(
                     df_with_basins[geo_category] = 'Unknown'
 
             except Exception as e:
-                logger.error(f"  ✗ Failed to load custom shapefile: {e}")
-                logger.warning("  Pipeline will continue without geographic analysis...")
+                step_warnings.record("1.3 region assignment",
+                                     f"Custom shapefile failed: {e}; continuing without geographic analysis")
                 _print_geo_failure_to_stderr(shapefile_path, e)
                 df_with_basins = df.copy()
                 df_with_basins[geo_category] = 'Unknown'
@@ -486,6 +489,9 @@ def run_pipeline(
             logger.warning("  4. Verify with: python -m boldgenotyper.goas_downloader")
             logger.warning("")
             logger.warning("  Pipeline will continue without geographic analysis...")
+            step_warnings.record("1.3 region assignment",
+                                 f"GOaS shapefile not found at {cfg.geographic.goas_shapefile_path}; "
+                                 "geographic analysis skipped")
             df_with_basins = df.copy()
             df_with_basins[geo_category] = 'Unknown'
         else:
@@ -548,8 +554,8 @@ def run_pipeline(
                     df_with_basins[geo_category] = 'Unknown'
 
             except Exception as e:
-                logger.error(f"  ✗ Failed to load GOaS data: {e}")
-                logger.warning("  Pipeline will continue without geographic analysis...")
+                step_warnings.record("1.3 region assignment",
+                                     f"GOaS data failed: {e}; continuing without geographic analysis")
                 df_with_basins = df.copy()
                 df_with_basins[geo_category] = 'Unknown'
 
@@ -558,6 +564,7 @@ def run_pipeline(
 
     except Exception as e:
         logger.error(f"Phase 1 failed: {e}", exc_info=True)
+        step_warnings.detach()
         return False
 
     # ========================================================================
@@ -660,6 +667,7 @@ def run_pipeline(
 
     except Exception as e:
         logger.error(f"Phase 2 failed: {e}", exc_info=True)
+        step_warnings.detach()
         return False
 
     # ========================================================================
@@ -726,6 +734,7 @@ def run_pipeline(
 
     except Exception as e:
         logger.error(f"Phase 3 failed: {e}", exc_info=True)
+        step_warnings.detach()
         return False
 
     # ========================================================================
@@ -807,6 +816,7 @@ def run_pipeline(
 
     except Exception as e:
         logger.error(f"Phase 4 failed: {e}", exc_info=True)
+        step_warnings.detach()
         return False
 
     # ========================================================================
@@ -912,10 +922,11 @@ def run_pipeline(
         if annotated_csv.exists():
             logger.info(f"  ✓ Saved annotated dataset: {annotated_csv}")
         else:
-            logger.warning(f"  ⚠ Failed to save annotated dataset: {annotated_csv}")
+            step_warnings.record("5 annotated table", f"Failed to save annotated dataset: {annotated_csv}")
 
     except Exception as e:
         logger.error(f"Phase 5 failed: {e}", exc_info=True)
+        step_warnings.detach()
         return False
 
     # ========================================================================
@@ -962,7 +973,7 @@ def run_pipeline(
         quality_control.print_quality_alert(qc_results)
 
     except Exception as e:
-        logger.warning(f"Quality control analysis failed (non-critical): {e}")
+        step_warnings.record("6 post-assignment QC", e)
         logger.debug("QC error details:", exc_info=True)
 
     # ========================================================================
@@ -977,7 +988,7 @@ def run_pipeline(
 
         # Check if we have taxonomy assignments
         if 'assigned_sp' not in df_final.columns or 'majority_fraction' not in df_final.columns:
-            logger.warning("  ⊘ Skipping species-level analysis (taxonomy assignments not found)")
+            step_warnings.record("6.5 species aggregation", "skipped: taxonomy assignments not found")
         else:
             # Create species_composition DataFrame from taxonomy data
             # Map from assign_table columns to expected species_composition columns
@@ -1037,7 +1048,7 @@ def run_pipeline(
             logger.info(f"  ✓ Species-level analysis complete: {dirs['species_analysis']}")
 
     except Exception as e:
-        logger.warning(f"Species-level aggregation failed (non-critical): {e}")
+        step_warnings.record("6.5 species aggregation", e)
         logger.debug("Species aggregation error details:", exc_info=True)
 
     # ========================================================================
@@ -1073,7 +1084,7 @@ def run_pipeline(
             logger.info(f"  ✓ Geographic enhancement complete: {dirs['geographic_analysis']}")
 
         except Exception as e:
-            logger.warning(f"Geographic enhancement failed (non-critical): {e}")
+            step_warnings.record("7 geographic enhancement", e)
             logger.debug("Geographic enhancement error details:", exc_info=True)
 
     # ========================================================================
@@ -1090,9 +1101,9 @@ def run_pipeline(
 
             # Check for required tools
             if not utils.check_external_tool("mafft"):
-                logger.warning("  ⚠ MAFFT not found, skipping tree building")
+                step_warnings.record("8 phylogeny", "MAFFT not found; tree not built")
             elif not utils.check_external_tool("fasttree"):
-                logger.warning("  ⚠ FastTree not found, skipping tree building")
+                step_warnings.record("8 phylogeny", "FastTree not found; tree not built")
             else:
                 # Build phylogenetic tree using haplotypes
                 # Save alignment files to intermediate, tree files to final phylogenetic directory
@@ -1157,9 +1168,9 @@ def run_pipeline(
                             logger.info(f"  ✓ Created relabeled tree: {relabeled_tree_path}")
                             logger.info(f"  ✓ Created relabeled alignment (intermediate): {relabeled_alignment_path}")
                         else:
-                            logger.warning("  ⚠ Skipping relabeling: alignment or taxonomy file not found")
+                            step_warnings.record("8.2 tree relabeling", "alignment or taxonomy file not found")
                     except Exception as e:
-                        logger.warning(f"  ⚠ Relabeling failed (non-critical): {e}")
+                        step_warnings.record("8.2 tree relabeling", e)
 
                     # Generate MSA visualization if enabled
                     if cfg.msa.enabled:
@@ -1188,26 +1199,25 @@ def run_pipeline(
                                 if msa_plots:
                                     logger.info(f"  ✓ Generated {len(msa_plots)} MSA plot(s)")
                                 else:
-                                    logger.warning("  ⚠ No MSA plots generated")
+                                    step_warnings.record("8.3 MSA visualization", "no MSA plots generated")
                             else:
-                                logger.warning("  ⚠ Alignment file not found for MSA visualization")
+                                step_warnings.record("8.3 MSA visualization", "alignment file not found")
                         except ImportError:
-                            logger.warning(
-                                "  ⚠ MSA visualization skipped: pymsaviz not installed. "
-                                "Install with: pip install pymsaviz>=0.4.0"
-                            )
+                            # Optional dependency (extras_require["msa"]): not a step failure
+                            logger.info("  MSA visualization skipped: pymsaviz is not installed "
+                                        "(optional; pip install pymsaviz>=0.4.0)")
                         except Exception as e:
-                            logger.warning(f"  ⚠ MSA visualization failed (non-critical): {e}")
+                            step_warnings.record("8.3 MSA visualization", e)
                             logger.debug("Full traceback:", exc_info=True)
                     else:
                         logger.info("  ⊘ MSA visualization disabled in config")
 
                 else:
-                    logger.warning(f"  ⚠ Phylogenetic tree building completed but output file not found: {tree_path}")
+                    step_warnings.record("8 phylogeny", f"tree building finished but {tree_path} was not written")
                     tree_path = None
 
         except Exception as e:
-            logger.warning(f"Phylogenetic analysis failed (non-critical): {e}")
+            step_warnings.record("8 phylogeny", e)
     else:
         logger.info("  ⊘ Phylogenetic tree building disabled in config")
 
@@ -1271,20 +1281,20 @@ def run_pipeline(
                         n_species_with_div = len(species_faceted_div_results)
                         logger.info(f"  ✓ Generated within-species divergence matrices for {n_species_with_div} species")
                     except Exception as e:
-                        logger.warning(f"Within-species divergence analysis failed (non-critical): {e}")
+                        step_warnings.record("9.3 within-species divergence", e)
                         logger.debug("Within-species divergence error details:", exc_info=True)
 
                 except Exception as e:
-                    logger.warning(f"Species-level divergence analysis failed (non-critical): {e}")
+                    step_warnings.record("9.2 species divergence", e)
                     logger.debug("Species divergence error details:", exc_info=True)
             else:
                 logger.info("  ⊘ Skipping species-level divergence (species data not available)")
 
         else:
-            logger.warning("  ⊘ Skipping divergence analysis (haplotype or taxonomy files not found)")
+            step_warnings.record("9 divergence", "skipped: haplotype or taxonomy file not found")
 
     except Exception as e:
-        logger.warning(f"Divergence analysis failed (non-critical): {e}")
+        step_warnings.record("9 divergence", e)
         logger.debug("Divergence analysis error details:", exc_info=True)
 
     # ========================================================================
@@ -1319,7 +1329,7 @@ def run_pipeline(
                 logger.info(f"    - Missing fields (skipped): {', '.join(metadata_summary_results.get('missing_fields', []))}")
 
         except Exception as e:
-            logger.warning(f"Metadata summarization failed (non-critical): {e}")
+            step_warnings.record("9.5 metadata summary", e)
             logger.debug("Metadata summarization error details:", exc_info=True)
     else:
         logger.info("")
@@ -1363,7 +1373,7 @@ def run_pipeline(
                                 json.dump(map_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.warning(f"Distribution map skipped: {e}")
+                        step_warnings.record("10.1 distribution map", e)
 
                 # Geographic region abundance bar plot (relative)
                 if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
@@ -1381,7 +1391,7 @@ def run_pipeline(
                                 json.dump(bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.warning(f"Geographic region bar plot skipped: {e}")
+                        step_warnings.record("10.1 region bar plot", e)
                         logger.debug("Bar plot error details:", exc_info=True)
 
                 # Geographic region abundance bar plot (total counts)
@@ -1400,7 +1410,7 @@ def run_pipeline(
                                 json.dump(total_bar_data, f, indent=2)
                             logger.debug(f"Saved plot data to: {json_path}")
                     except Exception as e:
-                        logger.warning(f"Geographic region total abundance bar plot skipped: {e}")
+                        step_warnings.record("10.1 region bar plot", f"total counts: {e}")
                         logger.debug("Total bar plot error details:", exc_info=True)
 
                 # Species-level visualizations (if species data available)
@@ -1433,7 +1443,7 @@ def run_pipeline(
                                         json.dump(species_map_data, f, indent=2)
                                     logger.debug(f"Saved species map data to: {json_path}")
                             except Exception as e:
-                                logger.debug(f"Species distribution map skipped: {e}")
+                                step_warnings.record("10.1 species plots", f"species distribution map: {e}")
 
                         # Species geographic region abundance (relative)
                         if geo_category in species_df.columns and 'primary_species' in species_df.columns:
@@ -1450,7 +1460,7 @@ def run_pipeline(
                                         json.dump(species_bar_data, f, indent=2)
                                     logger.debug(f"Saved species bar data to: {json_path}")
                             except Exception as e:
-                                logger.debug(f"Species region bar plot skipped: {e}")
+                                step_warnings.record("10.1 species plots", f"species region bar plot: {e}")
 
                         # Species geographic region abundance (total counts)
                         if geo_category in species_df.columns and 'primary_species' in species_df.columns:
@@ -1467,7 +1477,7 @@ def run_pipeline(
                                         json.dump(species_total_bar_data, f, indent=2)
                                     logger.debug(f"Saved species total bar data to: {json_path}")
                             except Exception as e:
-                                logger.debug(f"Species geographic region total abundance bar plot skipped: {e}")
+                                step_warnings.record("10.1 species plots", f"species region total bar plot: {e}")
 
                         # Species-faceted haplotype visualizations
                         # (separate plots for each species showing haplotypes)
@@ -1494,7 +1504,7 @@ def run_pipeline(
                             )
                             logger.info(f"  ✓ Created {len(species_maps_results)} species-faceted haplotype maps")
                         except Exception as e:
-                            logger.debug(f"Species-faceted haplotype maps skipped: {e}")
+                            step_warnings.record("10.1 species plots", f"species-faceted haplotype maps: {e}")
 
                         try:
                             logger.info("  → Generating species-faceted haplotype basin charts...")
@@ -1513,10 +1523,10 @@ def run_pipeline(
                             )
                             logger.info(f"  ✓ Created {len(species_bars_results)} species-faceted haplotype bar charts")
                         except Exception as e:
-                            logger.debug(f"Species-faceted haplotype bar charts skipped: {e}")
+                            step_warnings.record("10.1 species plots", f"species-faceted haplotype bar charts: {e}")
 
                     except Exception as e:
-                        logger.debug(f"Species-level visualizations skipped: {e}")
+                        step_warnings.record("10.1 species plots", f"species-level visualizations: {e}")
 
                 # Faceted distribution map by haplotype_sp
                 if ('lat' in df_final.columns and 'lon' in df_final.columns and
@@ -1563,7 +1573,8 @@ def run_pipeline(
                             map_background_detail=detail
                         )
                     except Exception as e:
-                        logger.warning(f"Faceted distribution map generation failed: {e}", exc_info=True)
+                        step_warnings.record("10.1 faceted plots", f"faceted distribution maps: {e}")
+                        logger.debug("Faceted map error details:", exc_info=True)
 
                 # Faceted geographic region bar plot by haplotype_sp
                 if (geo_category in df_final.columns and 'haplotype_sp' in df_final.columns and
@@ -1608,7 +1619,7 @@ def run_pipeline(
                                 json.dump(species_bar_data, f, indent=2)
                             logger.debug(f"Saved species-faceted plot data to: {json_path}")
                     except Exception as e:
-                        logger.debug(f"Faceted geographic region bar plot skipped: {e}")
+                        step_warnings.record("10.1 faceted plots", f"faceted region bar plots: {e}")
             else:
                 logger.info("  ⊘ Skipping geographic visualizations (geographic analysis not performed)")
 
@@ -1623,7 +1634,7 @@ def run_pipeline(
                         dpi=cfg.visualization.intermediate_dpi
                     )
                 except Exception as e:
-                    logger.warning(f"Identity distribution plot failed: {e}")
+                    step_warnings.record("10.1 identity distribution", e)
                     logger.debug("Full traceback:", exc_info=True)
 
             # Phylogenetic tree
@@ -1655,13 +1666,13 @@ def run_pipeline(
                     )
                     logger.info(f"  ✓ Generated phylogenetic tree plot: {organism}_tree.{fmt}")
                 except Exception as e:
-                    logger.warning(f"Phylogenetic tree plot failed: {e}")
+                    step_warnings.record("10.1 tree plot", e)
                     logger.debug("Full traceback:", exc_info=True)
 
         logger.info(f"  ✓ Generated visualization plots")
 
     except Exception as e:
-        logger.warning(f"Visualization generation encountered errors (non-critical): {e}")
+        step_warnings.record("10 visualization", e)
 
     # ========================================================================
     # PHASE 10.5: Plot Data Export (Optional)
@@ -1693,7 +1704,7 @@ def run_pipeline(
             logger.info(f"  ✓ Plot regeneration kit exported to {output_dir / 'plots'}")
 
         except Exception as e:
-            logger.warning(f"Plot data export failed (non-critical): {e}")
+            step_warnings.record("10.5 plot data export", e)
             logger.debug("Plot export error details:", exc_info=True)
 
     # ========================================================================
@@ -1719,7 +1730,7 @@ def run_pipeline(
             logger.info(f"  ✓ Population genetics formats exported to {output_dir / 'exports'}")
 
         except Exception as e:
-            logger.warning(f"Population genetics export failed (non-critical): {e}")
+            step_warnings.record("11 popgen export", e)
             logger.debug("Popgen export error details:", exc_info=True)
 
     # ========================================================================
@@ -1742,10 +1753,10 @@ def run_pipeline(
         if summary_output.exists():
             logger.info(f"  ✓ Generated assignment summary: {summary_output}")
         else:
-            logger.warning(f"  ⚠ Failed to generate assignment summary: {summary_output}")
+            step_warnings.record("12 assignment summary", f"{summary_output} was not written")
 
     except Exception as e:
-        logger.warning(f"Report generation failed (non-critical): {e}")
+        step_warnings.record("12 assignment summary", e)
 
     # ========================================================================
     # Cleanup: Remove Empty Directories
@@ -1774,12 +1785,11 @@ def run_pipeline(
             if html_report_path:
                 logger.info(f"  ✓ Generated HTML report: {html_report_path}")
             else:
-                logger.warning("  ⚠ HTML report generation returned None")
+                step_warnings.record("12 HTML report", "report generation returned no file")
         except ImportError as e:
-            logger.warning(f"  ⚠ HTML report generation skipped: {e}")
-            logger.warning("    Install jinja2 to enable HTML reports: pip install jinja2")
+            step_warnings.record("12 HTML report", f"{e} (install jinja2: pip install jinja2)")
         except Exception as e:
-            logger.warning(f"  ⚠ HTML report generation failed (non-critical): {e}")
+            step_warnings.record("12 HTML report", e)
             logger.debug("HTML report error details:", exc_info=True)
     else:
         logger.info("")
@@ -1801,18 +1811,18 @@ def run_pipeline(
     # ========================================================================
     # Pipeline Complete
     # ========================================================================
+    step_warnings.detach()
     logger.info("")
     logger.info("=" * 80)
-    logger.info(f"✓ Pipeline completed successfully for {organism}")
     logger.info(f"  Output directory: {output_dir}")
-    logger.info(f"  Key files:")
-    logger.info(f"    - Annotated data: {annotated_csv}")
-    logger.info(f"    - Haplotype sequences: {haplotype_fasta}")
+    logger.info(f"  Annotated data: {annotated_csv}")
+    logger.info(f"  Haplotype sequences: {haplotype_fasta}")
     if tree_path:
-        logger.info(f"    - Phylogenetic tree: {tree_path}")
+        logger.info(f"  Phylogenetic tree: {tree_path}")
     if html_report_path:
-        logger.info(f"    - HTML summary report: {html_report_path}")
+        logger.info(f"  HTML summary report: {html_report_path}")
     logger.info("=" * 80)
+    step_warnings.log_summary(logger, organism)
 
     return True
 

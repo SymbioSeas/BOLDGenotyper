@@ -135,7 +135,7 @@ def align_consensus_sequences(
         return aligned_path
 
     except subprocess.CalledProcessError as e:
-        logger.warning(f"MAFFT alignment failed: {e}")
+        logger.warning(f"MAFFT alignment failed: {e}", extra={"step_failure": "9 divergence"})
         logger.warning("Using unaligned sequences (may affect accuracy)")
         return consensus_fasta
 
@@ -747,14 +747,14 @@ def generate_divergence_analysis(
         create_divergence_heatmap(divergence_matrix, heatmap_path)
         results['heatmap'] = heatmap_path
     except Exception as e:
-        logger.warning(f"Could not create divergence heatmap: {e}")
+        logger.warning(f"Could not create divergence heatmap: {e}", extra={"step_failure": "9 divergence"})
 
     try:
         gap_plot_path = output_dir / "barcoding_gap.pdf"
         create_barcoding_gap_plot(divergence_matrix, taxonomy_df, gap_plot_path)
         results['gap_plot'] = gap_plot_path
     except Exception as e:
-        logger.warning(f"Could not create barcoding gap plot: {e}")
+        logger.warning(f"Could not create barcoding gap plot: {e}", extra={"step_failure": "9 divergence"})
 
     # Create README
     readme_path = output_dir / "README.md"
