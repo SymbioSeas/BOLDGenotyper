@@ -225,8 +225,8 @@ cd BOLDGenotyper
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install -e ".[dev,all]"
+# Install dependencies (alignment plots, tests, documentation)
+pip install -e ".[dev,msa,docs]"
 
 # Install external tools separately
 # MAFFT: https://mafft.cbrc.jp/alignment/software/
@@ -244,8 +244,8 @@ pytest tests/ -v
 black --check boldgenotyper/
 flake8 boldgenotyper/
 
-# Run a simple example
-boldgenotyper tests/data/test_bold.tsv --no-geo --no-report
+# Run the whole pipeline on synthetic data
+pytest tests/test_pipeline_synthetic.py -q
 ```
 
 ## Coding Standards
@@ -433,6 +433,20 @@ pytest -x tests/
   - Examples for complex functions
   - Notes for important details
   - References for scientific methods
+
+### Building the Documentation
+
+The API pages in `docs/source/` are built with Sphinx (in `environment.yml`, or
+`pip install -e ".[docs]"`):
+
+```bash
+sphinx-build -b html docs/source docs/build/html
+```
+
+Open `docs/build/html/index.html`. The build should finish without warnings; a warning
+usually means a docstring list or table needs a blank line before it. `docs/build/` is
+not tracked. Add a page under `docs/source/api/` and a line in `docs/source/index.rst`
+for a new module.
 
 ### README Updates
 

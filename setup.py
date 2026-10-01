@@ -66,6 +66,11 @@ setup(
             "black>=22.0.0",
             "flake8>=4.0.0",
         ],
+        "docs": [
+            "sphinx>=5.0",
+            "sphinx-rtd-theme>=1.0",
+            "sphinx-autodoc-typehints>=1.19",
+        ],
     },
 
     # Command-line interface

@@ -1819,6 +1819,9 @@ pip install -e ".[dev]"
 # Run tests
 pytest tests/
 
+# Build the API documentation (docs/build/html/index.html)
+sphinx-build -b html docs/source docs/build/html
+
 # Check code style
 black boldgenotyper/
 flake8 boldgenotyper/

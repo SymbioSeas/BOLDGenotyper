@@ -30,6 +30,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - `boldgenotyper-sweep`: per-pair share of records whose haplotype changes between adjacent thresholds; `md5_<threshold>` columns in `group_membership_tracking.csv` (P3).
 - `boldgenotyper-sweep --genetic-code`, so a sweep checks reading frames with the same code as the final run (v1 sweeps always used code 2).
 - `docs/guides/MIGRATION_v1_to_v2.md`.
+- A `docs` extra (`pip install -e ".[docs]"`) and Sphinx in `environment.yml`; `sphinx-build -b html docs/source docs/build/html` builds the API pages without warnings.
 
 ### Changed
 - Haplotype IDs are `H0001`, `H0002`, ... ordered by member count, then `seq_md5`; v1's `h1_n354` IDs carried member counts that disagreed with other files (P0-8).
