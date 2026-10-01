@@ -2973,8 +2973,8 @@ def _build_parameters_section(output_dir: Path, organism: str) -> str:
     html = '<div class="section" id="section-parameters">\n'
     html += '<h2>Pipeline Parameters</h2>\n'
 
-    # Try to load parameters from JSON file
-    params_file = output_dir / f"{organism}_pipeline_parameters.json"
+    # Parameters come from run_provenance.json (the fully resolved configuration)
+    params_file = output_dir / "run_provenance.json"
     if not params_file.exists():
         html += '<p class="alert alert-info">Parameter information not available</p>\n'
         html += '</div>\n'
@@ -2983,15 +2983,16 @@ def _build_parameters_section(output_dir: Path, organism: str) -> str:
     try:
         import json
         with open(params_file, 'r') as f:
-            params = json.load(f)
+            prov = json.load(f)
+        cfg = prov.get('config', {})
+        applied = prov.get('applied', {})
 
         html += '<p>The following parameters were used for this analysis:</p>\n'
-        html += f'<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full parameters available at: <code>{organism}_pipeline_parameters.json</code></p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Full configuration, tool versions and input checksum: <code>run_provenance.json</code></p>\n'
         html += '<table class="data-table">\n'
         html += '<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>\n'
         html += '<tbody>\n'
 
-        # Helper to safely get nested param values
         def _get_nested(d, *keys, default='N/A'):
             for k in keys:
                 if isinstance(d, dict):
@@ -3000,59 +3001,37 @@ def _build_parameters_section(output_dir: Path, organism: str) -> str:
                     return default
             return d
 
-        # Workflow
-        wf = params.get('workflow', 'N/A')
-        html += f'<tr><td><strong>Workflow</strong></td><td><code>{wf}</code></td>'
-        html += '<td>Pipeline workflow type.</td></tr>\n'
+        def _row(label, value, description, pct=None, unit=''):
+            html_row = f'<tr><td><strong>{label}</strong></td><td><code>{value}</code>{unit}'
+            if pct and isinstance(value, (int, float)) and not isinstance(value, bool):
+                html_row += f' ({value*100:{pct}}%)'
+            return html_row + f'</td><td>{description}</td></tr>\n'
 
-        # Haplotype Clustering Threshold
-        ct = _get_nested(params, 'haplotype', 'max_singleton_distance')
-        html += f'<tr><td><strong>Haplotype Clustering Threshold</strong></td><td><code>{ct}</code>'
-        if isinstance(ct, (int, float)):
-            html += f' ({ct*100:.1f}% divergence)'
-        html += '</td><td>Maximum singleton distance for flagging suspect haplotypes.</td></tr>\n'
-
-        # Minimum Assignment Identity
-        mi = _get_nested(params, 'assignment', 'min_identity')
-        html += f'<tr><td><strong>Minimum Assignment Identity</strong></td><td><code>{mi}</code>'
-        if isinstance(mi, (int, float)):
-            html += f' ({mi*100:.0f}% identity)'
-        html += '</td><td>Minimum sequence identity required for assigning samples to haplotypes.</td></tr>\n'
-
-        # Tie Margin
-        tm = _get_nested(params, 'assignment', 'tie_margin')
-        html += f'<tr><td><strong>Tie Margin</strong></td><td><code>{tm}</code>'
-        if isinstance(tm, (int, float)):
-            html += f' ({tm*100:.1f}% difference)'
-        html += '</td><td>Maximum identity difference between top matches to flag as ambiguous.</td></tr>\n'
-
-        # QC Parameters
-        min_len = _get_nested(params, 'qc', 'min_raw_length_abs')
-        html += f'<tr><td><strong>Minimum Sequence Length</strong></td><td><code>{min_len}</code>'
-        if isinstance(min_len, (int, float)):
-            html += ' bp'
-        html += '</td><td>Absolute minimum raw sequence length for QC filtering.</td></tr>\n'
-
-        max_n = _get_nested(params, 'qc', 'max_raw_N_fraction')
-        html += f'<tr><td><strong>Maximum N Fraction</strong></td><td><code>{max_n}</code>'
-        if isinstance(max_n, (int, float)):
-            html += f' ({max_n*100:.1f}%)'
-        html += '</td><td>Maximum fraction of ambiguous bases (N) allowed.</td></tr>\n'
-
-        # Core Region
-        min_cov = _get_nested(params, 'core_region', 'min_coverage')
-        html += f'<tr><td><strong>Core Region Min Coverage</strong></td><td><code>{min_cov}</code>'
-        if isinstance(min_cov, (int, float)):
-            html += f' ({min_cov*100:.0f}%)'
-        html += '</td><td>Minimum sequence coverage for core region extraction.</td></tr>\n'
-
-        # Threads
-        html += f'<tr><td><strong>Threads</strong></td><td><code>{params.get("threads", "N/A")}</code></td>'
-        html += '<td>Number of parallel processing threads used.</td></tr>\n'
-
-        # Phylogenetic Tree
-        html += f'<tr><td><strong>Phylogenetic Tree</strong></td><td><code>{params.get("build_tree", False)}</code></td>'
-        html += '<td>Whether phylogenetic tree was constructed.</td></tr>\n'
+        html += _row('Singleton error filter', _get_nested(cfg, 'haplotype', 'min_singleton_distance'),
+                     'Singleton haplotypes within this p-distance of another haplotype are treated as '
+                     'sequencing or PCR errors (--singleton-distance).', pct='.1f')
+        html += _row('Error singletons assigned to nearest haplotype',
+                     _get_nested(cfg, 'haplotype', 'assign_corrected'),
+                     'Records of error singletons get status assigned_corrected (unless equidistant).')
+        html += _row('Suspect singleton threshold', _get_nested(cfg, 'haplotype', 'max_singleton_distance'),
+                     'Retained singletons farther than this from their nearest haplotype are flagged suspect.',
+                     pct='.1f')
+        html += _row('Core region column coverage', _get_nested(cfg, 'core_region', 'core_min_coverage'),
+                     'A position is part of the core region if at least this fraction of sequences covers it.',
+                     pct='.0f')
+        html += _row('Per-sequence core cutoff', _get_nested(cfg, 'core_region', 'min_sequence_coverage'),
+                     'A sequence needs at least this fraction of the reference core length '
+                     f'({applied.get("min_sequence_length_bp", "N/A"):.0f} bp applied).'
+                     if isinstance(applied.get('min_sequence_length_bp'), (int, float))
+                     else 'A sequence needs at least this fraction of the reference core length.',
+                     pct='.0f')
+        html += _row('Minimum sequence length', _get_nested(cfg, 'qc', 'min_raw_length_abs'),
+                     'Absolute minimum raw sequence length for QC filtering.', unit=' bp')
+        html += _row('Maximum N fraction', _get_nested(cfg, 'qc', 'max_raw_N_fraction'),
+                     'Maximum fraction of ambiguous bases (N) allowed.', pct='.1f')
+        html += _row('Threads', cfg.get('n_threads', 'N/A'), 'Number of parallel processing threads used.')
+        html += _row('Phylogenetic tree', _get_nested(cfg, 'phylogenetic', 'build_tree'),
+                     'Whether a phylogenetic tree was built.')
 
         html += '</tbody>\n'
         html += '</table>\n'
@@ -3943,13 +3922,18 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
         ('References', 'references')
     ]
 
-    # Load parameters
-    params_file = output_dir / f"{organism}_pipeline_parameters.json"
+    # Load the parameters this section uses from run_provenance.json
     params = {}
+    params_file = output_dir / "run_provenance.json"
     if params_file.exists():
         try:
             with open(params_file, 'r') as f:
-                params = json.load(f)
+                prov = json.load(f)
+            params = {
+                'build_tree': prov.get('config', {}).get('phylogenetic', {}).get('build_tree', False),
+                'geo_category': prov.get('applied', {}).get('geo_category', 'ocean_basin'),
+                'custom_shapefile': prov.get('applied', {}).get('custom_shapefile'),
+            }
         except Exception:
             pass
 

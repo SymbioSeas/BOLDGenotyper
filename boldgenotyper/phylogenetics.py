@@ -642,7 +642,9 @@ def run_fasttree(
     # -nt: nucleotide sequences
     # -gtr: generalized time-reversible model
     # -gamma: Gamma20-based model of rate heterogeneity
-    cmd = ["fasttree", "-nt", "-gtr", "-gamma", alignment_file]
+    from .provenance import FASTTREE_SEED
+    # FastTree's default seed, passed explicitly so it is recorded in provenance
+    cmd = ["fasttree", "-nt", "-gtr", "-gamma", "-seed", str(FASTTREE_SEED), alignment_file]
 
     logger.info(f"Running FastTree: {' '.join(cmd)}")
 

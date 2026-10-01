@@ -105,3 +105,19 @@ def test_assignment_summary_denominators(synthetic_run):
     assert s["n_haplotypes"] == 4
     assert s["n_species_labels_input"] == 3          # Genus alpha, beta, gamma
     assert s["n_species_haplotype_assigned"] == 3
+
+
+import json
+
+
+def test_run_provenance_written_and_complete(synthetic_run):
+    """P0-1: provenance records the full config, the values applied, and tools."""
+    d = json.loads((synthetic_run / "run_provenance.json").read_text())
+    assert d["status"] in ("completed", "completed_with_warnings")
+    assert d["config"]["haplotype"]["min_singleton_distance"] == 0.005
+    assert d["applied"]["min_sequence_length_bp"] > 0
+    assert d["applied"]["core_region_length_bp"] > 0
+    assert d["tools"]["mafft"]
+    assert d["input"]["n_rows"] == EXPECTED["n_input"]
+    assert d["data_notes"]["n_duplicate_processids"] == 1
+    assert not (synthetic_run / f"{ORGANISM}_pipeline_parameters.json").exists()

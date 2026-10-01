@@ -292,6 +292,8 @@ def run_pipeline(
     shapefile_path: Optional[Path] = None,
     shapefile_field: Optional[str] = None,
     geo_category: str = 'ocean_basin',
+    argv: Optional[list] = None,
+    download_date: Optional[str] = None,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -322,6 +324,10 @@ def run_pipeline(
     geo_category : str, optional
         Geographic category name for outputs. Defaults to 'ocean_basin' when
         using GOaS, or 'geographic_region' when using a custom shapefile.
+    argv : list, optional
+        Command line recorded in run_provenance.json (default: sys.argv)
+    download_date : str, optional
+        BOLD download date (YYYY-MM-DD) recorded in run_provenance.json
 
     Returns
     -------
@@ -335,47 +341,32 @@ def run_pipeline(
     logger.info(f"Output directory: {output_dir}")
     logger.info("")
 
-    # Collect step and figure failures for the end-of-run summary (P0-6)
-    step_warnings = provenance.StepWarnings().attach()
-
     # Setup directory structure
     dirs = setup_directories(output_dir)
 
-    # Save pipeline parameters for reference and HTML report
-    params = {
-        'workflow': 'haplotype-first',
-        'coi_validation': {
-            'genetic_code': cfg.coi_validation.mitochondrial_code,
-            'orf_min_coverage': cfg.coi_validation.orf_min_coverage,
-            'orf_max_internal_stops': cfg.coi_validation.orf_max_internal_stops,
+    # Run provenance: the fully resolved configuration, environment and input
+    # checksum (P0-1). Its StepWarnings collects step and figure failures (P0-6).
+    prov = provenance.RunProvenance(cfg, argv if argv is not None else sys.argv, tsv_path,
+                                    output_dir, download_date=download_date)
+    prov.applied.update(
+        geographic_analysis=not skip_geo,
+        geo_category=geo_category,
+        custom_shapefile=str(shapefile_path) if shapefile_path else None,
+        shapefile_field=shapefile_field,
+        run_options={
+            'html_report': not no_report,
+            'export_plot_data': export_plot_data,
+            'export_popgen_formats': export_popgen_formats,
+            'metadata_summary': metadata_summary_enabled,
+            'metadata_fields': metadata_fields,
+            'normalize_sex': normalize_sex,
+            'temporal_analysis': temporal_analysis,
         },
-        'qc': {
-            'min_raw_length_abs': cfg.qc.min_raw_length_abs,
-            'min_raw_length_frac_of_median': cfg.qc.min_raw_length_frac_of_median,
-            'max_raw_N_fraction': cfg.qc.max_raw_N_fraction,
-        },
-        'core_region': {
-            'min_coverage': cfg.core_region.core_min_coverage,
-            'mask_gap_threshold': cfg.core_region.mask_gap_threshold,
-            'min_length': cfg.core_region.core_min_length,
-        },
-        'haplotype': {
-            'max_singleton_distance': cfg.haplotype.max_singleton_distance,
-            'flag_suspect_haplotypes': cfg.haplotype.flag_suspect_haplotypes,
-        },
-        'assignment': {
-            'min_identity': cfg.genotype_assignment.min_identity,
-            'tie_margin': cfg.genotype_assignment.tie_margin,
-        },
-        'threads': cfg.n_threads,
-        'build_tree': cfg.phylogenetic.build_tree,
-        'geo_category': geo_category,
-        'custom_shapefile': str(shapefile_path) if shapefile_path else None,
-    }
-    params_file = output_dir / f"{organism}_pipeline_parameters.json"
-    with open(params_file, 'w') as f:
-        json.dump(params, f, indent=2)
-    logger.info(f"Saved pipeline parameters to {params_file}")
+    )
+    step_warnings = prov.warnings.attach()
+    prov_path = output_dir / "run_provenance.json"
+    prov.write(prov_path)
+    logger.info(f"Saved run provenance to {prov_path}")
 
     # ========================================================================
     # PHASE 1: Data Loading and Quality Control
@@ -387,6 +378,7 @@ def run_pipeline(
         # Parse BOLD TSV
         logger.info("1.1: Parsing BOLD TSV metadata...")
         df = metadata.parse_bold_tsv(tsv_path)
+        prov.data_notes["n_duplicate_processids"] = prov.input["n_rows"] - len(df)
         logger.info(f"  ✓ Loaded {len(df)} samples with {len(df.columns)} columns")
 
         # Save parsed metadata
@@ -565,6 +557,8 @@ def run_pipeline(
     except Exception as e:
         logger.error(f"Phase 1 failed: {e}", exc_info=True)
         step_warnings.detach()
+        prov.finish(success=False)
+        prov.write(prov_path)
         return False
 
     # ========================================================================
@@ -671,6 +665,8 @@ def run_pipeline(
     except Exception as e:
         logger.error(f"Phase 2 failed: {e}", exc_info=True)
         step_warnings.detach()
+        prov.finish(success=False)
+        prov.write(prov_path)
         return False
 
     # ========================================================================
@@ -706,6 +702,15 @@ def run_pipeline(
         )
 
         logger.info(f"  Identified {len(haplotype_records)} high-confidence haplotypes (after error filtering)")
+        prov.applied.update(
+            core_region_length_bp=details.core_region_length_bp,
+            core_reference_length_bp=details.core_reference_length_bp,
+            min_sequence_length_bp=details.min_sequence_length_bp,
+            n_excluded_core_coverage=len(details.excluded_core_coverage),
+            n_error_singleton_records=len(details.error_singletons),
+            n_corrected_beyond_threshold=details.n_corrected_beyond_threshold,
+            n_haplotypes=len(haplotype_records),
+        )
 
         # Copy haplotype outputs to main haplotypes directory
         # Move/copy haplotype FASTA
@@ -741,6 +746,8 @@ def run_pipeline(
     except Exception as e:
         logger.error(f"Phase 3 failed: {e}", exc_info=True)
         step_warnings.detach()
+        prov.finish(success=False)
+        prov.write(prov_path)
         return False
 
     # ========================================================================
@@ -802,6 +809,8 @@ def run_pipeline(
     except Exception as e:
         logger.error(f"Phase 4 failed: {e}", exc_info=True)
         step_warnings.detach()
+        prov.finish(success=False)
+        prov.write(prov_path)
         return False
 
     # ========================================================================
@@ -912,6 +921,8 @@ def run_pipeline(
     except Exception as e:
         logger.error(f"Phase 5 failed: {e}", exc_info=True)
         step_warnings.detach()
+        prov.finish(success=False)
+        prov.write(prov_path)
         return False
 
     # ========================================================================
@@ -1734,7 +1745,7 @@ def run_pipeline(
             haplotype_taxonomy=assign_table,
             majority_threshold=cfg.taxonomy.majority_species_threshold,
         )
-        reports.generate_assignment_summary(
+        prov.applied["assignment_summary"] = reports.generate_assignment_summary(
             annotated_csv=str(annotated_csv),
             diagnostics_csv=str(diagnostics_csv),
             output_csv=str(summary_output),
@@ -1807,9 +1818,12 @@ def run_pipeline(
     # Pipeline Complete
     # ========================================================================
     step_warnings.detach()
+    prov.finish()
+    prov.write(prov_path)
     logger.info("")
     logger.info("=" * 80)
     logger.info(f"  Output directory: {output_dir}")
+    logger.info(f"  Run provenance: {prov_path}")
     logger.info(f"  Annotated data: {annotated_csv}")
     logger.info(f"  Haplotype sequences: {haplotype_fasta}")
     if tree_path:
@@ -1942,6 +1956,14 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
         return 1
 
 
+def _iso_date(value: str) -> str:
+    """argparse type: a YYYY-MM-DD date, returned as text."""
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}")
+
+
 def _build_main_parser() -> argparse.ArgumentParser:
     """Build the main boldgenotyper argument parser."""
     parser = argparse.ArgumentParser(
@@ -1955,8 +1977,8 @@ Examples:
   # Specify organism name and output directory
   boldgenotyper data/Carcharhinus.tsv --organism Carcharhinus --output results/Carcharhinus_analysis
 
-  # Tune assignment thresholds for diverse taxa
-  boldgenotyper data/Carcharhinus.tsv --similarity-threshold 0.80 --tie-margin 0.005 --tie-threshold 0.97
+  # Use the sweep-recommended singleton threshold and record the download date
+  boldgenotyper data/Carcharhinus.tsv --singleton-distance 0.015 --download-date 2026-09-30
 
   # Enable phylogeny and root on an in-tree outgroup label or taxon
   boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-label "Eusphyra blochii haplotype_h10_n21_n19"
@@ -2013,32 +2035,16 @@ Notes:
         help='Output directory (default: {organism}_output in current directory)'
     )
 
-    parser.add_argument(
-        '--similarity-threshold',
-        type=float,
-        default=0.5,
-        help='Minimum similarity for genotype assignment (default: 0.5)'
-    )
-
-    parser.add_argument(
-        '--tie-margin',
-        type=float,
-        default=0.003,
-        help='Maximum identity difference between top matches to call a tie. '
-             'Samples with ambiguous assignments (identity difference < tie-margin) '
-             'are flagged for manual review. '
-             'Default: 0.003 (0.3%% difference)'
-    )
-
-    parser.add_argument(
-        '--tie-threshold',
-        type=float,
-        default=0.95,
-        help='Minimum identity required to consider tie detection. '
-             'Ties are only called when best match identity >= tie-threshold. '
-             'Prevents flagging low-quality matches as ties. '
-             'Default: 0.95 (95%% identity)'
-    )
+    # Deprecated: samples are mapped directly from ESV discovery, so these
+    # assignment thresholds have no effect. Kept so older commands still run.
+    for flag in ('--similarity-threshold', '--tie-margin', '--tie-threshold'):
+        parser.add_argument(
+            flag,
+            type=float,
+            default=None,
+            help='Deprecated: has no effect (samples are mapped directly from ESV '
+                 'discovery). Will be removed in a future release.'
+        )
 
     parser.add_argument(
         '--threads',
@@ -2256,6 +2262,13 @@ Notes:
     )
 
     parser.add_argument(
+        '--download-date',
+        type=_iso_date,
+        default=None,
+        help='Date the BOLD TSV was downloaded (YYYY-MM-DD); recorded in run_provenance.json.'
+    )
+
+    parser.add_argument(
         '--version',
         action='version',
         version=f'BOLDGenotyper {__version__}'
@@ -2348,12 +2361,17 @@ def main():
                 f"{datetime.now().astimezone().isoformat(timespec='seconds')}")
     logger.info(f"Command: {shlex.join(sys.argv)}")
 
+    for flag, value in (('--similarity-threshold', args.similarity_threshold),
+                        ('--tie-margin', args.tie_margin),
+                        ('--tie-threshold', args.tie_threshold)):
+        if value is not None:
+            msg = f"{flag} is deprecated and has no effect in the ESV workflow; it will be removed."
+            print(f"Warning: {msg}", file=sys.stderr)
+            logger.warning(msg)
+
     # Load and configure pipeline
     cfg = config.get_default_config()
     cfg = cfg.update(
-        genotype_assignment__min_identity=args.similarity_threshold,
-        genotype_assignment__tie_margin=args.tie_margin,
-        genotype_assignment__tie_threshold=args.tie_threshold,
         haplotype__min_singleton_distance=args.singleton_distance,
         haplotype__assign_corrected=not args.no_assign_corrected,
         n_threads=args.threads,
@@ -2379,9 +2397,6 @@ def main():
     print(f"Output: {output_dir}")
     print()
     print("Parameters:")
-    print(f"  Similarity threshold: {args.similarity_threshold} ({args.similarity_threshold*100:.0f}% identity)")
-    print(f"  Tie margin: {args.tie_margin} ({args.tie_margin*100:.1f}% difference)")
-    print(f"  Tie threshold: {args.tie_threshold} ({args.tie_threshold*100:.0f}% identity)")
     print(f"  Singleton distance: {args.singleton_distance} ({args.singleton_distance*100:.1f}% — use boldgenotyper-sweep to optimise)")
     print(f"  Threads: {args.threads}")
     print(f"  Genetic code: {args.genetic_code}")
@@ -2419,7 +2434,9 @@ def main():
             temporal_analysis=not args.no_temporal_analysis,
             shapefile_path=args.shapefile_path,
             shapefile_field=args.shapefile_field,
-            geo_category=args.geo_category
+            geo_category=args.geo_category,
+            argv=sys.argv,
+            download_date=args.download_date,
         )
 
         return 0 if success else 1

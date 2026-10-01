@@ -38,3 +38,49 @@ def test_step_warnings_captures_marked_warnings_only():
     vis.warning("after detach", extra={provenance.STEP_FAILURE: "x"})
     assert w.as_list() == [{"step": "10.1 distribution map",
                             "message": "Failed to save distribution map: boom"}]
+
+
+# --- RunProvenance (P0-1) ---------------------------------------------------
+
+import hashlib
+import json
+
+from boldgenotyper import config
+
+
+def test_file_md5_and_row_count(tmp_path):
+    f = tmp_path / "x.tsv"
+    f.write_text("processid\tnuc\na\tACGT\nb\tACGT\n")
+    assert provenance.file_md5(f) == hashlib.md5(f.read_bytes()).hexdigest()
+    assert provenance.count_data_rows(f) == 2
+
+
+def test_tool_versions_reports_missing_tools(monkeypatch):
+    monkeypatch.setattr(provenance.shutil, "which", lambda name: None)
+    assert provenance.tool_versions() == {"mafft": None, "fasttree": None, "trimal": None}
+
+
+def test_run_provenance_serializes_full_config(tmp_path):
+    tsv = tmp_path / "in.tsv"
+    tsv.write_text("processid\tnuc\na\tACGT\n")
+    cfg = config.get_default_config().update(haplotype__min_singleton_distance=0.015)
+    prov = provenance.RunProvenance(cfg, ["boldgenotyper", str(tsv), "--singleton-distance", "0.015"],
+                                    tsv, tmp_path, download_date="2026-09-30")
+    prov.applied["min_sequence_length_bp"] = 565.25
+    prov.warnings.record("10.1 distribution map", "failed")
+    prov.finish()
+    d = json.loads(prov.write(tmp_path / "run_provenance.json").read_text())
+    assert d["config"]["haplotype"]["min_singleton_distance"] == 0.015
+    assert d["config"]["haplotype"]["max_singleton_distance"] == 0.05
+    assert d["config"]["core_region"]["min_sequence_coverage"] == 0.95
+    assert "genotype_assignment" not in d["config"]
+    assert "genotype_assignment" in d["not_applied"]
+    assert d["input"]["md5"] == provenance.file_md5(tsv)
+    assert d["input"]["n_rows"] == 1
+    assert d["input"]["download_date"] == "2026-09-30"
+    assert d["command_line"].endswith("--singleton-distance 0.015")
+    assert d["applied"]["min_sequence_length_bp"] == 565.25
+    assert d["seeds"]["fasttree"] == provenance.FASTTREE_SEED
+    assert d["warnings"] == [{"step": "10.1 distribution map", "message": "failed"}]
+    assert d["status"] == "completed_with_warnings"
+    assert d["boldgenotyper_version"]
