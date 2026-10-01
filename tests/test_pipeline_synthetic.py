@@ -156,6 +156,10 @@ def test_tree_includes_every_non_suspect_haplotype(tmp_path):
     assert excluded == ["haplotype_id\treason"]
     d = json.loads((out / "run_provenance.json").read_text())
     assert (d["applied"]["tree_min_members"], d["applied"]["n_tree_tips"], d["applied"]["n_tree_excluded"]) == (1, 4, 0)
+    assert d["warnings"] == []
+    import importlib.util
+    if importlib.util.find_spec("pymsaviz") is not None:   # [msa] extra; in environment.yml
+        assert list((out / "phylogenetic").glob(f"{ORGANISM}_MSA_chunk*.pdf"))
 
 
 @needs_fasttree
