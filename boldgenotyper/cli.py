@@ -296,7 +296,7 @@ def run_pipeline(
     export_popgen_formats: Optional[list] = None,
     metadata_summary_enabled: bool = False,
     metadata_fields: Optional[list] = None,
-    normalize_sex: bool = False,
+    normalize_sex: bool = True,
     temporal_analysis: bool = False,
     shapefile_path: Optional[Path] = None,
     shapefile_field: Optional[str] = None,
@@ -2255,8 +2255,8 @@ Notes:
     parser.add_argument(
         '--no-normalize-sex',
         action='store_true',
-        help='Do not normalize sex values. By default, sex values are normalized '
-             '(M/Male/m -> Male, F/Female/f -> Female).'
+        help='Keep sex values as given. By default sex codes are normalized '
+             '(M/m/male -> Male, F/f/female -> Female, U -> missing); blank values are always missing.'
     )
 
     parser.add_argument(
@@ -2281,9 +2281,9 @@ Notes:
         help='Minimum divergence threshold for retaining singleton haplotypes. '
              'Singleton ESVs diverging by less than this value from their nearest '
              'neighbour are removed as likely sequencing or PCR errors. '
-             'Default: 0.005 (0.5%%). Use boldgenotyper-sweep to identify the '
-             'optimal value for your dataset; the recommended threshold is reported '
-             'in recommendations.txt and the elbow plot.'
+             'Default: 0.005 (0.5%%). Use boldgenotyper-sweep to choose a value for '
+             'your dataset (recommendations.txt reports the elbow and how stable '
+             'assignments are between thresholds), and always pass it explicitly.'
     )
 
     parser.add_argument(
@@ -2313,10 +2313,11 @@ Notes:
     parser.add_argument(
         '--extended',
         action='store_true',
-        help='Also write interpretive and descriptive extras: metadata cross-tabs '
-             '(normalized vocabularies), temporal and first-sampled summaries, the '
-             'label-based barcoding gap, and species diversity. They depend on '
-             'sampling and labels; see the run README.'
+        help='Also write extended/: metadata cross-tabs (normalized vocabularies), '
+             'temporal and first-sampled summaries, the label-based barcoding gap, '
+             'species tables and diversity, species-level divergence, alignment (MSA) '
+             'plots, and region bar charts and faceted maps. Several depend on sampling '
+             'and labels; see the run README.'
     )
 
     parser.add_argument(
@@ -2532,13 +2533,13 @@ def main_query(argv=None) -> int:
         # Query single sequence
         boldgenotyper-query \
             --query new_sample.fasta \
-            --haplotypes analysis/haplotypes/Organism_haplotypes.fasta \
+            --haplotypes analysis/ \
             --output query_results/
 
         # Query with metadata enrichment
         boldgenotyper-query \
             --query new_samples.fasta \
-            --haplotypes analysis/haplotypes/Organism_haplotypes.fasta \
+            --haplotypes analysis/ \
             --analysis-dir analysis/ \
             --output query_results/
     """
@@ -2550,11 +2551,11 @@ def main_query(argv=None) -> int:
 Examples:
   # Query single sequence
   boldgenotyper-query --query new_sample.fasta \\
-                       --haplotypes analysis/haplotypes/Organism_haplotypes.fasta
+                       --haplotypes analysis/
 
   # Query multiple sequences with metadata
   boldgenotyper-query --query samples.fasta \\
-                       --haplotypes analysis/haplotypes/Organism_haplotypes.fasta \\
+                       --haplotypes analysis/ \\
                        --analysis-dir analysis/ \\
                        --output results/
 
@@ -2598,7 +2599,8 @@ For more information:
         '--haplotypes',
         type=Path,
         required=True,
-        help='Haplotype consensus FASTA from previous analysis'
+        help='A BOLDGenotyper run folder (v2: haplotypes.fasta at its root; v1: '
+             'haplotypes/*_haplotypes.fasta) or a haplotype FASTA file. Species calls need a v2 run folder.'
     )
 
     # Optional arguments

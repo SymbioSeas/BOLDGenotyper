@@ -46,3 +46,10 @@ def test_integer_codes_written_as_float_lose_the_decimal():
     out = ms.normalize_vocabulary(pd.DataFrame({"geoid": [266.0, np.nan, "1758.0", "12.5"]}), ["geoid"])["geoid"]
     assert out.tolist()[0] == "266" and pd.isna(out.tolist()[1])
     assert out.tolist()[2:] == ["1758", "12.5"]
+
+
+def test_no_normalize_sex_keeps_sex_codes_but_not_blanks():
+    """--no-normalize-sex: sex codes stay as given; blank values are still missing."""
+    out = ms.normalize_vocabulary(pd.DataFrame({"sex": ["M", "f", " ", "U"]}), ["sex"],
+                                  map_sex_codes=False)["sex"].tolist()
+    assert out[0] == "M" and out[1] == "f" and pd.isna(out[2]) and out[3] == "U"

@@ -313,7 +313,7 @@ _GIS_SUFFIX = re.compile(r"_simplify-[\d.]+_buffered-[\d.]+")
 _WHOLE_NUMBER = re.compile(r"^-?\d+\.0$")
 
 
-def _normalize_term(field: str, value):
+def _normalize_term(field: str, value, map_codes: bool = True):
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return np.nan
     if isinstance(value, float) and value.is_integer():
@@ -323,6 +323,8 @@ def _normalize_term(field: str, value):
         return np.nan
     if _WHOLE_NUMBER.match(text):
         text = text[:-2]            # integer codes written as float (BOLD geoid '266.0')
+    if not map_codes:
+        return text
     codes = VOCABULARY_CODES.get(field, {})
     if text.lower() in codes:
         mapped = codes[text.lower()]
@@ -335,7 +337,7 @@ def _normalize_term(field: str, value):
     return text
 
 
-def normalize_vocabulary(df: pd.DataFrame, fields: List[str]) -> pd.DataFrame:
+def normalize_vocabulary(df: pd.DataFrame, fields: List[str], map_sex_codes: bool = True) -> pd.DataFrame:
     """
     Normalize metadata vocabularies before tabulation (P1-5).
 
@@ -347,11 +349,15 @@ def normalize_vocabulary(df: pd.DataFrame, fields: List[str]) -> pd.DataFrame:
     - BOLD GIS suffixes (e.g. '_simplify-0.001_buffered-0.018') are removed and
       underscores become spaces, per comma-separated item.
     - Integer codes written as float lose the decimal ('266.0' -> '266').
+
+    map_sex_codes=False (--no-normalize-sex) leaves sex values as given, apart
+    from blank values becoming missing.
     """
     df = df.copy()
     for field in fields:
         if field in df.columns:
-            df[field] = df[field].map(lambda v, f=field: _normalize_term(f, v))
+            map_codes = map_sex_codes or field != 'sex'
+            df[field] = df[field].map(lambda v, f=field, m=map_codes: _normalize_term(f, v, m))
     return df
 
 
@@ -1882,7 +1888,7 @@ def export_metadata_summary(
     color_map: Optional[Dict[str, str]] = None,
     fields: Optional[List[str]] = None,
     haplotype_col: str = 'haplotype_sp',
-    normalize_sex: bool = False,
+    normalize_sex: bool = True,
     temporal_analysis: bool = True,
     extended: bool = False,
     cross_tabs: bool = True
@@ -1910,7 +1916,7 @@ def export_metadata_summary(
     haplotype_col : str, optional
         Column containing haplotype labels (default: 'haplotype_sp')
     normalize_sex : bool, optional
-        Whether to normalize sex values (default: False)
+        Map sex codes (M/F -> Male/Female, U -> missing) (default: True)
     temporal_analysis : bool, optional
         Whether to run temporal analysis with extended=True (default: True)
     extended : bool, optional
@@ -1950,7 +1956,7 @@ def export_metadata_summary(
     outputs = {}
 
     # Empty values are missing and codes are expanded before anything is counted
-    df = normalize_vocabulary(df, [f for f in fields if f in df.columns])
+    df = normalize_vocabulary(df, [f for f in fields if f in df.columns], map_sex_codes=normalize_sex)
     if normalize_sex and 'sex' in df.columns:
         df = normalize_sex_values(df, 'sex')
 
@@ -2192,7 +2198,7 @@ def run_metadata_summary(
     output_dir: Path,
     organism: str,
     fields: Optional[List[str]] = None,
-    normalize_sex: bool = False,
+    normalize_sex: bool = True,
     temporal_analysis: bool = True,
     color_map: Optional[Dict[str, str]] = None,
     haplotype_col: str = 'haplotype_sp',
@@ -2218,7 +2224,7 @@ def run_metadata_summary(
     fields : List[str], optional
         Metadata fields to tabulate
     normalize_sex : bool, optional
-        Whether to normalize sex values
+        Map sex codes (M/F -> Male/Female, U -> missing) (default: True)
     temporal_analysis : bool, optional
         Whether to include temporal coverage analysis
     color_map : Dict[str, str], optional
