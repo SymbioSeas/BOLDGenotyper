@@ -19,12 +19,11 @@ class TestAlignmentFunctions:
     """Test core alignment and classification functions."""
 
     def test_classify_match_quality(self):
-        """Test match quality classification."""
-        assert haplotype_query.classify_match_quality(100.0) == "perfect"
-        assert haplotype_query.classify_match_quality(99.8) == "high"
-        assert haplotype_query.classify_match_quality(97.5) == "good"
-        assert haplotype_query.classify_match_quality(95.5) == "moderate"
-        assert haplotype_query.classify_match_quality(90.0) == "low"
+        """Deprecated interpretive labels (Q7): still importable, warn when used."""
+        with pytest.deprecated_call():
+            assert haplotype_query.classify_match_quality(100.0) == "perfect"
+        with pytest.warns(DeprecationWarning):
+            assert haplotype_query.classify_match_quality(99.8) == "high"
 
     def test_align_query_to_haplotype_perfect_match(self):
         """Test alignment with perfect match."""
@@ -39,14 +38,22 @@ class TestAlignmentFunctions:
         assert result.query_id == "query1"
         assert result.haplotype_id == "hap1"
         assert result.identity_pct == 100.0
-        assert result.match_quality == "perfect"
+        assert result.differences == 0
         assert result.matches == 12
         assert result.divergence == 0.0
 
     def test_align_query_to_haplotype_partial_match(self):
-        """Test alignment with partial match."""
-        query_seq = "ATCGATCGATCG"
-        haplotype_seq = "ATCGATCGXXXX"  # 8/12 match
+        """A partial match: identity below 100% but well above 50%.
+
+        Uses a non-repetitive sequence: on a periodic toy sequence such as
+        ATCGATCG... the overlap aligner can legitimately shift the overlap by one
+        period (lower coverage, perfect identity) instead of comparing the tail.
+        """
+        from tests.synthetic_data import A
+        nxt = {"A": "C", "C": "G", "G": "T", "T": "A"}
+        query_seq = A[:40]
+        haplotype_seq = "".join(nxt[c] if i in (5, 15, 25, 39) else c   # 4 substitutions,
+                                for i, c in enumerate(A[:40]))           # one at the last base
 
         result = haplotype_query.align_query_to_haplotype(
             query_seq, "query1",
@@ -55,7 +62,9 @@ class TestAlignmentFunctions:
 
         assert result.identity_pct < 100.0
         assert result.identity_pct > 50.0
-        assert result.match_quality in ["high", "good", "moderate", "low"]
+        assert result.n_mismatches == 4           # the overlap alignment counts end mismatches
+        assert result.identity_pct == 90.0
+        assert result.overlap_coverage == 1.0
 
     def test_align_query_to_haplotype_length_difference(self):
         """Test alignment with different length sequences."""
@@ -150,7 +159,6 @@ class TestOutputFormatting:
             query_length=200,
             haplotype_length=200,
             divergence=0.015,
-            match_quality="high",
             aligned_query="A" * 200,
             aligned_haplotype="A" * 200
         )
@@ -165,7 +173,6 @@ class TestOutputFormatting:
             query_length=200,
             haplotype_length=200,
             divergence=0.05,
-            match_quality="moderate",
             aligned_query="A" * 200,
             aligned_haplotype="A" * 200
         )
@@ -181,7 +188,8 @@ class TestOutputFormatting:
         assert 'haplotype_id' in df.columns
         assert 'rank' in df.columns
         assert 'identity_pct' in df.columns
-        assert 'match_quality' in df.columns
+        assert 'differences' in df.columns
+        assert 'match_quality' not in df.columns
 
         # Verify ranking
         assert df.iloc[0]['rank'] == 1
@@ -199,7 +207,6 @@ class TestOutputFormatting:
             query_length=10,
             haplotype_length=10,
             divergence=0.0,
-            match_quality="perfect",
             aligned_query="ATCGATCGAT",
             aligned_haplotype="ATCGATCGAT"
         )

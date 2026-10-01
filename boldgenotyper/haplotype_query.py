@@ -35,7 +35,8 @@ from pathlib import Path
 import logging
 import json
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import warnings
 
 import pandas as pd
 from Bio import SeqIO
@@ -55,34 +56,49 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AlignmentResult:
-    """Result of pairwise alignment between query and haplotype.
+    """
+    Result of aligning one query to one haplotype (overlap alignment).
+
+    Coordinates are 0-based, end-exclusive, on the cleaned query and the
+    ungapped haplotype. The overlap is the span from the first to the last
+    column where both sequences have a base; end gaps outside it are free.
 
     Attributes
     ----------
-    query_id : str
-        Query sequence identifier
-    haplotype_id : str
-        Haplotype identifier
+    query_id, haplotype_id : str
     score : float
-        Raw alignment score
+        Alignment score
     identity_pct : float
-        Percent identity in aligned region (0-100)
+        Matches / columns with a base in both sequences x 100 (gaps excluded)
     matches : int
-        Number of matching bases
     aligned_length : int
-        Length of aligned region
-    query_length : int
-        Length of query sequence (ungapped)
-    haplotype_length : int
-        Length of haplotype consensus (ungapped)
+        Columns with a base in both sequences
+    query_length, haplotype_length : int
+        Ungapped lengths
     divergence : float
-        Distance (1 - identity/100)
-    match_quality : str
-        Quality classification: perfect, high, good, moderate, low
-    aligned_query : str
-        Query sequence in alignment
-    aligned_haplotype : str
-        Haplotype sequence in alignment
+        1 - identity_pct / 100
+    aligned_query, aligned_haplotype : str
+        Gapped overlap, for display
+    n_mismatches : int
+    n_gaps : int
+        Gap columns inside the overlap (either sequence)
+    gap_runs : list of int
+        Lengths of internal gap runs
+    indel_in_query : bool
+        Any internal gap run whose length is not a multiple of 3 (COI is
+        protein-coding; such an indel suggests a sequencing error or pseudogene)
+    query_start, query_end, haplotype_start, haplotype_end : int
+        Overlap coordinates
+    query_coverage : float
+        Query bases in the overlap / query_length
+    overlap_coverage : float
+        Query bases in the overlap / min(query_length, haplotype_length); the
+        --min-query-coverage threshold applies to this value
+    differences : int
+        n_mismatches + n_gaps
+    haplotype_region : str
+        Ungapped haplotype bases in the overlap (used to test whether
+        haplotypes are identical over the query's region)
     """
     query_id: str
     haplotype_id: str
@@ -93,159 +109,194 @@ class AlignmentResult:
     query_length: int
     haplotype_length: int
     divergence: float
-    match_quality: str
     aligned_query: str
     aligned_haplotype: str
+    n_mismatches: int = 0
+    n_gaps: int = 0
+    gap_runs: List[int] = field(default_factory=list)
+    indel_in_query: bool = False
+    query_start: int = 0
+    query_end: int = 0
+    haplotype_start: int = 0
+    haplotype_end: int = 0
+    query_coverage: float = 0.0
+    overlap_coverage: float = 0.0
+    differences: int = 0
+    haplotype_region: str = ""
 
 
 # ============================================================================
 # Core Alignment Functions
 # ============================================================================
 
+# Overlap alignment: global, with free end gaps on both sequences, so a query
+# shorter or longer than the reference core is compared over their whole
+# overlap. A gap costs more than several mismatches (6 > 2k for k <= 2), so a
+# mismatch near an end is not traded for a gap plus a shifted match.
+ALIGNMENT_SCORING = {
+    "mode": "overlap (global, free end gaps)",
+    "match": 1, "mismatch": -1, "gap_open": -6, "gap_extend": -1, "end_gap": 0,
+}
+
+
+def make_aligner() -> PairwiseAligner:
+    """PairwiseAligner configured for query-to-haplotype overlap alignment."""
+    aligner = PairwiseAligner()
+    aligner.mode = "global"
+    aligner.match_score = ALIGNMENT_SCORING["match"]
+    aligner.mismatch_score = ALIGNMENT_SCORING["mismatch"]
+    aligner.open_gap_score = ALIGNMENT_SCORING["gap_open"]
+    aligner.extend_gap_score = ALIGNMENT_SCORING["gap_extend"]
+    aligner.end_gap_score = ALIGNMENT_SCORING["end_gap"]   # after the internal scores
+    return aligner
+
+
+def clean_query_sequence(seq: str) -> Tuple[str, bool]:
+    """Uppercase a query and remove whitespace and gap characters ('-', '.').
+
+    Returns (clean_sequence, had_gap_characters).
+    """
+    text = "".join(str(seq).split()).upper()
+    had_gaps = "-" in text or "." in text
+    return text.replace("-", "").replace(".", ""), had_gaps
+
+
+def load_query_sequences(query_fasta: Path, min_length: int = 100,
+                         max_length: int = 2000) -> List[SeqRecord]:
+    """Read, clean and length-filter query sequences (lengths are ungapped)."""
+    records = list(SeqIO.parse(str(query_fasta), "fasta"))
+    if not records:
+        raise ValueError(f"No sequences found in {query_fasta}")
+    logger.info(f"Loaded {len(records)} query sequence(s)")
+
+    cleaned, n_gapped = [], 0
+    for record in records:
+        seq, had_gaps = clean_query_sequence(str(record.seq))
+        n_gapped += had_gaps
+        if len(seq) < min_length:
+            logger.warning(f"Query {record.id} too short ({len(seq)} bp < {min_length} bp), skipping")
+            continue
+        if len(seq) > max_length:
+            logger.warning(f"Query {record.id} too long ({len(seq)} bp > {max_length} bp), skipping")
+            continue
+        cleaned.append(SeqRecord(Seq(seq), id=record.id, description=""))
+    if n_gapped:
+        logger.warning(
+            f"Query input looks aligned: {n_gapped} of {len(records)} sequences contained "
+            f"'-' or '.'; these were removed before matching, and lengths are ungapped"
+        )
+    return cleaned
+
+
 def align_query_to_haplotype(
     query_seq: str,
     query_id: str,
     haplotype_seq: str,
-    haplotype_id: str
+    haplotype_id: str,
+    aligner: Optional[PairwiseAligner] = None,
 ) -> AlignmentResult:
     """
-    Perform local alignment between query and haplotype sequences.
+    Align a query to a haplotype (overlap alignment) and measure the result.
 
-    Uses local alignment (not global) to handle length differences where
-    query sequences (e.g., 1557 bp full COX1) are often much longer than
-    haplotype consensuses (e.g., 184 bp core region).
-
-    Parameters
-    ----------
-    query_seq : str
-        Query DNA sequence
-    query_id : str
-        Query sequence identifier
-    haplotype_seq : str
-        Haplotype consensus sequence
-    haplotype_id : str
-        Haplotype identifier
-
-    Returns
-    -------
-    AlignmentResult
-        Alignment results with identity metrics
-
-    Notes
-    -----
-    Uses BioPython's Bio.Align.PairwiseAligner (local mode) with scoring:
-    - Match: +2
-    - Mismatch: -1
-    - Gap open: -2
-    - Gap extension: -0.5
-
-    Identity is calculated only in the aligned region, ignoring gaps.
+    Every base where the two sequences overlap is compared, so mismatches at
+    the ends of a query are counted (v1's local alignment dropped them).
 
     Examples
     --------
-    >>> result = align_query_to_haplotype(
-    ...     "ATCGATCG", "query1",
-    ...     "ATCG", "haplotype_h1"
-    ... )
-    >>> result.identity_pct
-    100.0
+    >>> r = align_query_to_haplotype("ATCGATCG", "query1", "GGATCGATCGGG", "H0001")
+    >>> r.identity_pct, r.differences
+    (100.0, 0)
     """
-    # Clean sequences (uppercase, remove whitespace)
-    query_clean = query_seq.upper().replace(' ', '').replace('\n', '')
-    haplotype_clean = haplotype_seq.upper().replace(' ', '').replace('\n', '')
+    query_clean, _ = clean_query_sequence(query_seq)
+    haplotype_clean, _ = clean_query_sequence(haplotype_seq)
+    aligner = aligner or make_aligner()
+    qlen, hlen = len(query_clean), len(haplotype_clean)
 
-    # Perform local alignment
-    _aligner = PairwiseAligner()
-    _aligner.mode = 'local'
-    _aligner.match_score = 2
-    _aligner.mismatch_score = -1
-    _aligner.open_gap_score = -2
-    _aligner.extend_gap_score = -0.5
-    alignments = _aligner.align(query_clean, haplotype_clean)
+    empty = AlignmentResult(
+        query_id=query_id, haplotype_id=haplotype_id, score=0.0, identity_pct=0.0,
+        matches=0, aligned_length=0, query_length=qlen, haplotype_length=hlen,
+        divergence=1.0, aligned_query="", aligned_haplotype="",
+    )
+    if not qlen or not hlen:
+        return empty
+    alignment = aligner.align(query_clean, haplotype_clean)[0]
+    coords = alignment.coordinates
+    segments = [(int(coords[0][k]), int(coords[1][k]),
+                 int(coords[0][k + 1] - coords[0][k]), int(coords[1][k + 1] - coords[1][k]))
+                for k in range(coords.shape[1] - 1)]
+    blocks = [i for i, (_, _, dq, dh) in enumerate(segments) if dq and dh]
+    if not blocks:
+        return empty
+    first, last = blocks[0], blocks[-1]
 
-    if not alignments:
-        # No alignment found (should be rare)
-        logger.warning(
-            f"No alignment found between {query_id} and {haplotype_id}"
-        )
-        return AlignmentResult(
-            query_id=query_id,
-            haplotype_id=haplotype_id,
-            score=0.0,
-            identity_pct=0.0,
-            matches=0,
-            aligned_length=0,
-            query_length=len(query_clean),
-            haplotype_length=len(haplotype_clean),
-            divergence=1.0,
-            match_quality="no_match",
-            aligned_query="",
-            aligned_haplotype=""
-        )
+    matches = n_mismatches = 0
+    gap_runs = []
+    aligned_q, aligned_h = [], []
+    for i in range(first, last + 1):
+        qs, hs, dq, dh = segments[i]
+        if dq and dh:
+            qpart, hpart = query_clean[qs:qs + dq], haplotype_clean[hs:hs + dh]
+            m = sum(a == b for a, b in zip(qpart, hpart))
+            matches += m
+            n_mismatches += dq - m
+            aligned_q.append(qpart)
+            aligned_h.append(hpart)
+        elif dq:      # query bases opposite a gap in the haplotype (insertion)
+            gap_runs.append(dq)
+            aligned_q.append(query_clean[qs:qs + dq])
+            aligned_h.append("-" * dq)
+        elif dh:      # haplotype bases opposite a gap in the query (deletion)
+            gap_runs.append(dh)
+            aligned_q.append("-" * dh)
+            aligned_h.append(haplotype_clean[hs:hs + dh])
 
-    # Take best alignment
-    best_alignment = alignments[0]
-    aligned_query = best_alignment[0]
-    aligned_haplotype = best_alignment[1]
-    score = best_alignment.score
-
-    # Calculate identity in aligned region
-    # Count matches where both sequences have a base (not gap)
-    matches = 0
-    aligned_positions = 0
-
-    for q_base, h_base in zip(aligned_query, aligned_haplotype):
-        if q_base != '-' and h_base != '-':
-            aligned_positions += 1
-            if q_base == h_base:
-                matches += 1
-
-    # Calculate metrics
-    identity_pct = (matches / aligned_positions * 100) if aligned_positions > 0 else 0.0
-    divergence = 1.0 - (identity_pct / 100.0)
-
-    # Classify match quality
-    match_quality = classify_match_quality(identity_pct)
+    q_start, h_start = segments[first][0], segments[first][1]
+    q_end = segments[last][0] + segments[last][2]
+    h_end = segments[last][1] + segments[last][3]
+    aligned_length = matches + n_mismatches
+    identity_pct = matches / aligned_length * 100 if aligned_length else 0.0
+    n_gaps = sum(gap_runs)
+    query_bases = q_end - q_start
 
     return AlignmentResult(
         query_id=query_id,
         haplotype_id=haplotype_id,
-        score=score,
+        score=float(alignment.score),
         identity_pct=identity_pct,
         matches=matches,
-        aligned_length=aligned_positions,
-        query_length=len(query_clean),
-        haplotype_length=len(haplotype_clean),
-        divergence=divergence,
-        match_quality=match_quality,
-        aligned_query=aligned_query,
-        aligned_haplotype=aligned_haplotype
+        aligned_length=aligned_length,
+        query_length=qlen,
+        haplotype_length=hlen,
+        divergence=1.0 - identity_pct / 100.0,
+        aligned_query="".join(aligned_q),
+        aligned_haplotype="".join(aligned_h),
+        n_mismatches=n_mismatches,
+        n_gaps=n_gaps,
+        gap_runs=gap_runs,
+        indel_in_query=any(run % 3 for run in gap_runs),
+        query_start=q_start,
+        query_end=q_end,
+        haplotype_start=h_start,
+        haplotype_end=h_end,
+        query_coverage=query_bases / qlen,
+        overlap_coverage=min(query_bases / min(qlen, hlen), 1.0),
+        differences=n_mismatches + n_gaps,
+        haplotype_region=haplotype_clean[h_start:h_end],
     )
 
 
 def classify_match_quality(identity_pct: float) -> str:
     """
-    Classify alignment quality based on DNA barcoding standards.
+    Deprecated: interpretive identity labels (removed from outputs in v2.0.0).
 
-    Parameters
-    ----------
-    identity_pct : float
-        Percent identity (0-100)
-
-    Returns
-    -------
-    str
-        Quality classification
-
-    Notes
-    -----
-    Classification thresholds:
-    - perfect: 100% - exact haplotype match
-    - high: ≥99.5% - likely same haplotype, minor sequencing variation
-    - good: ≥97% - same species, possibly different haplotype
-    - moderate: ≥95% - same genus, divergent haplotype
-    - low: <95% - different species or contamination
+    The labels ("same species" at 97%, "same genus" at 95%) do not hold across
+    taxa; v2 reports numbers only (identity, differences, coverage).
     """
+    warnings.warn(
+        "classify_match_quality is deprecated and no longer used in outputs; "
+        "it will be removed in a future release.",
+        DeprecationWarning, stacklevel=2,
+    )
     if identity_pct >= 100.0:
         return "perfect"
     elif identity_pct >= 99.5:
@@ -401,37 +452,11 @@ def query_against_haplotypes(
     if not haplotype_fasta.exists():
         raise FileNotFoundError(f"Haplotype file not found: {haplotype_fasta}")
 
-    # Load query sequences
+    # Load query sequences: cleaned (gaps removed, uppercase), length-filtered (Q1)
     logger.info(f"Loading query sequences from {query_fasta}")
-    query_records = list(SeqIO.parse(query_fasta, "fasta"))
-
-    if not query_records:
-        raise ValueError(f"No sequences found in {query_fasta}")
-
-    logger.info(f"Loaded {len(query_records)} query sequence(s)")
-
-    # Validate and filter query sequences by length
-    valid_queries = []
-    for record in query_records:
-        seq_len = len(str(record.seq))
-
-        if seq_len < min_length:
-            logger.warning(
-                f"Query {record.id} too short ({seq_len} bp < {min_length} bp), skipping"
-            )
-            continue
-
-        if seq_len > max_length:
-            logger.warning(
-                f"Query {record.id} too long ({seq_len} bp > {max_length} bp), skipping"
-            )
-            continue
-
-        valid_queries.append(record)
-
+    valid_queries = load_query_sequences(query_fasta, min_length=min_length, max_length=max_length)
     if not valid_queries:
         raise ValueError("No valid query sequences after length filtering")
-
     logger.info(f"{len(valid_queries)} query sequence(s) passed length validation")
 
     # Load haplotype consensuses
@@ -458,6 +483,7 @@ def query_against_haplotypes(
     logger.info(f"Performing alignments: {len(valid_queries)} queries × {len(haplotype_records)} haplotypes")
     all_results = []
     verdicts = []
+    aligner = make_aligner()
 
     for query_record in valid_queries:
         query_seq = str(query_record.seq)
@@ -471,7 +497,8 @@ def query_against_haplotypes(
 
             result = align_query_to_haplotype(
                 query_seq, query_id,
-                haplotype_seq, haplotype_id
+                haplotype_seq, haplotype_id,
+                aligner=aligner,
             )
             query_results.append(result)
 
@@ -487,7 +514,8 @@ def query_against_haplotypes(
         best = query_results[0]
         logger.info(
             f"  {query_id}: Best match = {best.haplotype_id} "
-            f"({best.identity_pct:.2f}%, {best.match_quality})"
+            f"({best.identity_pct:.2f}%, {best.differences} differences, "
+            f"coverage {best.overlap_coverage:.2f})"
         )
 
     logger.info(f"Alignment complete: {len(all_results)} results generated")
@@ -531,7 +559,12 @@ def results_to_dataframe(
             'haplotype_length': result.haplotype_length,
             'divergence': result.divergence,
             'alignment_score': result.score,
-            'match_quality': result.match_quality,
+            'n_mismatches': result.n_mismatches,
+            'n_gaps': result.n_gaps,
+            'differences': result.differences,
+            'indel_in_query': result.indel_in_query,
+            'query_coverage': round(result.query_coverage, 4),
+            'overlap_coverage': round(result.overlap_coverage, 4),
         })
 
     df = pd.DataFrame(records)
@@ -550,9 +583,10 @@ def results_to_dataframe(
 
     # Reorder columns — species diagnostics immediately after haplotype_id
     core_cols = ['query_id', 'rank', 'haplotype_id', 'assigned_sp', 'haplotype_sp',
-                 'assignment_level', 'identity_pct', 'match_quality', 'matches',
-                 'aligned_length', 'query_length', 'haplotype_length', 'divergence',
-                 'alignment_score']
+                 'assignment_level', 'differences', 'n_mismatches', 'n_gaps',
+                 'indel_in_query', 'identity_pct', 'query_coverage', 'overlap_coverage',
+                 'matches', 'aligned_length', 'query_length', 'haplotype_length',
+                 'divergence', 'alignment_score']
     col_order = [c for c in core_cols if c in df.columns]
     extra_cols = [c for c in df.columns if c not in col_order]
     col_order.extend(extra_cols)
@@ -714,11 +748,20 @@ def write_json_results(
             'rank': len(queries_dict[result.query_id]['matches']) + 1,
             'haplotype_id': result.haplotype_id,
             'identity_pct': result.identity_pct,
-            'match_quality': result.match_quality,
+            'differences': result.differences,
+            'n_mismatches': result.n_mismatches,
+            'n_gaps': result.n_gaps,
+            'indel_in_query': result.indel_in_query,
+            'query_coverage': result.query_coverage,
+            'overlap_coverage': result.overlap_coverage,
             'alignment': {
                 'matches': result.matches,
                 'length': result.aligned_length,
-                'score': result.score
+                'score': result.score,
+                'query_start': result.query_start,
+                'query_end': result.query_end,
+                'haplotype_start': result.haplotype_start,
+                'haplotype_end': result.haplotype_end,
             },
             'metadata': hap_metadata
         }
@@ -796,17 +839,9 @@ def write_text_report(
                 continue
 
             best = query_results[0]
-            quality_desc = {
-                'perfect': 'Perfect match',
-                'high': 'High confidence match',
-                'good': 'Good match',
-                'moderate': 'Moderate match',
-                'low': 'Low quality match'
-            }.get(best.match_quality, 'Match')
-
             f.write(
-                f"{query_id:30s}: {quality_desc} to {best.haplotype_id} "
-                f"({best.identity_pct:.2f}%)\n"
+                f"{query_id:30s}: best {best.haplotype_id} "
+                f"({best.identity_pct:.2f}%, {best.differences} differences)\n"
             )
 
         f.write("\n")
@@ -837,7 +872,9 @@ def write_text_report(
             f.write(f"Alignment ({best.aligned_length} bp):\n")
             f.write(format_alignment_display(best))
             f.write(f"Matches: {best.matches}/{best.aligned_length} bp ({best.identity_pct:.2f}%)\n")
-            f.write(f"Match Quality: {best.match_quality}\n")
+            f.write(f"Mismatches: {best.n_mismatches}; gap columns: {best.n_gaps}"
+                    f"{' (indel not a multiple of 3)' if best.indel_in_query else ''}; "
+                    f"query coverage {best.query_coverage:.3f}\n")
 
             # Show other top matches
             if len(query_results) > 1:
@@ -851,8 +888,8 @@ def write_text_report(
                             if sp:
                                 sp_str = f" — {sp}"
                     f.write(
-                        f"  {i}. {result.haplotype_id}: {result.identity_pct:.2f}% "
-                        f"({result.match_quality}){sp_str}\n"
+                        f"  {i}. {result.haplotype_id}: {result.identity_pct:.2f}%, "
+                        f"{result.differences} differences{sp_str}\n"
                     )
 
             f.write("\n" + "-" * 80 + "\n\n")
