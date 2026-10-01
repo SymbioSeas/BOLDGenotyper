@@ -2,15 +2,29 @@
 
 This document provides the exact commands to run all 5 case study datasets with appropriate geographic shapefiles for manuscript presentation.
 
+Every command passes `--singleton-distance` explicitly. The values below are the
+elbows of the sweeps in `benchmarking/parameter_sweep/<dataset>/recommendations.txt`
+(run with BOLDGenotyper 1.0.0). Error-singleton handling changed in 2.0.0
+(records of removed singletons are now assigned to their nearest haplotype when it
+is within the threshold), so re-run `boldgenotyper-sweep` with 2.0.0 and check the
+stability table before a final run (see `PARAMETER_SWEEP_GUIDE.md`). Pass
+`--download-date` with the date of the BOLD download so it is recorded in
+`run_provenance.json`, and use a new `--output` folder for each run.
+
+The benchmark runs used the default genetic code (2, vertebrate mitochondrial) for all
+five datasets. Panulirus (crustaceans) and Pieridae (insects) are invertebrates, for which
+`--genetic-code 5` (invertebrate mitochondrial) is the matching code; decide which code the
+final runs use and record it in the methods.
+
 ## Overview of Datasets and Shapefiles
 
-| Dataset | Habitat | Shapefile | Field Name | Geographic Category |
-|---------|---------|-----------|------------|---------------------|
-| Sphyrnidae | Marine | GOaS (default) | name | ocean_basin |
-| Carcharhiniformes | Marine | GOaS (default) | name | ocean_basin |
-| Panulirus | Marine | GOaS (default) | name | ocean_basin |
-| Salmonidae | Freshwater | HydroBASINS level 7 | HYBAS_ID | freshwater_basin |
-| Pieridae | Terrestrial | Ecoregions2017 | ECO_NAME | ecoregion |
+| Dataset | Habitat | Shapefile | Field Name | Geographic Category | `--singleton-distance` |
+|---------|---------|-----------|------------|---------------------|------------------------|
+| Sphyrnidae | Marine | GOaS (default) | name | ocean_basin | 0.015 |
+| Carcharhiniformes | Marine | GOaS (default) | name | ocean_basin | 0.015 |
+| Panulirus | Marine | GOaS (default) | name | ocean_basin | 0.015 |
+| Salmonidae | Freshwater | HydroBASINS level 7 | HYBAS_ID | freshwater_basin | 0.015 |
+| Pieridae | Terrestrial | Ecoregions2017 | ECO_NAME | ecoregion | 0.085 |
 
 ## Commands
 
@@ -20,6 +34,7 @@ This document provides the exact commands to run all 5 case study datasets with 
 boldgenotyper data/Sphyrnidae.tsv \
   --output output/Sphyrnidae_full \
   --organism Sphyrnidae \
+  --singleton-distance 0.015 \
   --build-tree \
   --threads 8
 ```
@@ -35,6 +50,7 @@ boldgenotyper data/Sphyrnidae.tsv \
 boldgenotyper data/Carcharhiniformes.tsv \
   --output output/Carcharhiniformes_full \
   --organism Carcharhiniformes \
+  --singleton-distance 0.015 \
   --build-tree \
   --threads 8
 ```
@@ -50,6 +66,7 @@ boldgenotyper data/Carcharhiniformes.tsv \
 boldgenotyper data/Panulirus.tsv \
   --output output/Panulirus_full \
   --organism Panulirus \
+  --singleton-distance 0.015 \
   --build-tree \
   --threads 8
 ```
@@ -65,8 +82,9 @@ boldgenotyper data/Panulirus.tsv \
 boldgenotyper data/Salmonidae.tsv \
   --output output/Salmonidae_full \
   --organism Salmonidae \
+  --singleton-distance 0.015 \
   --build-tree \
-  --shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp \
+  --custom-shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp \
   --shp-field HYBAS_ID \
   --geo-category freshwater_basin \
   --threads 8
@@ -84,8 +102,9 @@ boldgenotyper data/Salmonidae.tsv \
 boldgenotyper data/Pieridae.tsv \
   --output output/Pieridae_full \
   --organism Pieridae \
+  --singleton-distance 0.085 \
   --build-tree \
-  --shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
+  --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
   --shp-field ECO_NAME \
   --geo-category ecoregion \
   --threads 8
@@ -106,58 +125,44 @@ To run all datasets sequentially:
 mkdir -p output
 
 # Marine datasets (GOaS default)
-boldgenotyper data/Sphyrnidae.tsv --output output/Sphyrnidae_full --organism Sphyrnidae --build-tree --threads 8
-boldgenotyper data/Carcharhiniformes.tsv --output output/Carcharhiniformes_full --organism Carcharhiniformes --build-tree --threads 8
-boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panulirus --build-tree --threads 8
+boldgenotyper data/Sphyrnidae.tsv --output output/Sphyrnidae_full --organism Sphyrnidae --singleton-distance 0.015 --build-tree --threads 8
+boldgenotyper data/Carcharhiniformes.tsv --output output/Carcharhiniformes_full --organism Carcharhiniformes --singleton-distance 0.015 --build-tree --threads 8
+boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panulirus --singleton-distance 0.015 --build-tree --threads 8
 
 # Freshwater dataset (HydroBASINS)
-boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --build-tree --shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp --shp-field HYBAS_ID --geo-category freshwater_basin --threads 8
+boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --singleton-distance 0.015 --build-tree --custom-shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp --shp-field HYBAS_ID --geo-category freshwater_basin --threads 8
 
 # Terrestrial dataset (Ecoregions2017)
-boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --build-tree --shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
+boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
 ```
 
 ## Expected Outputs
 
-Each dataset will produce the following key outputs in its respective output directory:
+Each run folder holds a generated `README.md` that lists every file and defines every
+column. The main files:
 
-### Core Analysis Files
-- `haplotypes/{organism}_haplotype_stats.csv` - Per-haplotype statistics
-- `haplotypes/{organism}_sequences.fasta` - Consensus sequences
-- `species_analysis/species_diversity.csv` - Species-level diversity metrics
-- `species_analysis/species_divergence_summary.csv` - Divergence metrics and barcode gaps
-- `species_analysis/within_species_divergence_summary.csv` - Within-species variation
-- `genotypes/{organism}_genotype_assignments.csv` - Sample-to-haplotype assignments
-- `phylogeny/{organism}_tree.nwk` - Phylogenetic tree (from --build-tree)
+- `summary.csv` - record counts at each step, assignment percentages, species counts
+- `records.csv` - one row per input record: status, haplotype, label, coordinates, region
+- `haplotypes.csv` - one row per haplotype: members, labels, assigned taxon, nearest haplotype, suspect flags, tree membership
+- `haplotypes.fasta` - haplotype sequences (`>H0001 seq_md5=... n_members=...`)
+- `label_conflicts.csv` - label conflicts with their evidence
+- `divergence/pairwise_p_distance.csv` - p-distances between haplotypes
+- `phylogeny/tree.nwk`, `tree_labeled.nwk`, `excluded_tips.txt` - tree (from `--build-tree`)
+- `geography/haplotype_by_region.csv`, `distribution_map.pdf` - records per region (`ocean_basin`, `freshwater_basin` or `ecoregion`) and the map
+- `run_provenance.json` - configuration, tool versions, input md5, run status
+- `report.html` - interactive report (open it from the run folder)
 
-### Geographic Analysis Files
-For marine datasets (GOaS):
-- `geographic_analysis/ocean_basin_diversity.csv`
-- `geographic_analysis/ocean_basin_divergence.csv`
-- `geographic_analysis/ocean_basin_tree.nwk`
-- `geographic_analysis/ocean_basin_map.html`
-
-For Salmonidae (HydroBASINS):
-- `geographic_analysis/freshwater_basin_diversity.csv`
-- `geographic_analysis/freshwater_basin_divergence.csv`
-- `geographic_analysis/freshwater_basin_tree.nwk`
-- `geographic_analysis/freshwater_basin_map.html`
-
-For Pieridae (Ecoregions2017):
-- `geographic_analysis/ecoregion_diversity.csv`
-- `geographic_analysis/ecoregion_divergence.csv`
-- `geographic_analysis/ecoregion_tree.nwk`
-- `geographic_analysis/ecoregion_map.html`
-
-### Report Files
-- `{organism}_report.html` - Interactive HTML report with all visualizations
+With `--extended`: `extended/species/species_diversity.csv` and species tables,
+`extended/divergence/` (label-based barcoding gap, species-level divergence,
+per-species matrices, alignment plots), `extended/metadata/`, and extra maps and bars.
 
 ## Parameter Explanations
 
 - `--output`: Output directory for all results
 - `--organism`: Organism name for file labeling (extracted from filename if omitted)
 - `--build-tree`: Build phylogenetic tree using MAFFT + FastTree (required for manuscript)
-- `--shp`: Path to custom shapefile (overrides default GOaS)
+- `--singleton-distance`: error-filter threshold, chosen with `boldgenotyper-sweep`
+- `--custom-shp`: Path to custom shapefile (overrides default GOaS); `--shp` takes the name of a shapefile registered in `shapefiles.yaml`
 - `--shp-field`: Shapefile attribute field containing region names
 - `--geo-category`: Label for geographic category in outputs
 - `--threads`: Number of parallel threads (adjust based on your system)
