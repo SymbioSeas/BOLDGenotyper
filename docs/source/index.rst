@@ -1,11 +1,16 @@
 BOLDGenotyper Documentation
 ============================
 
-**Automated COI sequence genotyping and biogeographic analysis from BOLD database data**
+**COI haplotype discovery and biogeographic analysis from BOLD data**
 
-BOLDGenotyper is a Python package that enables researchers to identify and analyze COI (Cytochrome Oxidase I) genotypes from the BOLD (Barcode of Life Database) for any taxonomic group. The pipeline performs sequence dereplication, genotype assignment, geographic filtering, ocean basin classification, and visualization of biogeographic patterns.
+BOLDGenotyper identifies COI haplotypes in Barcode of Life Data System (BOLD) records
+for any taxonomic group: quality control, haplotype discovery as exact sequence variants
+of a core alignment region, one status for every record, taxonomic labels with
+label-conflict evidence, optional phylogenetics, region assignment from
+geographic-quality coordinates, and figures. Every run folder includes a ``README.md``
+that defines each output file and column.
 
-.. image:: https://img.shields.io/badge/python-3.8%2B-blue.svg
+.. image:: https://img.shields.io/badge/python-3.9%2B-blue.svg
    :target: https://www.python.org/downloads/
    :alt: Python Version
 
@@ -13,7 +18,7 @@ BOLDGenotyper is a Python package that enables researchers to identify and analy
    :target: https://opensource.org/licenses/MIT
    :alt: License: MIT
 
-.. image:: https://img.shields.io/badge/version-0.1.0-green.svg
+.. image:: https://img.shields.io/badge/version-2.0.0-green.svg
    :target: https://github.com/SymbioSeas/BOLDGenotyper/releases
    :alt: Version
 
@@ -21,8 +26,11 @@ Quick Links
 -----------
 
 * `GitHub Repository <https://github.com/SymbioSeas/BOLDGenotyper>`_
-* `Issue Tracker <https://github.com/SymbioSeas/BOLDGenotyper/issues>`_
+* `README (installation, usage, outputs) <https://github.com/SymbioSeas/BOLDGenotyper/blob/main/README.md>`_
+* `API guide <https://github.com/SymbioSeas/BOLDGenotyper/blob/main/docs/guides/API_REFERENCE.md>`_
+* `Migration from 1.0.0 <https://github.com/SymbioSeas/BOLDGenotyper/blob/main/docs/guides/MIGRATION_v1_to_v2.md>`_
 * `Changelog <https://github.com/SymbioSeas/BOLDGenotyper/blob/main/CHANGELOG.md>`_
+* `Issue Tracker <https://github.com/SymbioSeas/BOLDGenotyper/issues>`_
 
 Quick Start
 -----------
@@ -31,73 +39,50 @@ Installation::
 
     git clone https://github.com/SymbioSeas/BOLDGenotyper.git
     cd BOLDGenotyper
-    conda env create -f boldgenotyper_env.yml
-    conda activate depredation
+    conda env create -f environment.yml
+    conda activate boldgenotyper
+    pip install -e .
 
-Basic Usage::
+Basic usage (choose ``--singleton-distance`` with ``boldgenotyper-sweep``)::
 
-    boldgenotyper data/Sphyrna_lewini.tsv
+    boldgenotyper data/Sphyrna_lewini.tsv --singleton-distance 0.015 --build-tree
 
-For detailed installation and usage instructions, see the :doc:`installation` guide and :doc:`quickstart`.
-
-Key Features
-------------
-
-* **Automated genotyping**: Identifies unique COI genotypes through sequence clustering
-* **Geographic analysis**: Filters coordinates and assigns samples to ocean basins
-* **Visualization**: Creates publication-ready maps and figures
-* **Phylogenetic analysis**: Optional tree building and visualization
-* **Modular design**: Flexible pipeline with customizable parameters
-
-Contents
---------
+API Reference
+-------------
 
 .. toctree::
-   :maxdepth: 2
-   :caption: User Guide
-
-   installation
-   quickstart
-   usage
-   troubleshooting
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference
+   :maxdepth: 1
 
    api/cli
    api/config
-   api/dereplication
-   api/genotype_assignment
-   api/geographic
    api/metadata
+   api/quality_control
+   api/dereplication
+   api/haplotype_ids
+   api/record_status
+   api/taxon_labels
+   api/layout
+   api/run_readme
+   api/provenance
+   api/geographic
+   api/geographic_enhancement
    api/phylogenetics
+   api/divergence_analysis
+   api/metadata_summary
+   api/visualization
+   api/plot_export
+   api/plot_regeneration
+   api/haplotype_query
+   api/query_assignment
+   api/parameter_sweep
+   api/popgen_export
    api/reports
    api/utils
-   api/visualization
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Development
-
-   contributing
-   changelog
 
 Citation
 --------
 
-If you use BOLDGenotyper in your research, please cite:
-
-.. code-block:: bibtex
-
-   @software{boldgenotyper2025,
-     author = {Smith, Steph},
-     title = {BOLDGenotyper: Automated COI Sequence Genotyping},
-     year = {2025},
-     version = {0.1.0},
-     url = {https://github.com/SymbioSeas/BOLDGenotyper},
-     doi = {10.5281/zenodo.XXXXXXX}
-   }
+See ``CITATION.cff`` in the repository.
 
 Indices and tables
 ==================
