@@ -766,8 +766,15 @@ def assign_consensus_taxonomy(
     all_groups: Optional[Iterable[str]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    For each consensus group, tally 'species', pick a dominant species if any has
-    > majority_threshold of samples; otherwise fall back to genus.
+    For each group (haplotype), assign the species carried by more than
+    majority_threshold of its labeled members; otherwise the most common genus.
+
+    The fraction is majority_fraction, computed by taxon_labels.pool_labels on
+    record labels (the species, or the genus when the species is missing), as
+    for the label columns: members without a species label - no label at all,
+    genus-only or open-nomenclature labels of the leading species' genus - are
+    left out of the denominator; genus-only and open labels of another genus
+    count against. Ties for most common species fall back to genus.
 
     Returns:
       - assign_table: one row per consensus_group with chosen assigned_sp (+metadata)
@@ -805,48 +812,45 @@ def assign_consensus_taxonomy(
     counts = counts.merge(n_by_group, on=group_col, how="left")
     counts["frac"] = counts["n"] / counts["n_in_group"]
     
-    # majority fraction per group (max frac among species)
-    maj = (
-        counts.groupby(group_col, as_index=False)["frac"]
-            .max()
-            .rename(columns={"frac": "majority_fraction"})
-    )
-    
-        
-    # pick winner per group (majority species; else fall back to genus
-    def _choose(gname: str, group_df: pd.DataFrame) -> Dict[str, str]:
-        # sort by count desc, then species name for determinism
-        gsorted = group_df.sort_values(["n", species_col], ascending=[False, True])
-        top = gsorted.iloc[0]
-        tie = (gsorted["n"].values == top["n"]).sum() > 1
+    # Record labels: species, or genus when the species is missing
+    import numpy as np
+    from .taxon_labels import pool_labels
+    df["_label"] = df[species_col].where(df[species_col] != "", df[genus_col])
 
-        # majority species?
-        if (not tie) and (top["frac"] > majority_threshold) and isinstance(top[species_col], str) and top[species_col]:
-            assigned_sp = top[species_col]
-            level = "species"
-            notes = f"majority {top['frac']:.2f}"
+    def _choose(gname: str, group_df: pd.DataFrame) -> Dict[str, Any]:
+        pooled = pool_labels(group_df["_label"].tolist())
+        # rounded as in the label columns, so the rule and the reported value agree
+        frac = round(pooled.support, 4) if pooled.support is not None else None
+        if pooled.leading_species and frac is not None and frac > majority_threshold:
+            return {
+                group_col: gname,
+                "assigned_sp": pooled.leading_species,
+                "assignment_level": "species",
+                "assignment_notes": (f"majority {frac:.2f} ({pooled.n_leading} of "
+                                     f"{pooled.n_species_level} counted labels)"),
+                "majority_fraction": frac,
+            }
+        # fallback: mode genus among members of this group
+        members = group_df[genus_col].replace("", np.nan).dropna()
+        assigned_sp = members.value_counts().idxmax() if not members.empty else ""
+        if pooled.n_species_level == 0:
+            reason = "no species-level label"
+        elif pooled.leading_species is None:
+            reason = "tie for most common species"
         else:
-            # fallback: mode genus among members of this consensus group
-            members = (
-                df.loc[df[group_col] == gname, genus_col]
-                    .dropna().astype(str).str.strip()
-            )
-            assigned_sp = members.value_counts().idxmax() if not members.empty else ""
-            level = "genus" if assigned_sp else "unassigned"
-            notes = "tie or not majority; fell back to genus" if assigned_sp else "no genus available"
-
+            reason = f"majority {frac:.2f} not above {majority_threshold:.2f}"
         return {
-            group_col: gname,  # Use parameter instead of hardcoded name
+            group_col: gname,
             "assigned_sp": assigned_sp,
-            "assignment_level": level,
-            "assignment_notes": notes,
+            "assignment_level": "genus" if assigned_sp else "unassigned",
+            "assignment_notes": f"{reason}; fell back to genus" if assigned_sp else f"{reason}; no genus available",
+            "majority_fraction": frac if frac is not None else np.nan,
         }
 
     # Build assignment list by iterating through groups explicitly
     assign_list = []
-    for gname, group_df in counts.groupby(group_col):
-        result = _choose(gname, group_df)
-        assign_list.append(result)
+    for gname, group_df in df[df[group_col].notna()].groupby(group_col):
+        assign_list.append(_choose(gname, group_df))
 
     # Include groups that had zero assigned samples (e.g., orphan haplotypes kept for phylogeny)
     if all_groups is not None:
@@ -869,21 +873,8 @@ def assign_consensus_taxonomy(
                 "majority_fraction": 0.0,
             })
 
-    assign = pd.DataFrame(assign_list)
-
-    # Merge in majority_fraction (keep original column name), coalescing if it already exists
-    assign = assign.merge(
-        maj,
-        on=group_col,
-        how="left",
-        suffixes=("", "_maj")
-    )
-    if "majority_fraction_maj" in assign.columns:
-        if "majority_fraction" in assign.columns:
-            assign["majority_fraction"] = assign["majority_fraction"].fillna(assign["majority_fraction_maj"])
-        else:
-            assign["majority_fraction"] = assign["majority_fraction_maj"]
-        assign = assign.drop(columns=["majority_fraction_maj"])
+    assign = pd.DataFrame(assign_list, columns=[group_col, "assigned_sp", "assignment_level",
+                                                "assignment_notes", "majority_fraction"])
 
     # Ensure column order and types
     expected_cols = [group_col, "assigned_sp", "assignment_level", "assignment_notes", "majority_fraction"]

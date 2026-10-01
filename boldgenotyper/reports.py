@@ -3795,8 +3795,10 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
 
     html += tab('taxonomy', 'Taxonomy &amp; Labels', table([
         row('Record label', 'The species field, or the genus when the species is missing'),
-        row('Haplotype taxon', f'The species carried by more than {v(tax.get("majority_species_threshold"))} of members '
-                               '(members without a label counted; ties not resolved); otherwise the most common genus'),
+        row('Haplotype taxon', f'The species carried by more than {v(tax.get("majority_species_threshold"))} of the '
+                               'counted labels (members with a species-level label, plus genus-only or open labels '
+                               'of another genus; members without a species label are left out; ties not resolved); '
+                               'otherwise the most common genus'),
         row('Label conflicts', 'Members whose species-level label differs from the haplotype’s majority label; '
                                'listed with their evidence in label_conflicts.csv'),
         row('Divergence', 'Uncorrected p-distance between aligned haplotype sequences, skipping gaps and Ns; '

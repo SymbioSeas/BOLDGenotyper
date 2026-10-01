@@ -60,9 +60,11 @@ COLUMNS = {
     "depositor_keyword_hits": "keywords from the depositor's notes, matched as whole words, ';'-joined",
     "majority_label": "most common species-level label among the haplotype's members; empty on a tie",
     "n_majority": "members carrying majority_label",
-    "n_labeled": "members with a species-level label, plus genus-only labels of another genus",
-    "majority_fraction": "n_majority / n_labeled (members without a label and compatible genus-only "
-                         "labels are left out)",
+    "n_labeled": "members with a species or genus label",
+    "majority_fraction": "n_majority / counted labels, where counted labels are the members with a "
+                         "species-level label plus genus-only or open-nomenclature labels of another "
+                         "genus (members without a label, and genus-only or open labels of the "
+                         "majority's genus, are left out); empty when no member has a species-level label",
     "n_members": "records assigned to the haplotype (status assigned or assigned_corrected)",
     "country/ocean": "BOLD country/ocean field, copied from the input",
 }
@@ -103,9 +105,8 @@ FILE_DOCS = [
                                            "nomenclature such as 'sp.' or 'cf.', not genus-only)",
          "n_species_labels_qc_passed": "distinct non-empty species labels among QC-passed records",
          "n_species_haplotype_assigned": "distinct species-level assigned_sp across haplotypes",
-         "n_species_confident": "distinct species-level assigned_sp among haplotypes where that "
-                                "species carries at least the majority threshold of members "
-                                "(taxonomy rule: members without a label counted)",
+         "n_species_confident": "distinct species-level assigned_sp among haplotypes whose "
+                                "majority_fraction is at least the majority threshold",
      }},
     {"pattern": "records.csv",
      "text": "One row per unique input record, in input order, including records that failed QC "
@@ -141,7 +142,8 @@ FILE_DOCS = [
          "n_corrected": "members with status assigned_corrected",
          "is_singleton": "n_members == 1",
          "assignment_level": "species, genus or unassigned (see Taxonomy)",
-         "assignment_notes": "how assigned_sp was chosen, with the fraction used by the taxonomy rule",
+         "assignment_notes": "how assigned_sp was chosen: the majority and its counted labels, or "
+                             "why it fell back to genus",
          "labels": "every member label with its count, most common first; "
                    "'(no species label)' counts members without one",
          "n_missing_label": "members without a species or genus",
@@ -423,16 +425,20 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "region or mapped. A record without a region has an empty value, never 'Unknown'.",
               "", "## Taxonomy and labels", "",
               "A record's label is its species, or its genus when the species is missing. A "
-              "haplotype's `assigned_sp` is the species carried by more than the majority threshold "
-              "(0.70 by default; run_provenance.json) of its members, with members without a label "
-              "counted in this denominator and ties not resolved; otherwise the most common genus "
-              "(`assignment_level` genus).",
+              "haplotype's `majority_label` is its most common species-level member label, and "
+              "`majority_fraction` that label's share of the counted labels: members with a "
+              "species-level label plus genus-only or open-nomenclature labels of another genus. "
+              "Members without a species label (no label, or a genus-only or open label of the "
+              "majority's genus) are left out of the denominator; members without any label are "
+              "counted in `n_missing_label`.",
               "",
-              "`majority_label` and `majority_fraction` describe member labels separately: members "
-              "without a label are counted in `n_missing_label`, and genus-only or open-nomenclature "
-              "labels of the majority's genus are compatible. A label conflict is a member whose "
-              "species-level label differs from the majority label, any species-level member of a "
-              "haplotype whose top labels are tied, or a genus-only label of another genus.",
+              "`assigned_sp` is `majority_label` when `majority_fraction` is more than the majority "
+              "threshold (0.70 by default; run_provenance.json); otherwise, or when the top labels "
+              "are tied, the most common genus (`assignment_level` genus).",
+              "",
+              "A label conflict is a member whose species-level label differs from the majority "
+              "label, any species-level member of a haplotype whose top labels are tied, or a "
+              "genus-only label of another genus.",
               "", "## Divergence", "",
               "Distances are uncorrected p-distances between aligned haplotype sequences. They are "
               "reported without taxonomic thresholds.",
