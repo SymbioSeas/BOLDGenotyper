@@ -461,8 +461,8 @@ def filter_error_singletons(
     """
     counts = _member_counts(haplotype_mapping)
 
-    if min_singleton_distance <= 0.0:
-        # Filtering disabled
+    if min_singleton_distance <= 0.0 or len(haplotype_records) < 2:
+        # Filtering disabled, or a single haplotype (no neighbor to compare with)
         return haplotype_records, haplotype_mapping, {
             'n_total': len(haplotype_records),
             'n_singletons': sum(1 for r in haplotype_records if counts.get(r.id, 0) == 1),
@@ -582,12 +582,13 @@ def flag_suspect_haplotypes(
     - filter_error_singletons(): Removes ≤0.5% divergent singletons (errors)
     - flag_suspect_haplotypes(): Flags >5% divergent singletons (contamination)
     """
-    # Calculate pairwise distances between haplotypes
-    distance_matrix_condensed = calculate_pairwise_distances(haplotype_records)
-
-    # Convert condensed distance matrix to square form for easier indexing
+    # Calculate pairwise distances between haplotypes (a single haplotype has
+    # no neighbor; its nearest-neighbor distance is NaN)
     from scipy.spatial.distance import squareform
-    distance_matrix = squareform(distance_matrix_condensed)
+    if len(haplotype_records) >= 2:
+        distance_matrix = squareform(calculate_pairwise_distances(haplotype_records))
+    else:
+        distance_matrix = np.zeros((len(haplotype_records), len(haplotype_records)))
 
     # For each haplotype, find nearest neighbor distance
     counts = _member_counts(haplotype_df)

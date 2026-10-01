@@ -142,3 +142,22 @@ def test_correction_capped_at_singleton_distance(tmp_path):
     assert set(mapping["processid"]) == {f"a{i}" for i in range(5)} | {f"b{i}" for i in range(3)} | {"e_corr"}
     assert stats.set_index("haplotype_id").loc["H0001", "n_corrected"] == 1
 
+
+@needs_mafft
+def test_single_haplotype_dataset_does_not_crash(tmp_path):
+    """v1 raised 'Need at least 2 sequences for distance calculation' when every
+    record collapsed to one haplotype (before or after error filtering)."""
+    seqs = {f"a{i}": A for i in range(5)}
+    seqs["e"] = mutate(A, [30])                  # error singleton of A
+    fasta = _write_fasta(tmp_path / "in.fasta", seqs)
+    records, mapping, stats, details = dereplication.identify_haplotypes(
+        tmp_path / "S.tsv", fasta, tmp_path / "out", min_singleton_distance=0.005,
+        return_details=True)
+    assert [r.id for r in records] == ["H0001"]
+    assert stats.loc[0, "n_members"] == 6
+    assert details.error_singletons.set_index("processid").loc["e", "status"] == "assigned_corrected"
+
+    only = _write_fasta(tmp_path / "only.fasta", {f"a{i}": A for i in range(5)})
+    records, _, stats, _ = dereplication.identify_haplotypes(
+        tmp_path / "S.tsv", only, tmp_path / "out2", return_details=True)
+    assert len(records) == 1 and stats.loc[0, "n_members"] == 5
