@@ -23,8 +23,8 @@ sweep checks the same records as the final run. The other datasets use the defau
 | Sphyrnidae | Marine | GOaS (default) | name | ocean_basin | 0.015 | 2 (default) |
 | Carcharhiniformes | Marine | GOaS (default) | name | ocean_basin | 0.015 | 2 (default) |
 | Panulirus | Marine | GOaS (default) | name | ocean_basin | 0.015 | 5 |
-| Salmonidae | Freshwater | HydroBASINS level 7 | HYBAS_ID | freshwater_basin | 0.015 | 2 (default) |
-| Pieridae | Terrestrial | Ecoregions2017 | ECO_NAME | ecoregion | 0.085 | 5 |
+| Salmonidae | Freshwater | BasinATLAS v10 level 3 | PFAF_ID | freshwater_basin | 0.015 | 2 (default) |
+| Pieridae | Terrestrial | Ecoregions2017 | REALM | ecoregion | 0.085 | 5 |
 
 ## Commands
 
@@ -86,15 +86,16 @@ boldgenotyper data/Salmonidae.tsv \
   --organism Salmonidae \
   --singleton-distance 0.015 \
   --build-tree \
-  --custom-shp hybas_pour_lev07_v1_shp/hybas_pour_lev07_v1.shp \
-  --shp-field HYBAS_ID \
+  --custom-shp shapefiles/BasinATLAS_Data_v10_shp/BasinATLAS_v10_shp/BasinATLAS_v10_lev03.shp \
+  --shp-field PFAF_ID \
   --geo-category freshwater_basin \
   --threads 8
 ```
 
 **Notes:**
-- Uses HydroBASINS level 7 pour points for freshwater basin assignment
-- HYBAS_ID provides unique basin identifiers
+- Uses BasinATLAS (HydroSHEDS/HydroATLAS, https://www.hydrosheds.org/hydroatlas) level 3
+  for freshwater basin assignment: 292 major drainage basins, global
+- PFAF_ID (Pfafstetter code) identifies each basin
 - Output: `output/Salmonidae_full/`
 - ~9.5M input file, second largest dataset
 
@@ -108,7 +109,7 @@ boldgenotyper data/Pieridae.tsv \
   --genetic-code 5 \
   --build-tree \
   --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
-  --shp-field ECO_NAME \
+  --shp-field REALM \
   --geo-category ecoregion \
   --threads 8
 ```
@@ -116,7 +117,10 @@ boldgenotyper data/Pieridae.tsv \
 **Notes:**
 - Uses Ecoregions2017 for terrestrial ecoregion assignment
 - Genetic code 5 (invertebrate mitochondrial)
-- ECO_NAME provides human-readable ecoregion names (e.g., "Tropical and subtropical moist broadleaf forests")
+- REALM groups the ecoregions into 8 biogeographic realms (e.g., "Palearctic", "Neotropic");
+  ECO_NAME would give the 847 individual ecoregions
+- The region column is named `ecoregion` (`--geo-category`); it replaces the BOLD field of
+  the same name in `records.csv`
 - Output: `output/Pieridae_full/`
 - ~31M input file, largest file size (most metadata)
 
@@ -133,11 +137,11 @@ boldgenotyper data/Sphyrnidae.tsv --output output/Sphyrnidae_full --organism Sph
 boldgenotyper data/Carcharhiniformes.tsv --output output/Carcharhiniformes_full --organism Carcharhiniformes --singleton-distance 0.015 --build-tree --threads 8
 boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panulirus --singleton-distance 0.015 --genetic-code 5 --build-tree --threads 8
 
-# Freshwater dataset (HydroBASINS)
-boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --singleton-distance 0.015 --build-tree --custom-shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp --shp-field HYBAS_ID --geo-category freshwater_basin --threads 8
+# Freshwater dataset (BasinATLAS level 3)
+boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --singleton-distance 0.015 --build-tree --custom-shp shapefiles/BasinATLAS_Data_v10_shp/BasinATLAS_v10_shp/BasinATLAS_v10_lev03.shp --shp-field PFAF_ID --geo-category freshwater_basin --threads 8
 
 # Terrestrial dataset (Ecoregions2017)
-boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --genetic-code 5 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
+boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --genetic-code 5 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field REALM --geo-category ecoregion --threads 8
 ```
 
 ## Expected Outputs
@@ -187,9 +191,9 @@ To confirm shapefiles are correctly configured:
 # Check GOaS (should show 'name' field)
 ogrinfo -so shapefiles/GOaS_v1_20211214/goas_v01.shp goas_v01 | grep "name:"
 
-# Check HydroBASINS (should show 'HYBAS_ID' field)
-ogrinfo -so shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp hybas_na_lev01-12_v1c | grep "HYBAS_ID"
+# Check BasinATLAS level 3 (should show 'PFAF_ID' field)
+ogrinfo -so shapefiles/BasinATLAS_Data_v10_shp/BasinATLAS_v10_shp/BasinATLAS_v10_lev03.shp BasinATLAS_v10_lev03 | grep "PFAF_ID"
 
-# Check Ecoregions (should show 'ECO_NAME' field)
-ogrinfo -so shapefiles/Ecoregions2017/Ecoregions2017.shp Ecoregions2017 | grep "ECO_NAME"
+# Check Ecoregions (should show 'REALM' field)
+ogrinfo -so shapefiles/Ecoregions2017/Ecoregions2017.shp Ecoregions2017 | grep "REALM"
 ```
