@@ -1884,15 +1884,16 @@ def export_metadata_summary(
     haplotype_col: str = 'haplotype_sp',
     normalize_sex: bool = False,
     temporal_analysis: bool = True,
-    extended: bool = False
+    extended: bool = False,
+    cross_tabs: bool = True
 ) -> Dict[str, Path]:
     """
     Export metadata summaries.
 
     Always writes field coverage (JSON, CSV, plot) and metadata_summary/README.md.
     With extended=True it also writes cross-tabulations on normalized
-    vocabularies, the heatmap and, if temporal_analysis is set, the temporal
-    and first-sampled outputs (P1-3, P1-4, P1-5).
+    vocabularies and the heatmap (if cross_tabs is set) and the temporal and
+    first-sampled outputs (if temporal_analysis is set) (P1-3, P1-4, P1-5).
 
     Parameters
     ----------
@@ -1914,6 +1915,8 @@ def export_metadata_summary(
         Whether to run temporal analysis with extended=True (default: True)
     extended : bool, optional
         Write the cross-tabulations and temporal outputs (default: False)
+    cross_tabs : bool, optional
+        With extended=True, write the cross-tabulations and heatmap (default: True)
 
     Returns
     -------
@@ -1990,38 +1993,39 @@ def export_metadata_summary(
         logger.info("Metadata coverage written; cross-tabulations and temporal summaries need --extended")
         return outputs
 
-    # 2. Categorical Field Tabulation (descriptive only — no hypothesis tests)
-    logger.info("Tabulating haplotype × metadata distributions...")
+    if cross_tabs:
+        # 2. Categorical Field Tabulation (descriptive only — no hypothesis tests)
+        logger.info("Tabulating haplotype × metadata distributions...")
 
-    for field in fields:
-        if field not in df.columns:
-            continue
+        for field in fields:
+            if field not in df.columns:
+                continue
 
-        # Check if field has sufficient data
-        field_stats = coverage_stats['fields'].get(field, {})
-        if field_stats.get('n_with_value', 0) < 10:
-            logger.debug(f"Skipping {field}: insufficient data")
-            continue
+            # Check if field has sufficient data
+            field_stats = coverage_stats['fields'].get(field, {})
+            if field_stats.get('n_with_value', 0) < 10:
+                logger.debug(f"Skipping {field}: insufficient data")
+                continue
 
-        # Per-haplotype × per-value count table
-        analysis_df = analyze_categorical_field(df, field, haplotype_col)
-        if not analysis_df.empty:
-            analysis_path = metadata_dir / f'{organism}_{field.replace("/", "_")}_tabulation.csv'
-            analysis_df.to_csv(analysis_path, index=False)
-            outputs[f'{field}_tabulation'] = analysis_path
+            # Per-haplotype × per-value count table
+            analysis_df = analyze_categorical_field(df, field, haplotype_col)
+            if not analysis_df.empty:
+                analysis_path = metadata_dir / f'{organism}_{field.replace("/", "_")}_tabulation.csv'
+                analysis_df.to_csv(analysis_path, index=False)
+                outputs[f'{field}_tabulation'] = analysis_path
 
-        # Plot if enough categories
-        if field_stats.get('n_unique', 0) >= 2:
-            plot_path = viz_dir / f'{organism}_{field.replace("/", "_")}_by_haplotype'
-            plot_categorical_by_haplotype(df, field, plot_path, color_map, haplotype_col)
-            outputs[f'{field}_plot'] = plot_path.with_suffix('.png')
+            # Plot if enough categories
+            if field_stats.get('n_unique', 0) >= 2:
+                plot_path = viz_dir / f'{organism}_{field.replace("/", "_")}_by_haplotype'
+                plot_categorical_by_haplotype(df, field, plot_path, color_map, haplotype_col)
+                outputs[f'{field}_plot'] = plot_path.with_suffix('.png')
 
-    # 3. Metadata Heatmap
-    available_fields = [f for f in fields if f in df.columns and df[f].notna().any()]
-    if available_fields and len(df[haplotype_col].dropna().unique()) > 1:
-        heatmap_path = viz_dir / f'{organism}_metadata_heatmap'
-        plot_metadata_heatmap(df, available_fields, heatmap_path, haplotype_col)
-        outputs['heatmap'] = heatmap_path.with_suffix('.png')
+        # 3. Metadata Heatmap
+        available_fields = [f for f in fields if f in df.columns and df[f].notna().any()]
+        if available_fields and len(df[haplotype_col].dropna().unique()) > 1:
+            heatmap_path = viz_dir / f'{organism}_metadata_heatmap'
+            plot_metadata_heatmap(df, available_fields, heatmap_path, haplotype_col)
+            outputs['heatmap'] = heatmap_path.with_suffix('.png')
 
     # 4. Temporal Analysis
     if temporal_analysis and DATE_FIELD in df.columns:
@@ -2176,7 +2180,7 @@ def write_metadata_readme(metadata_dir: Path, organism: str, outputs: Dict[str, 
         ]
     if 'first_sampled_csv' in outputs or 'temporal_csv' in outputs:
         lines += ["", f"Note: {SAMPLING_CAVEAT}"]
-    if not any(k.endswith('_tabulation') for k in outputs):
+    if 'first_sampled_csv' not in outputs and not any(k.endswith('_tabulation') for k in outputs):
         lines += ["", "Cross-tabulations and collection-date summaries are written with `--extended`."]
     path = Path(metadata_dir) / "README.md"
     path.write_text("\n".join(lines) + "\n")
@@ -2192,7 +2196,8 @@ def run_metadata_summary(
     temporal_analysis: bool = True,
     color_map: Optional[Dict[str, str]] = None,
     haplotype_col: str = 'haplotype_sp',
-    extended: bool = False
+    extended: bool = False,
+    cross_tabs: bool = True
 ) -> Dict[str, Any]:
     """
     Main entry point for running metadata summarization.
@@ -2222,6 +2227,8 @@ def run_metadata_summary(
         Column containing haplotype labels
     extended : bool, optional
         Write cross-tabulations and temporal outputs (default: False)
+    cross_tabs : bool, optional
+        With extended=True, write the cross-tabulations (default: True)
 
     Returns
     -------
@@ -2255,7 +2262,8 @@ def run_metadata_summary(
         haplotype_col=haplotype_col,
         normalize_sex=normalize_sex,
         temporal_analysis=temporal_analysis,
-        extended=extended
+        extended=extended,
+        cross_tabs=cross_tabs
     )
 
     temporal_performed = outputs.pop('_temporal_analysis_performed', False)

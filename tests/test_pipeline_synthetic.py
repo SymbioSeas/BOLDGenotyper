@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(shutil.which("mafft") is None, reason="MAFFT not
 ORGANISM = "Synth"
 
 
-def run_synthetic(workdir, skip_geo=True, **cfg_updates):
+def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv")
@@ -30,7 +30,8 @@ def run_synthetic(workdir, skip_geo=True, **cfg_updates):
     ok = cli.run_pipeline(
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
         no_report=True, skip_geo=skip_geo, export_plot_data=False,
-        export_popgen_formats=None, metadata_summary_enabled=True, temporal_analysis=True,
+        export_popgen_formats=None, metadata_summary_enabled=metadata_summary_enabled,
+        temporal_analysis=True,
     )
     return ok, out
 
@@ -302,3 +303,13 @@ def test_species_diversity_only_with_extended(synthetic_run, extended_run):
         assert not (run / "species_analysis" / "species_geographic_range.csv").exists()
     div = pd.read_csv(extended_run / "species_analysis" / "species_diversity.csv")
     assert "simpson_index" not in div.columns and set(div["note"]) == {"label-based, sampling-dependent"}
+
+
+def test_no_metadata_summary_only_drops_cross_tabs(tmp_path):
+    """--no-metadata-summary restricts --extended; coverage is always written (Task 3.1)."""
+    ok, out = run_synthetic(tmp_path, metadata_summary_enabled=False, extended=True)
+    assert ok
+    files = {p.name for p in (out / "metadata_summary").iterdir()}
+    assert f"{ORGANISM}_metadata_coverage.json" in files
+    assert f"{ORGANISM}_haplotype_first_sampled.csv" in files
+    assert not any(f.endswith("_tabulation.csv") for f in files)

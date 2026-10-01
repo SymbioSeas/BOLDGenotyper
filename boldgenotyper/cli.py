@@ -1288,41 +1288,40 @@ def run_pipeline(
     # ========================================================================
     # PHASE 9.5: Metadata Summarization
     # ========================================================================
+    # Coverage is always written; --no-metadata-summary only drops the
+    # cross-tabs that --extended adds.
     metadata_summary_results = None
-    if metadata_summary_enabled:
-        logger.info("")
-        logger.info("PHASE 9.5: Metadata Summarization")
-        logger.info("-" * 80)
+    logger.info("")
+    logger.info("PHASE 9.5: Metadata Summarization")
+    logger.info("-" * 80)
 
-        try:
-            color_map = visualization.build_genotype_colors_dict(df_final, 'haplotype_sp')
+    try:
+        color_map = visualization.build_genotype_colors_dict(df_final, 'haplotype_sp')
 
-            metadata_summary_results = metadata_summary.run_metadata_summary(
-                annotated_df=df_final,
-                output_dir=output_dir,
-                organism=organism,
-                fields=metadata_fields,
-                normalize_sex=normalize_sex,
-                temporal_analysis=temporal_analysis,
-                color_map=color_map,
-                haplotype_col='haplotype_sp',
-                extended=cfg.extended
-            )
+        metadata_summary_results = metadata_summary.run_metadata_summary(
+            annotated_df=df_final,
+            output_dir=output_dir,
+            organism=organism,
+            fields=metadata_fields,
+            normalize_sex=normalize_sex,
+            temporal_analysis=temporal_analysis,
+            color_map=color_map,
+            haplotype_col='haplotype_sp',
+            extended=cfg.extended,
+            cross_tabs=metadata_summary_enabled
+        )
 
-            logger.info(f"  ✓ Metadata summarization complete")
-            logger.info(f"    - Fields tabulated: {metadata_summary_results.get('n_fields_tabulated', 0)}")
-            logger.info(f"    - Visualizations created: {metadata_summary_results.get('n_visualizations', 0)}")
-            if metadata_summary_results.get('temporal_analysis'):
-                logger.info(f"    - Temporal analysis: enabled")
-            if metadata_summary_results.get('missing_fields'):
-                logger.info(f"    - Missing fields (skipped): {', '.join(metadata_summary_results.get('missing_fields', []))}")
+        logger.info(f"  ✓ Metadata summarization complete")
+        logger.info(f"    - Fields tabulated: {metadata_summary_results.get('n_fields_tabulated', 0)}")
+        logger.info(f"    - Visualizations created: {metadata_summary_results.get('n_visualizations', 0)}")
+        if metadata_summary_results.get('temporal_analysis'):
+            logger.info(f"    - Temporal analysis: enabled")
+        if metadata_summary_results.get('missing_fields'):
+            logger.info(f"    - Missing fields (skipped): {', '.join(metadata_summary_results.get('missing_fields', []))}")
 
-        except Exception as e:
-            step_warnings.record("9.5 metadata summary", e)
-            logger.debug("Metadata summarization error details:", exc_info=True)
-    else:
-        logger.info("")
-        logger.info("PHASE 9.5: Metadata Summarization - SKIPPED (--no-metadata-summary was specified)")
+    except Exception as e:
+        step_warnings.record("9.5 metadata summary", e)
+        logger.debug("Metadata summarization error details:", exc_info=True)
 
     # ========================================================================
     # PHASE 10: Visualization
