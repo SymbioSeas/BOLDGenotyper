@@ -96,9 +96,10 @@ class DiscoveryDetails:
     """Values computed during haplotype discovery that a run must report.
 
     error_singletons has one row per member of an error-filtered singleton:
-    processid, status (assigned_corrected | excluded_error_singleton),
-    haplotype_id (display ID when assigned), nearest_haplotype (display ID when
-    the nearest retained haplotype is unique), distance_to_nearest (p-distance),
+    processid, status (assigned_corrected | excluded_error_singleton), reason
+    (corrected | tied | beyond_threshold | correction_disabled), haplotype_id
+    (display ID when assigned), nearest_haplotype (display ID when the nearest
+    retained haplotype is unique), distance_to_nearest (p-distance),
     tied_haplotypes (';'-joined display IDs when equidistant, else '').
     """
     core_region_length_bp: int
@@ -106,7 +107,8 @@ class DiscoveryDetails:
     min_sequence_length_bp: float
     excluded_core_coverage: List[str]
     error_singletons: pd.DataFrame
-    n_corrected_beyond_threshold: int
+    n_excluded_error_tied: int
+    n_excluded_error_far: int
 
 
 def _member_counts(mapping: pd.DataFrame) -> Dict[str, int]:
@@ -907,7 +909,7 @@ def distances_to_references(seq: str, references: List[str]) -> np.ndarray:
     return d
 
 
-def assign_error_singletons(removed, retained_records, assign_corrected=True):
+def assign_error_singletons(removed, retained_records, assign_corrected=True, max_distance=None):
     """Assign each removed error singleton's members to the nearest retained haplotype.
 
     Parameters
@@ -920,19 +922,26 @@ def assign_error_singletons(removed, retained_records, assign_corrected=True):
     assign_corrected : bool
         If False, every member is left unassigned (excluded_error_singleton),
         but the nearest haplotype and distance are still reported.
+    max_distance : float, optional
+        Correct only when the nearest retained haplotype is at most this far
+        (the pipeline passes --singleton-distance). Two near-identical
+        singletons can filter each other out while every retained haplotype
+        is far away; such records stay unassigned.
 
     Returns
     -------
     pd.DataFrame
         One row per member processid: processid, status
-        (assigned_corrected | excluded_error_singleton), haplotype_key (None
+        (assigned_corrected | excluded_error_singleton), reason (corrected |
+        tied | beyond_threshold | correction_disabled), haplotype_key (None
         unless assigned), nearest_key (None when tied), distance_to_nearest,
         tied_keys (';'-joined keys when equidistant, else '').
     """
-    columns = ["processid", "status", "haplotype_key", "nearest_key",
+    columns = ["processid", "status", "reason", "haplotype_key", "nearest_key",
                "distance_to_nearest", "tied_keys"]
     if not removed or not retained_records:
-        rows = [{"processid": pid, "status": "excluded_error_singleton", "haplotype_key": None,
+        rows = [{"processid": pid, "status": "excluded_error_singleton",
+                 "reason": "beyond_threshold", "haplotype_key": None,
                  "nearest_key": None, "distance_to_nearest": float("nan"), "tied_keys": ""}
                 for _key, _seq, members in removed for pid in members]
         return pd.DataFrame(rows, columns=columns)
@@ -945,11 +954,20 @@ def assign_error_singletons(removed, retained_records, assign_corrected=True):
         best = float(d.min())
         nearest = [keys[i] for i in np.flatnonzero(d == best)]
         tied = len(nearest) > 1
-        assigned = assign_corrected and not tied
+        if tied:
+            reason = "tied"
+        elif max_distance is not None and best > max_distance:
+            reason = "beyond_threshold"
+        elif not assign_corrected:
+            reason = "correction_disabled"
+        else:
+            reason = "corrected"
+        assigned = reason == "corrected"
         for pid in members:
             rows.append({
                 "processid": pid,
                 "status": "assigned_corrected" if assigned else "excluded_error_singleton",
+                "reason": reason,
                 "haplotype_key": nearest[0] if assigned else None,
                 "nearest_key": None if tied else nearest[0],
                 "distance_to_nearest": best,
@@ -1150,12 +1168,17 @@ def identify_haplotypes(
     # Step 5.6: Assign error-filtered singletons to their nearest retained haplotype
     logger.info("Step 5.6: Assigning error-filtered singletons to their nearest retained haplotype...")
     corrections = assign_error_singletons(removed_singletons, haplotype_records,
-                                          assign_corrected=assign_corrected)
+                                          assign_corrected=assign_corrected,
+                                          max_distance=min_singleton_distance)
     corrected = corrections[corrections['status'] == 'assigned_corrected']
-    n_tied = int((corrections['tied_keys'] != '').sum())
+    reasons = corrections['reason'].value_counts()
+    n_tied = int(reasons.get('tied', 0))
+    n_far = int(reasons.get('beyond_threshold', 0))
     if assign_corrected:
-        logger.info(f"  {len(corrected)} records assigned to their nearest retained haplotype; "
-                    f"{n_tied} equidistant from two or more haplotypes (left unassigned)")
+        logger.info(f"  {len(corrected)} records assigned to their nearest retained haplotype "
+                    f"(within {min_singleton_distance}); left unassigned: {n_tied} equidistant "
+                    f"from two or more haplotypes, {n_far} with no retained haplotype within "
+                    f"{min_singleton_distance}")
     else:
         logger.info(f"  Correction disabled: {len(corrections)} error-singleton records left unassigned")
 
@@ -1208,6 +1231,7 @@ def identify_haplotypes(
     error_singletons = pd.DataFrame({
         'processid': corrections['processid'],
         'status': corrections['status'],
+        'reason': corrections['reason'],
         'haplotype_id': corrections['haplotype_key'].map(_display_or_none),
         'nearest_haplotype': corrections['nearest_key'].map(_display_or_none),
         'distance_to_nearest': corrections['distance_to_nearest'],
@@ -1220,8 +1244,8 @@ def identify_haplotypes(
         min_sequence_length_bp=core_details['min_sequence_length_bp'],
         excluded_core_coverage=list(core_details['excluded_headers']),
         error_singletons=error_singletons,
-        n_corrected_beyond_threshold=int(
-            (corrected['distance_to_nearest'] > min_singleton_distance).sum()),
+        n_excluded_error_tied=n_tied,
+        n_excluded_error_far=n_far,
     )
 
     # Step 6: Write haplotype FASTA (ungapped for downstream use)

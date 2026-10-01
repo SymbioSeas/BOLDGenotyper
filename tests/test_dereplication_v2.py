@@ -114,3 +114,31 @@ def test_vectorized_distances_match_compute_distance():
     want = [dereplication._compute_distance(query.upper(), r.upper()) for r in refs]
     assert list(got) == want
     assert dereplication.distances_to_references("----", ["ACGT"])[0] == 1.0
+
+
+@needs_mafft
+def test_correction_capped_at_singleton_distance(tmp_path):
+    """Phase 1 review: correct only when the nearest retained haplotype is within
+    --singleton-distance. A pair of near-identical singletons filters each other
+    out; their nearest retained haplotype is far, so they stay unassigned."""
+    far1 = mutate(A, range(100, 112))          # 12 differences from A (0.020)
+    far2 = mutate(far1, [150])                 # 1 difference from far1
+    seqs = {f"a{i}": A for i in range(5)}
+    seqs.update({f"b{i}": B for i in range(3)})
+    seqs.update({"e_corr": mutate(A, [30]), "far1": far1, "far2": far2})
+    fasta = _write_fasta(tmp_path / "in.fasta", seqs)
+    _, mapping, stats, details = dereplication.identify_haplotypes(
+        tmp_path / "S.tsv", fasta, tmp_path / "out", min_singleton_distance=0.015,
+        return_details=True)
+    err = details.error_singletons.set_index("processid")
+    assert err.loc["e_corr", "status"] == "assigned_corrected"
+    assert err.loc["e_corr", "reason"] == "corrected"
+    for pid in ("far1", "far2"):
+        assert err.loc[pid, "status"] == "excluded_error_singleton"
+        assert err.loc[pid, "reason"] == "beyond_threshold"
+        assert err.loc[pid, "nearest_haplotype"] == "H0001"
+        assert err.loc[pid, "distance_to_nearest"] > 0.015
+    assert details.n_excluded_error_far == 2 and details.n_excluded_error_tied == 0
+    assert set(mapping["processid"]) == {f"a{i}" for i in range(5)} | {f"b{i}" for i in range(3)} | {"e_corr"}
+    assert stats.set_index("haplotype_id").loc["H0001", "n_corrected"] == 1
+

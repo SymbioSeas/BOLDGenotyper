@@ -7,9 +7,11 @@ Statuses, in order of precedence:
     excluded_core_coverage    ungapped core shorter than the per-sequence cutoff
     assigned                  core identical to a retained haplotype
     assigned_corrected        error-filtered singleton assigned to its nearest
-                              retained haplotype
-    excluded_error_singleton  error-filtered singleton equidistant from two or
-                              more retained haplotypes, or correction disabled
+                              retained haplotype, which is within the
+                              error-filter threshold
+    excluded_error_singleton  error-filtered singleton left unassigned: equidistant
+                              from two or more retained haplotypes, no retained
+                              haplotype within the threshold, or correction disabled
 """
 
 from typing import Sequence, Set
@@ -37,7 +39,7 @@ def build_record_status(unique_ids: Sequence[str], sequence_ids: Set[str], qc: p
     qc : processid, qc_pass, qc_fail_reason for records that went through QC
     exact_mapping : processid, haplotype_id for records identical to a retained haplotype
     excluded_core : processids excluded for insufficient core coverage
-    error_singletons : DiscoveryDetails.error_singletons (processid, status,
+    error_singletons : DiscoveryDetails.error_singletons (processid, status, reason,
         haplotype_id, nearest_haplotype, distance_to_nearest, tied_haplotypes)
     singleton_distance : the error-filter threshold, quoted in notes
     """
@@ -66,16 +68,23 @@ def build_record_status(unique_ids: Sequence[str], sequence_ids: Set[str], qc: p
             d = float(e["distance_to_nearest"])
             row["distance_to_nearest"] = d
             tied = e["tied_haplotypes"] if isinstance(e["tied_haplotypes"], str) else ""
+            reason = e["reason"] if "reason" in e.index and isinstance(e["reason"], str) else (
+                "tied" if tied else "correction_disabled")
             if e["status"] == "assigned_corrected":
                 row.update(status="assigned_corrected", haplotype_id=e["haplotype_id"],
                            nearest_haplotype=e["nearest_haplotype"],
                            status_note=(f"Singleton within {singleton_distance} of another haplotype; "
                                         f"assigned to nearest retained haplotype {e['haplotype_id']} "
                                         f"(distance {d:.4f})"))
-            elif tied:
+            elif reason == "tied":
                 row.update(status="excluded_error_singleton",
                            status_note=(f"Error singleton equidistant ({d:.4f}) from "
                                         f"{', '.join(tied.split(';'))}; left unassigned"))
+            elif reason == "beyond_threshold":
+                row.update(status="excluded_error_singleton", nearest_haplotype=e["nearest_haplotype"],
+                           status_note=(f"Error singleton; nearest retained haplotype "
+                                        f"{e['nearest_haplotype']} is {d:.4f} away "
+                                        f"(> {singleton_distance}); left unassigned"))
             else:
                 row.update(status="excluded_error_singleton", nearest_haplotype=e["nearest_haplotype"],
                            status_note=(f"Error singleton; correction disabled "

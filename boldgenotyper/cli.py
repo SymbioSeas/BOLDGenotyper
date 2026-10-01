@@ -654,7 +654,8 @@ def run_pipeline(
             min_sequence_length_bp=details.min_sequence_length_bp,
             n_excluded_core_coverage=len(details.excluded_core_coverage),
             n_error_singleton_records=len(details.error_singletons),
-            n_corrected_beyond_threshold=details.n_corrected_beyond_threshold,
+            n_excluded_error_tied=details.n_excluded_error_tied,
+            n_excluded_error_far=details.n_excluded_error_far,
             n_haplotypes=len(haplotype_records),
         )
 
@@ -1737,7 +1738,8 @@ def run_pipeline(
             n_input=provenance.count_data_rows(tsv_path),
             n_haplotypes=len(haplotype_records),
             species_counts=species_counts,
-            n_corrected_beyond_threshold=details.n_corrected_beyond_threshold,
+            n_excluded_error_tied=details.n_excluded_error_tied,
+            n_excluded_error_far=details.n_excluded_error_far,
         )
 
         # Verify file was created

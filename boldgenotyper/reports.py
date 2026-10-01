@@ -144,11 +144,12 @@ def generate_taxonomy_conflicts_report(
 SUMMARY_COLUMNS = [
     "n_input", "n_unique", "n_no_sequence", "n_failed_qc", "n_qc_pass",
     "n_excluded_core", "n_core_ok", "n_assigned", "n_assigned_corrected",
-    "n_excluded_error", "n_corrected_beyond_threshold", "n_haplotypes",
+    "n_excluded_error", "n_excluded_error_tied", "n_excluded_error_far", "n_haplotypes",
     "pct_assigned", "pct_assigned_exact",
     "n_species_labels_input", "n_species_labels_species_level", "n_species_labels_qc_passed",
     "n_species_haplotype_assigned", "n_species_confident",
 ]
+SPECIES_COUNT_COLUMNS = [c for c in SUMMARY_COLUMNS if c.startswith("n_species_")]
 
 # Record statuses (record_status.STATUSES) and their summary columns
 _STATUS_COLUMNS = {
@@ -162,7 +163,7 @@ _STATUS_COLUMNS = {
 
 
 def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
-                               n_corrected_beyond_threshold=0):
+                               n_excluded_error_tied=0, n_excluded_error_far=0):
     """Assignment summary with explicit denominators.
 
     Percentages are of QC-passed records (n_qc_pass = unique records minus
@@ -186,12 +187,13 @@ def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
         "n_assigned": c("assigned"),
         "n_assigned_corrected": c("assigned_corrected"),
         "n_excluded_error": c("excluded_error_singleton"),
-        "n_corrected_beyond_threshold": int(n_corrected_beyond_threshold),
+        "n_excluded_error_tied": int(n_excluded_error_tied),
+        "n_excluded_error_far": int(n_excluded_error_far),
         "n_haplotypes": int(n_haplotypes),
         "pct_assigned": round((c("assigned") + c("assigned_corrected")) / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
         "pct_assigned_exact": round(c("assigned") / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
     }
-    for key in SUMMARY_COLUMNS[14:]:
+    for key in SPECIES_COUNT_COLUMNS:
         summary[key] = int((species_counts or {}).get(key, 0))
     return {k: summary[k] for k in SUMMARY_COLUMNS}
 
@@ -203,7 +205,8 @@ def generate_assignment_summary(
     n_input: Optional[int] = None,
     n_haplotypes: Optional[int] = None,
     species_counts: Optional[Dict[str, int]] = None,
-    n_corrected_beyond_threshold: int = 0,
+    n_excluded_error_tied: int = 0,
+    n_excluded_error_far: int = 0,
 ) -> Dict[str, object]:
     """
     Write the assignment summary: one row with explicit denominators.
@@ -225,9 +228,10 @@ def generate_assignment_summary(
         Number of retained haplotypes (default: distinct assigned haplotypes)
     species_counts : dict, optional
         taxon_labels.species_count_summary() output
-    n_corrected_beyond_threshold : int, optional
-        Corrected records whose nearest haplotype is farther than the
-        error-filter threshold
+    n_excluded_error_tied, n_excluded_error_far : int, optional
+        Error-singleton records left unassigned because they are equidistant
+        from two or more haplotypes, or because no retained haplotype is within
+        the error-filter threshold
 
     Returns
     -------
@@ -242,7 +246,7 @@ def generate_assignment_summary(
         n_haplotypes = diag["assigned_haplotype"].dropna().nunique() if "assigned_haplotype" in diag else 0
 
     summary = compute_assignment_summary(diag, n_input, n_haplotypes, species_counts,
-                                         n_corrected_beyond_threshold)
+                                         n_excluded_error_tied, n_excluded_error_far)
     pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(out, index=False)
     logger.info(f"Assignment summary saved: {out}")
     return summary

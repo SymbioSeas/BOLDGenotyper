@@ -15,6 +15,7 @@ def _inputs():
     exact = pd.DataFrame({"processid": ["p1"], "haplotype_id": ["H0001"]})
     err = pd.DataFrame({"processid": ["p2", "p3"],
                         "status": ["assigned_corrected", "excluded_error_singleton"],
+                        "reason": ["corrected", "tied"],
                         "haplotype_id": ["H0001", None],
                         "nearest_haplotype": ["H0001", None],
                         "distance_to_nearest": [0.0017, 0.0017],
@@ -43,7 +44,8 @@ def test_notes_are_specific_and_true():
 
 def test_correction_disabled_note_names_nearest():
     unique, seqs, qc, exact, core, err = _inputs()
-    err.loc[0, ["status", "haplotype_id"]] = ["excluded_error_singleton", None]
+    err.loc[0, ["status", "reason", "haplotype_id"]] = ["excluded_error_singleton",
+                                                         "correction_disabled", None]
     out = rs.build_record_status(unique, seqs, qc, exact, core, err, singleton_distance=0.005)
     note = out.set_index("processid").loc["p2", "status_note"]
     assert "correction disabled" in note and "H0001" in note
@@ -53,3 +55,14 @@ def test_unexplained_record_raises():
     unique, seqs, qc, exact, core, err = _inputs()
     with pytest.raises(ValueError, match="p7"):
         rs.build_record_status(unique + ["p7"], seqs | {"p7"}, qc, exact, core, err, 0.005)
+
+
+def test_beyond_threshold_note_gives_nearest_and_distance():
+    unique, seqs, qc, exact, core, err = _inputs()
+    err.loc[0, ["status", "reason", "haplotype_id", "distance_to_nearest"]] = [
+        "excluded_error_singleton", "beyond_threshold", None, 0.0347]
+    out = rs.build_record_status(unique, seqs, qc, exact, core, err, singleton_distance=0.015)
+    row = out.set_index("processid").loc["p2"]
+    assert row["status"] == "excluded_error_singleton"
+    assert row["nearest_haplotype"] == "H0001"
+    assert "H0001" in row["status_note"] and "0.0347" in row["status_note"] and "0.015" in row["status_note"]

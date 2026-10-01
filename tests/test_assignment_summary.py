@@ -10,13 +10,15 @@ def test_summary_denominators_and_percentages():
                            ["excluded_error_singleton", "excluded_core_coverage",
                             "failed_qc", "no_sequence"]})
     s = reports.compute_assignment_summary(status, n_input=13, n_haplotypes=3,
-                                           species_counts={}, n_corrected_beyond_threshold=1)
+                                           species_counts={}, n_excluded_error_tied=0,
+                                           n_excluded_error_far=1)
     assert s["n_input"] == 13 and s["n_unique"] == 12
     assert s["n_qc_pass"] == 10          # everything except failed_qc and no_sequence
     assert s["n_core_ok"] == 9           # minus excluded_core_coverage
     assert s["pct_assigned"] == 80.0     # (6 + 2) / 10
     assert s["pct_assigned_exact"] == 60.0
-    assert s["n_excluded_error"] == 1 and s["n_corrected_beyond_threshold"] == 1
+    assert s["n_excluded_error"] == 1
+    assert (s["n_excluded_error_tied"], s["n_excluded_error_far"]) == (0, 1)
     assert list(s) == reports.SUMMARY_COLUMNS
 
 
