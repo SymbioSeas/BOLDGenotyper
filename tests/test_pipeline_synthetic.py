@@ -216,3 +216,6 @@ def test_goas_regions_only_for_geographic_quality(tmp_path):
     assert d["warnings"] == []
     assert (out / "visualization" / "pdf" / f"{ORGANISM}_distribution_map.pdf").exists()
     assert (out / "visualization" / "pdf" / f"{ORGANISM}_species_distribution_map.pdf").exists()
+    # P0-5: country counts come from country/ocean
+    coverage = pd.read_csv(next((out / "geographic_analysis").glob("*geographic_coverage.csv")))
+    assert coverage["with_country"].sum() > 0

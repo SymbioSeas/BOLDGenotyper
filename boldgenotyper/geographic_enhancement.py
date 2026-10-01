@@ -34,6 +34,19 @@ class GeographicEnhancementError(Exception):
     pass
 
 
+def _country_column(df: pd.DataFrame) -> Optional[str]:
+    """Country field: 'country/ocean' (BOLD portal exports) or legacy 'country'."""
+    for col in ("country/ocean", "country"):
+        if col in df.columns:
+            return col
+    return None
+
+
+def _has_text(series: pd.Series) -> pd.Series:
+    """True where a value is present and not an empty string."""
+    return series.notna() & (series.astype(str).str.strip() != "")
+
+
 def assess_geographic_coverage(
     df: pd.DataFrame,
     group_col: str = "haplotype_id",
@@ -94,8 +107,9 @@ def assess_geographic_coverage(
                 (group_df[geo_category] != '')
             ).sum()
 
-        if 'country' in group_df.columns:
-            has_country = group_df['country'].notna().sum()
+        country_col = _country_column(group_df)
+        if country_col is not None:
+            has_country = int(_has_text(group_df[country_col]).sum())
 
         # Calculate percentages
         pct_lat_lon = (has_lat_lon / n_total * 100) if n_total > 0 else 0
@@ -274,10 +288,11 @@ def generate_missing_data_report(
     n_with_region = ((df[geo_category].notna()) &
                     (df[geo_category] != 'Unknown') &
                     (df[geo_category] != '')).sum() if geo_category in df.columns else 0
-    n_with_country = df['country'].notna().sum() if 'country' in df.columns else 0
-    n_no_geo = ((~df[['lat', 'lon']].notna().all(axis=1)) &
-                (~df[geo_category].notna()) &
-                (~df['country'].notna())).sum() if geo_category in df.columns and 'country' in df.columns else n_total - n_with_coords
+    country_col = _country_column(df)
+    has_country = _has_text(df[country_col]) if country_col else pd.Series(False, index=df.index)
+    n_with_country = int(has_country.sum())
+    has_region = _has_text(df[geo_category]) if geo_category in df.columns else pd.Series(False, index=df.index)
+    n_no_geo = int(((~df[['lat', 'lon']].notna().all(axis=1)) & ~has_region & ~has_country).sum())
 
     pct_coords = (n_with_coords / n_total * 100) if n_total > 0 else 0
     pct_region = (n_with_region / n_total * 100) if n_total > 0 else 0
