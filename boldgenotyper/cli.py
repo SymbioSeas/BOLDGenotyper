@@ -599,6 +599,8 @@ def run_pipeline(
 
         qc_passed_fasta = dirs['qc'] / f"{organism}_qc_passed.fasta"
         utils.write_fasta(qc_passed_fasta_records, qc_passed_fasta)
+        # Kept in the run folder for boldgenotyper-query --search-records (Q10)
+        utils.write_fasta(qc_passed_fasta_records, output_dir / "records_qc_passed.fasta")
         logger.info(f"  Created {len(qc_passed_fasta_records)} QC-passed FASTA records")
         logger.info(f"  Saved: {qc_passed_fasta}")
 
@@ -2584,6 +2586,14 @@ For more information:
     )
 
     parser.add_argument(
+        '--search-records',
+        action='store_true',
+        help='Also search every QC-passed reference record (records_qc_passed.fasta in a '
+             'v2 run folder) and report exact-match records with their labels, '
+             'haplotype and status, including records not assigned to any haplotype.'
+    )
+
+    parser.add_argument(
         '--tie-margin',
         type=float,
         default=None,
@@ -2649,6 +2659,17 @@ For more information:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
+        reference_run = query_assignment.load_reference_run(analysis_dir)
+        if reference_run is None:
+            logger.warning("Reference run not identified (no run_provenance.json); "
+                           "outputs record the haplotype file only")
+        if not args.query.exists():
+            raise FileNotFoundError(f"Query file not found: {args.query}")
+        query_records = haplotype_query.load_query_sequences(
+            args.query, min_length=args.min_length, max_length=args.max_length)
+        if not query_records:
+            raise ValueError("No valid query sequences after length filtering")
+
         # Run query
         logger.info("Starting haplotype query analysis...")
         results, metadata, verdicts = haplotype_query.query_against_haplotypes(
@@ -2663,7 +2684,22 @@ For more information:
             min_query_coverage=args.min_query_coverage,
             max_mismatch_delta=args.max_mismatch_delta,
             min_species_support=args.min_species_support,
+            query_records=query_records,
         )
+
+        # Exact-match reference records (Q10)
+        record_matches = None
+        if args.search_records:
+            records_fasta = Path(analysis_dir) / "records_qc_passed.fasta" if analysis_dir else None
+            if records_fasta is None or not records_fasta.exists():
+                logger.warning("--search-records needs a v2 run folder with records_qc_passed.fasta; skipped")
+            else:
+                record_table, _ = query_assignment.load_record_table(analysis_dir)
+                matches_df = haplotype_query.search_records(query_records, records_fasta, record_table)
+                matches_path = output_dir / "query_record_matches.csv"
+                matches_df.to_csv(matches_path, index=False)
+                record_matches = {q.id: int((matches_df["query_id"] == q.id).sum()) for q in query_records}
+                logger.info(f"Exact-match records written to {matches_path}")
         parameters = {
             "assign_identity": args.assign_identity,
             "min_query_coverage": args.min_query_coverage,
@@ -2671,6 +2707,7 @@ For more information:
             "min_species_support": args.min_species_support,
             "tie_margin_deprecated": args.tie_margin,
             "top_n": args.top_n,
+            "search_records": args.search_records,
         }
 
         # Write results
@@ -2683,6 +2720,8 @@ For more information:
             analysis_dir=analysis_dir,
             verdicts=verdicts,
             parameters=parameters,
+            reference_run=reference_run,
+            record_matches=record_matches,
         )
 
         logger.info("")

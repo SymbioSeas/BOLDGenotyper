@@ -84,3 +84,50 @@ def test_bare_fasta_reference_has_no_species_support(tmp_path, run_dir):
     assert s.loc["window", "call_level"] == "haplotype_set"
     assert s.loc["window", "flags"] == "no_reference_labels"
     assert s.loc["window", "species_call"] == ""
+
+
+# --- Reference reporting and record search (Q8, Q9, Q10) -------------------
+
+import hashlib
+import json
+
+from boldgenotyper import query_assignment as qa
+
+
+def test_load_reference_run(run_dir):
+    ref = qa.load_reference_run(run_dir)
+    md5 = hashlib.md5((run_dir / "run_provenance.json").read_bytes()).hexdigest()
+    assert ref["provenance_md5"] == md5
+    assert ref["n_haplotypes"] == 4
+    assert ref["boldgenotyper_version"] and ref["run_date"]
+    assert qa.load_reference_run(next((run_dir / "haplotypes").glob("*.fasta"))) is None
+
+
+def test_reference_block_and_haplotypes_searched(tmp_path, run_dir):
+    s, out = _query(tmp_path, run_dir, {"window": WINDOW}, "--top-n", "1")
+    md5 = hashlib.md5((run_dir / "run_provenance.json").read_bytes()).hexdigest()
+    assert s.loc["window", "reference_run_id"] == md5
+    header = [l for l in (out / "query_summary.csv").read_text().splitlines() if l.startswith("#")]
+    assert f"# reference_run.provenance_md5: {md5}" in header
+    assert "Haplotypes Searched: 4" in (out / "query_results_detailed.txt").read_text()
+    j = json.loads((out / "query_results.json").read_text())
+    assert j["reference_run"]["provenance_md5"] == md5
+    assert j["query_metadata"]["n_reference_haplotypes"] == 4
+    assert j["parameters"]["max_mismatch_delta"] == 0
+    assert j["queries"][0]["verdict"]["equivalence_set"] == ["H0001", "H0002"]
+
+
+def test_pipeline_writes_qc_passed_records(run_dir):
+    text = (run_dir / "records_qc_passed.fasta").read_text()
+    ids = [line[1:] for line in text.splitlines() if line.startswith(">")]
+    assert len(ids) == 23 and "SYN024" not in ids and "SYN022" in ids
+
+
+def test_search_records_finds_unassigned_records(tmp_path, run_dir):
+    s, out = _query(tmp_path, run_dir, {"window": WINDOW}, "--search-records")
+    assert int(s.loc["window", "n_exact_record_matches"]) == 19
+    m = pd.read_csv(out / "query_record_matches.csv").set_index("processid")
+    assert m.loc["SYN022", "status"] == "excluded_error_singleton"
+    assert pd.isna(m.loc["SYN022", "haplotype_id"])
+    assert m.loc["SYN021", "status"] == "assigned_corrected"
+    assert set(m["match_type"]) == {"query_within_record"}

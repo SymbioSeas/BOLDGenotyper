@@ -35,7 +35,7 @@ from pathlib import Path
 import logging
 import json
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 import warnings
 
 import pandas as pd
@@ -401,6 +401,7 @@ def query_against_haplotypes(
     min_query_coverage: float = 0.95,
     max_mismatch_delta: int = 0,
     min_species_support: float = 0.70,
+    query_records: Optional[List[SeqRecord]] = None,
 ) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame], List["query_assignment.QueryVerdict"]]:
     """
     Query sequences against haplotype consensuses.
@@ -456,8 +457,11 @@ def query_against_haplotypes(
         raise FileNotFoundError(f"Haplotype file not found: {haplotype_fasta}")
 
     # Load query sequences: cleaned (gaps removed, uppercase), length-filtered (Q1)
-    logger.info(f"Loading query sequences from {query_fasta}")
-    valid_queries = load_query_sequences(query_fasta, min_length=min_length, max_length=max_length)
+    if query_records is not None:
+        valid_queries = list(query_records)
+    else:
+        logger.info(f"Loading query sequences from {query_fasta}")
+        valid_queries = load_query_sequences(query_fasta, min_length=min_length, max_length=max_length)
     if not valid_queries:
         raise ValueError("No valid query sequences after length filtering")
     logger.info(f"{len(valid_queries)} query sequence(s) passed length validation")
@@ -696,18 +700,58 @@ def write_results(
 
     # Write JSON
     json_file = output_dir / "query_results.json"
-    write_json_results(results, json_file, metadata)
+    write_json_results(results, json_file, metadata, verdicts=verdicts,
+                       parameters=parameters, reference_run=reference_run)
     logger.info(f"Wrote JSON results to {json_file}")
 
     # Write detailed text report
     txt_file = output_dir / "query_results_detailed.txt"
-    write_text_report(results, txt_file, metadata, haplotype_file, analysis_dir, verdicts)
+    write_text_report(results, txt_file, metadata, haplotype_file, analysis_dir, verdicts,
+                      reference_run=reference_run)
     logger.info(f"Wrote detailed report to {txt_file}")
 
     # Write per-query verdict summary
     if verdicts is not None:
         write_query_summary(verdicts, output_dir, parameters=parameters,
                             reference_run=reference_run, record_matches=record_matches)
+
+
+RECORD_MATCH_COLUMNS = ["query_id", "processid", "match_type", "label", "haplotype_id",
+                        "status", "record_length"]
+
+
+def search_records(queries: List[SeqRecord], records_fasta: Path,
+                   record_table: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """Exact-match records for each query (Q10, --search-records).
+
+    A record matches when the query occurs in it unchanged
+    (query_within_record) or it occurs unchanged in the query
+    (record_within_query). Searches every QC-passed record, including records
+    that are not assigned to any haplotype.
+    """
+    records = [(r.id, str(r.seq).upper().replace("-", ""))
+               for r in SeqIO.parse(str(records_fasta), "fasta")]
+    info = (record_table.drop_duplicates("processid").set_index("processid")
+            if record_table is not None else None)
+    rows = []
+    for q in queries:
+        qs = str(q.seq).upper()
+        for pid, rs in records:
+            if qs in rs:
+                match_type = "query_within_record"
+            elif rs in qs:
+                match_type = "record_within_query"
+            else:
+                continue
+            meta = info.loc[pid] if info is not None and pid in info.index else None
+            rows.append({
+                "query_id": q.id, "processid": pid, "match_type": match_type,
+                "label": meta["label"] if meta is not None else None,
+                "haplotype_id": meta["haplotype_id"] if meta is not None else None,
+                "status": meta["status"] if meta is not None else None,
+                "record_length": len(rs),
+            })
+    return pd.DataFrame(rows, columns=RECORD_MATCH_COLUMNS)
 
 
 QUERY_SUMMARY_COLUMNS = [
@@ -774,9 +818,13 @@ def write_query_summary(verdicts, output_dir, parameters=None, reference_run=Non
 def write_json_results(
     results: List[AlignmentResult],
     output_file: Path,
-    metadata: Optional[pd.DataFrame] = None
+    metadata: Optional[pd.DataFrame] = None,
+    verdicts=None,
+    parameters: Optional[Dict[str, Any]] = None,
+    reference_run: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Write results in JSON format."""
+    """Write results in JSON format: reference run, parameters, and per query
+    the verdict and the top matches."""
     # Group results by query
     queries_dict = {}
     for result in results:
@@ -818,18 +866,29 @@ def write_json_results(
 
         queries_dict[result.query_id]['matches'].append(match_entry)
 
+    verdict_by_id = {v.query_id: v for v in (verdicts or [])}
+    for qid, entry in queries_dict.items():
+        if qid in verdict_by_id:
+            entry['verdict'] = asdict(verdict_by_id[qid])
+
     # Create output structure
+    n_reference = (verdicts[0].n_reference_haplotypes if verdicts
+                   else len(set(r.haplotype_id for r in results)))
     output = {
         'query_metadata': {
             'timestamp': datetime.now().isoformat(),
             'n_queries': len(queries_dict),
-            'n_haplotypes': len(set(r.haplotype_id for r in results))
+            'n_reference_haplotypes': n_reference,
         },
+        'reference_run': reference_run,
+        'parameters': parameters or {},
+        'alignment': ALIGNMENT_SCORING,
+        'note': POOLED_LABELS_NOTE,
         'queries': list(queries_dict.values())
     }
 
     with open(output_file, 'w') as f:
-        json.dump(output, f, indent=2)
+        json.dump(output, f, indent=2, default=str)
 
 
 def write_text_report(
@@ -838,7 +897,8 @@ def write_text_report(
     metadata: Optional[pd.DataFrame] = None,
     haplotype_file: Path = None,
     analysis_dir: Path = None,
-    verdicts=None
+    verdicts=None,
+    reference_run: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Write detailed text report with alignments."""
     # Group by query
@@ -855,7 +915,13 @@ def write_text_report(
         f.write("=" * 80 + "\n")
         f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Queries Processed: {len(queries_dict)}\n")
-        f.write(f"Haplotypes Searched: {len(set(r.haplotype_id for r in results))}\n")
+        n_reference = (verdicts[0].n_reference_haplotypes if verdicts
+                       else len(set(r.haplotype_id for r in results)))
+        f.write(f"Haplotypes Searched: {n_reference}\n")
+        if reference_run:
+            f.write(f"Reference Run: {reference_run.get('path')} (BOLDGenotyper "
+                    f"{reference_run.get('boldgenotyper_version')}, run {reference_run.get('run_date')}, "
+                    f"run_provenance.json md5 {reference_run.get('provenance_md5')})\n")
         if haplotype_file:
             f.write(f"Haplotype File: {haplotype_file}\n")
         if analysis_dir:

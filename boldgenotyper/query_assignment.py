@@ -177,22 +177,68 @@ def load_member_labels(run_dir) -> tuple:
     if not (run_dir / "run_provenance.json").exists():
         return None, (f"{run_dir} has no run_provenance.json (a v1 run folder?); "
                       "species support needs a v2 run folder")
-    table = next((p for pattern in RECORD_TABLE_GLOBS for p in sorted(run_dir.glob(pattern))), None)
-    if table is None:
-        return None, f"no record table ({' or '.join(RECORD_TABLE_GLOBS)}) in {run_dir}"
-    wanted = {"haplotype_id", "status", "species", "genus"}
-    df = pd.read_csv(table, usecols=lambda c: c in wanted, dtype=str, low_memory=False)
-    if not {"haplotype_id", "status"} <= set(df.columns):
-        return None, f"{table.name} has no record statuses"
+    df, table = load_record_table(run_dir)
+    if df is None:
+        return None, f"no record table with statuses ({' or '.join(RECORD_TABLE_GLOBS)}) in {run_dir}"
     df = df[df["status"].isin(MEMBER_STATUSES) & df["haplotype_id"].notna()]
-    species = df["species"] if "species" in df.columns else pd.Series("", index=df.index)
-    genus = df["genus"] if "genus" in df.columns else pd.Series("", index=df.index)
-    label = species.fillna("").str.strip()
-    label = label.where(label != "", genus.fillna("").str.strip())
     labels = {}
-    for hid, lab in zip(df["haplotype_id"], label):
+    for hid, lab in zip(df["haplotype_id"], df["label"]):
         labels.setdefault(hid, []).append(lab)
     return labels, f"member labels from {table.name}"
+
+
+def load_record_table(run_dir) -> tuple:
+    """Per-record processid, species, genus, label, haplotype_id and status of a v2 run.
+
+    label = species, or genus when the species is missing. Returns
+    (DataFrame or None, path of the table or None).
+    """
+    import pandas as pd
+
+    run_dir = Path(run_dir)
+    table = next((p for pattern in RECORD_TABLE_GLOBS for p in sorted(run_dir.glob(pattern))), None)
+    if table is None:
+        return None, None
+    wanted = {"processid", "haplotype_id", "status", "species", "genus"}
+    df = pd.read_csv(table, usecols=lambda c: c in wanted, dtype=str, low_memory=False)
+    if not {"processid", "haplotype_id", "status"} <= set(df.columns):
+        return None, table
+    for col in ("species", "genus"):
+        if col not in df.columns:
+            df[col] = ""
+    species = df["species"].fillna("").str.strip()
+    df["label"] = species.where(species != "", df["genus"].fillna("").str.strip())
+    return df, table
+
+
+def load_reference_run(path) -> Optional[dict]:
+    """The reference_run block (Q9) for a v2 run folder; None otherwise.
+
+    provenance_md5 (md5 of run_provenance.json; used as reference_run_id),
+    boldgenotyper_version, n_haplotypes, run_date, input_md5, download_date,
+    path.
+    """
+    import hashlib
+    import json
+
+    if path is None:
+        return None
+    path = Path(path)
+    prov_file = path / "run_provenance.json"
+    if not path.is_dir() or not prov_file.exists():
+        return None
+    raw = prov_file.read_bytes()
+    prov = json.loads(raw)
+    applied = prov.get("applied", {})
+    return {
+        "provenance_md5": hashlib.md5(raw).hexdigest(),
+        "boldgenotyper_version": prov.get("boldgenotyper_version"),
+        "n_haplotypes": applied.get("n_haplotypes"),
+        "run_date": prov.get("started_at"),
+        "input_md5": prov.get("input", {}).get("md5"),
+        "download_date": prov.get("input", {}).get("download_date"),
+        "path": str(path),
+    }
 
 
 def resolve_reference(haplotypes_arg, analysis_dir_arg):
