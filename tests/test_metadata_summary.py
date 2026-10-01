@@ -221,7 +221,7 @@ class TestTemporalAnalysis(unittest.TestCase):
         self.assertGreater(stats['n_parsed'], 0)
 
     def test_haplotype_emergence(self):
-        """Test haplotype emergence calculation."""
+        """First and last sampling dates per haplotype (P1-4)."""
         result_df, _ = metadata_analysis.parse_collection_dates(
             self.df.copy(), 'collection_date_start'
         )
@@ -232,8 +232,8 @@ class TestTemporalAnalysis(unittest.TestCase):
 
         self.assertFalse(emergence_df.empty)
         self.assertIn('haplotype_sp', emergence_df.columns)
-        self.assertIn('first_collection_date', emergence_df.columns)
-        self.assertIn('first_collection_year', emergence_df.columns)
+        self.assertIn('first_sampled', emergence_df.columns)
+        self.assertIn('first_sampled_year', emergence_df.columns)
 
     def test_temporal_distribution(self):
         """Test temporal distribution analysis."""
@@ -381,7 +381,7 @@ class TestLastDetection(unittest.TestCase):
         })
 
     def test_emergence_includes_last_detection(self):
-        """Test that emergence data includes last detection date."""
+        """First-sampled data includes the last sampling date."""
         result_df, _ = metadata_analysis.parse_collection_dates(
             self.df.copy(), 'collection_date_start'
         )
@@ -390,12 +390,12 @@ class TestLastDetection(unittest.TestCase):
             result_df, 'haplotype_sp'
         )
 
-        self.assertIn('last_collection_date', emergence_df.columns)
-        self.assertIn('last_collection_year', emergence_df.columns)
-        self.assertIn('years_observed', emergence_df.columns)
+        self.assertIn('last_sampled', emergence_df.columns)
+        self.assertIn('last_sampled_year', emergence_df.columns)
+        self.assertIn('years_between_first_and_last_sample', emergence_df.columns)
 
     def test_years_observed_calculation(self):
-        """Test years_observed is calculated correctly."""
+        """Years between first and last sample are calculated correctly."""
         result_df, _ = metadata_analysis.parse_collection_dates(
             self.df.copy(), 'collection_date_start'
         )
@@ -406,11 +406,11 @@ class TestLastDetection(unittest.TestCase):
 
         # h1: 2015 to 2020 = 5 years
         h1_row = emergence_df[emergence_df['haplotype_sp'] == 'h1'].iloc[0]
-        self.assertEqual(h1_row['years_observed'], 5)
+        self.assertEqual(h1_row['years_between_first_and_last_sample'], 5)
 
         # h3: 2017 to 2022 = 5 years
         h3_row = emergence_df[emergence_df['haplotype_sp'] == 'h3'].iloc[0]
-        self.assertEqual(h3_row['years_observed'], 5)
+        self.assertEqual(h3_row['years_between_first_and_last_sample'], 5)
 
 
 class TestMissingFieldsTracking(unittest.TestCase):

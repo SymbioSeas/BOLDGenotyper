@@ -3220,42 +3220,42 @@ def _build_metadata_summary_section(
                 html += f'<img src="{encoded}" alt="Metadata Coverage" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
-    # 2. Temporal Analysis
+    # 2. Collection dates (--extended)
     temporal_summary = metadata_dir / f'{organism}_temporal_summary.csv'
-    emergence_csv = metadata_dir / f'{organism}_haplotype_emergence.csv'
+    first_sampled_csv = metadata_dir / f'{organism}_haplotype_first_sampled.csv'
 
-    if temporal_summary.exists() or emergence_csv.exists():
-        html += '<h3>Temporal Analysis</h3>\n'
+    if temporal_summary.exists() or first_sampled_csv.exists():
+        html += '<h3>Collection Dates</h3>\n'
+        html += ('<p>Collection dates show when and where specimens were sampled and deposited '
+                 'in BOLD, not when haplotypes arose or changed in frequency.</p>\n')
 
-        # Emergence timeline
-        if emergence_csv.exists():
-            html += '<h4>Haplotype First Detection</h4>\n'
+        if first_sampled_csv.exists():
+            html += '<h4>First Sampled</h4>\n'
             try:
-                emergence_df = pd.read_csv(emergence_csv)
-                if not emergence_df.empty:
-                    display_df = emergence_df[['haplotype_sp', 'first_collection_date', 'first_location', 'n_total_samples']].copy()
-                    display_df.columns = ['Haplotype', 'First Detection', 'Location', 'Total Samples']
+                first_df = pd.read_csv(first_sampled_csv)
+                if not first_df.empty:
+                    display_df = first_df[['haplotype_sp', 'first_sampled', 'first_location', 'n_total_samples']].copy()
+                    display_df.columns = ['Haplotype', 'First Sampled', 'Location', 'Total Samples']
                     html += _dataframe_to_html(display_df, max_rows=15)
             except Exception as e:
-                html += f'<p class="alert alert-warning">Could not load emergence data: {e}</p>\n'
+                html += f'<p class="alert alert-warning">Could not load first-sampled data: {e}</p>\n'
 
-        # Embed temporal visualization if available
         temporal_img = _find_viz_image(f'{organism}_temporal_composition.png')
         if temporal_img.exists():
             encoded = _encode_image_to_base64(temporal_img)
             if encoded:
-                html += '<h4>Temporal Composition</h4>\n'
+                html += '<h4>Records by Collection Year</h4>\n'
                 html += '<div class="viz-container">\n'
-                html += f'<img src="{encoded}" alt="Temporal Composition" class="viz-image" style="max-width: 800px;">\n'
+                html += f'<img src="{encoded}" alt="Records by collection year" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
-        emergence_plot = _find_viz_image(f'{organism}_haplotype_emergence_timeline.png')
-        if emergence_plot.exists():
-            encoded = _encode_image_to_base64(emergence_plot)
+        timeline_plot = _find_viz_image(f'{organism}_haplotype_sampling_timeline.png')
+        if timeline_plot.exists():
+            encoded = _encode_image_to_base64(timeline_plot)
             if encoded:
-                html += '<h4>Emergence Timeline</h4>\n'
+                html += '<h4>Sampling Timeline</h4>\n'
                 html += '<div class="viz-container">\n'
-                html += f'<img src="{encoded}" alt="Emergence Timeline" class="viz-image" style="max-width: 800px;">\n'
+                html += f'<img src="{encoded}" alt="Sampling timeline" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
     # 4. Metadata Heatmap

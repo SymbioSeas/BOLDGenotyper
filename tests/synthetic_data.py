@@ -33,8 +33,13 @@ _NEXT_BASE = {"A": "C", "C": "G", "G": "T", "T": "A"}
 
 COLUMNS = [
     "processid", "sampleid", "bin_uri", "species", "genus", "family",
-    "country/ocean", "coord", "coord_source", "marker_code", "nuc",
+    "country/ocean", "coord", "coord_source", "marker_code", "sex", "life_stage",
+    "collection_date_start", "nuc",
 ]
+
+# Cycled over records: raw BOLD-portal vocabulary variants (P1-5)
+_SEX = ["M", "F", " ", "", "U"]
+_LIFE_STAGE = ["A", "adult", "I", "", "Immature"]
 
 
 def base_sequence(n_codons=200, seed=7):
@@ -114,6 +119,9 @@ def make_synthetic_bold_tsv(path):
             "coord": coord,
             "coord_source": source,
             "marker_code": "COI-5P",
+            "sex": _SEX[i % len(_SEX)],
+            "life_stage": _LIFE_STAGE[i % len(_LIFE_STAGE)],
+            "collection_date_start": f"20{10 + i % 8:02d}-06-15",
             "nuc": seq,
         })
     rows.append(dict(rows[0]))  # duplicate processid, as in real portal exports

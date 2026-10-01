@@ -4,7 +4,7 @@ Metadata Summarization Module
 Descriptive summaries of how BOLDGenotyper haplotype assignments distribute
 across non-geographic BOLD metadata fields. This module is purely
 diagnostic: it produces per-field tabulations (haplotype × value counts)
-and temporal coverage (haplotype emergence timeline, collection-date
+and temporal coverage (first and last sampling dates, collection-date
 trends) to help users assess sampling bias and coverage in a BOLD pull.
 
 It does NOT perform haplotype × metadata hypothesis tests. The historical
@@ -39,6 +39,7 @@ Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import logging
+import re
 import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -301,6 +302,53 @@ def normalize_sex_values(
     return df
 
 
+# Field-specific codes in BOLD exports (lowercased key -> normalized value; None = missing)
+VOCABULARY_CODES = {
+    "sex": {"m": "Male", "male": "Male", "f": "Female", "female": "Female",
+            "u": None, "unknown": None},
+    "life_stage": {"a": "Adult", "i": "Immature", "m": "Mature", "j": "Juvenile"},
+    "reproduction": {"s": "Sexual", "a": "Asexual", "u": None},
+}
+_GIS_SUFFIX = re.compile(r"_simplify-[\d.]+_buffered-[\d.]+")
+
+
+def _normalize_term(field: str, value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return np.nan
+    text = str(value).strip()
+    if not text:
+        return np.nan
+    codes = VOCABULARY_CODES.get(field, {})
+    if text.lower() in codes:
+        mapped = codes[text.lower()]
+        return np.nan if mapped is None else mapped
+    if _GIS_SUFFIX.search(text) or "_" in text:
+        parts = [_GIS_SUFFIX.sub("", p.strip()).replace("_", " ").strip() for p in text.split(",")]
+        text = ", ".join(p for p in parts if p)
+    if text.islower():
+        text = text[0].upper() + text[1:]
+    return text
+
+
+def normalize_vocabulary(df: pd.DataFrame, fields: List[str]) -> pd.DataFrame:
+    """
+    Normalize metadata vocabularies before tabulation (P1-5).
+
+    - Empty and whitespace-only values are missing (not a category).
+    - Field codes: sex M/F -> Male/Female and U -> missing; life_stage
+      A/I/M/J -> Adult/Immature/Mature/Juvenile; reproduction S/A ->
+      Sexual/Asexual and U -> missing.
+    - All-lowercase values are capitalized, so 'adult' and 'Adult' merge.
+    - BOLD GIS suffixes (e.g. '_simplify-0.001_buffered-0.018') are removed and
+      underscores become spaces, per comma-separated item.
+    """
+    df = df.copy()
+    for field in fields:
+        if field in df.columns:
+            df[field] = df[field].map(lambda v, f=field: _normalize_term(f, v))
+    return df
+
+
 # =============================================================================
 # Categorical Analysis Functions
 # =============================================================================
@@ -484,10 +532,10 @@ def calculate_haplotype_emergence(
     haplotype_col: str = 'haplotype_sp'
 ) -> pd.DataFrame:
     """
-    Calculate first and last detection dates per haplotype.
+    First and last collection dates of each haplotype's records (--extended).
 
-    Tracks both emergence (first detection) and potential loss (last detection)
-    of haplotypes over time.
+    These are sampling dates in BOLD: they reflect when and where studies
+    collected specimens, not when a haplotype arose or was lost.
 
     Parameters
     ----------
@@ -501,13 +549,11 @@ def calculate_haplotype_emergence(
     pd.DataFrame
         DataFrame with columns:
         - haplotype_sp
-        - first_collection_date
-        - first_collection_year
-        - first_location (country/ocean if available)
-        - last_collection_date
-        - last_collection_year
-        - last_location (country/ocean if available)
-        - years_observed (span from first to last detection)
+        - first_sampled, first_sampled_year
+        - first_location (country/ocean if available; empty otherwise)
+        - last_sampled, last_sampled_year
+        - last_location (country/ocean if available; empty otherwise)
+        - years_between_first_and_last_sample
         - n_total_samples
     """
     if 'parsed_date' not in df.columns:
@@ -534,11 +580,11 @@ def calculate_haplotype_emergence(
 
         result = {
             'haplotype_sp': haplotype,
-            'first_collection_date': first_row['parsed_date'].strftime('%Y-%m-%d'),
-            'first_collection_year': int(first_row['collection_year']),
-            'last_collection_date': last_row['parsed_date'].strftime('%Y-%m-%d'),
-            'last_collection_year': int(last_row['collection_year']),
-            'years_observed': int(last_row['collection_year']) - int(first_row['collection_year']),
+            'first_sampled': first_row['parsed_date'].strftime('%Y-%m-%d'),
+            'first_sampled_year': int(first_row['collection_year']),
+            'last_sampled': last_row['parsed_date'].strftime('%Y-%m-%d'),
+            'last_sampled_year': int(last_row['collection_year']),
+            'years_between_first_and_last_sample': int(last_row['collection_year']) - int(first_row['collection_year']),
             'n_total_samples': len(group)
         }
 
@@ -546,20 +592,20 @@ def calculate_haplotype_emergence(
         if 'country/ocean' in df.columns and pd.notna(first_row.get('country/ocean')):
             result['first_location'] = first_row['country/ocean']
         else:
-            result['first_location'] = 'Unknown'
+            result['first_location'] = np.nan
 
         # Add last location if available
         if 'country/ocean' in df.columns and pd.notna(last_row.get('country/ocean')):
             result['last_location'] = last_row['country/ocean']
         else:
-            result['last_location'] = 'Unknown'
+            result['last_location'] = np.nan
 
         results.append(result)
 
     emergence_df = pd.DataFrame(results)
 
     # Sort by first detection date
-    emergence_df = emergence_df.sort_values('first_collection_date')
+    emergence_df = emergence_df.sort_values('first_sampled')
 
     return emergence_df
 
@@ -954,15 +1000,15 @@ def plot_haplotype_emergence_timeline(
     dpi: int = 300
 ) -> None:
     """
-    Plot timeline of haplotype first and last detections.
+    Plot the first and last sampling date of each haplotype (--extended).
 
-    Shows both emergence (first detection) and potential loss (last detection)
-    of haplotypes over time, with horizontal bars indicating the observation span.
+    Bars span the first to the last collection date among a haplotype's
+    records; they show sampling, not when a haplotype arose or was lost.
 
     Parameters
     ----------
     emergence_df : pd.DataFrame
-        Emergence data from calculate_haplotype_emergence()
+        Output of calculate_haplotype_emergence() (first_sampled, last_sampled)
     output_path : Path
         Path to save the plot
     color_map : Dict[str, str], optional
@@ -976,16 +1022,16 @@ def plot_haplotype_emergence_timeline(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if emergence_df.empty:
-        logger.warning("No emergence data for timeline plot")
+        logger.warning("No collection dates for sampling timeline plot")
         return
 
     fig, ax = plt.subplots(figsize=figsize)
 
     # Convert dates
     emergence_df = emergence_df.copy()
-    emergence_df['first_date'] = pd.to_datetime(emergence_df['first_collection_date'])
-    if 'last_collection_date' in emergence_df.columns:
-        emergence_df['last_date'] = pd.to_datetime(emergence_df['last_collection_date'])
+    emergence_df['first_date'] = pd.to_datetime(emergence_df['first_sampled'])
+    if 'last_sampled' in emergence_df.columns:
+        emergence_df['last_date'] = pd.to_datetime(emergence_df['last_sampled'])
     else:
         emergence_df['last_date'] = emergence_df['first_date']
 
@@ -1042,15 +1088,15 @@ def plot_haplotype_emergence_timeline(
     ax.set_yticklabels(emergence_df['haplotype_sp'])
     ax.set_xlabel('Collection Date')
     ax.set_ylabel('Haplotype')
-    ax.set_title('Haplotype Detection Timeline\n(First ● and Last ◆ Detection)', fontsize=12, fontweight='bold')
+    ax.set_title('First ● and last ◆ sampling date per haplotype\n(BOLD collection dates; reflects sampling)', fontsize=12, fontweight='bold')
 
     # Add legend
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=8, label='First Detection'),
+               markersize=8, label='First sampled'),
         Line2D([0], [0], marker='D', color='w', markerfacecolor='gray',
-               markersize=8, label='Last Detection'),
+               markersize=8, label='Last sampled'),
         Line2D([0], [0], color='gray', linewidth=3, alpha=0.6, label='Observation Span'),
     ]
 
@@ -1071,7 +1117,7 @@ def plot_haplotype_emergence_timeline(
     _save_multi_format(fig, output_path, dpi=dpi)
 
     plt.close()
-    logger.info(f"Saved emergence timeline: {output_path}")
+    logger.info(f"Saved sampling timeline: {output_path}")
 
 
 def plot_temporal_composition(
@@ -1128,7 +1174,7 @@ def plot_temporal_composition(
 
     ax.set_xlabel('Time Period')
     ax.set_ylabel('Relative Abundance (%)')
-    ax.set_title('Haplotype Composition Over Time', fontsize=12, fontweight='bold')
+    ax.set_title('Records per haplotype by collection year\n(reflects which studies sampled each year)', fontsize=12, fontweight='bold')
     ax.set_ylim(0, 100)
 
     # Legend
@@ -1283,7 +1329,7 @@ def plot_temporal_composition_species_faceted(
         frameon=False
     )
 
-    fig.suptitle('Haplotype Composition Over Time by Species', fontsize=14, fontweight='bold', y=1.02)
+    fig.suptitle('Records per haplotype by collection year, by species (reflects sampling)', fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
 
     # Save in multiple formats, routing each to its correct directory
@@ -1304,10 +1350,7 @@ def plot_emergence_timeline_species_faceted(
     max_species: int = 12
 ) -> None:
     """
-    Plot species-faceted haplotype emergence timelines.
-
-    Creates a separate subplot for each species showing when its haplotypes
-    were first and last detected.
+    Plot first and last sampling dates of haplotypes, one panel per species.
 
     Parameters
     ----------
@@ -1336,7 +1379,7 @@ def plot_emergence_timeline_species_faceted(
         return
 
     if haplotype_col not in df.columns or species_col not in df.columns:
-        logger.warning(f"Required columns not found for species-faceted emergence plot")
+        logger.warning(f"Required columns not found for species-faceted sampling timeline")
         return
 
     # Filter to valid data
@@ -1347,7 +1390,7 @@ def plot_emergence_timeline_species_faceted(
     ].copy()
 
     if valid_df.empty:
-        logger.warning("No valid data for species-faceted emergence plot")
+        logger.warning("No valid data for species-faceted sampling timeline")
         return
 
     # Get species ordered by sample count
@@ -1457,9 +1500,9 @@ def plot_emergence_timeline_species_faceted(
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=8, label='First Detection'),
+               markersize=8, label='First sampled'),
         Line2D([0], [0], marker='D', color='w', markerfacecolor='gray',
-               markersize=8, label='Last Detection'),
+               markersize=8, label='Last sampled'),
         Line2D([0], [0], color='gray', linewidth=3, alpha=0.6, label='Observation Span'),
     ]
     fig.legend(
@@ -1471,7 +1514,7 @@ def plot_emergence_timeline_species_faceted(
         title='Legend'
     )
 
-    fig.suptitle('Haplotype Detection Timeline by Species\n(First ● and Last ◆ Detection)',
+    fig.suptitle('First ● and last ◆ sampling date per haplotype, by species\n(BOLD collection dates; reflects sampling)',
                  fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
 
@@ -1479,7 +1522,7 @@ def plot_emergence_timeline_species_faceted(
     _save_multi_format(fig, output_path, dpi=dpi)
 
     plt.close()
-    logger.info(f"Saved species-faceted emergence timeline: {output_path}")
+    logger.info(f"Saved species-faceted sampling timeline: {output_path}")
 
 
 def plot_temporal_composition_country_faceted(
@@ -1625,7 +1668,7 @@ def plot_temporal_composition_country_faceted(
         frameon=False
     )
 
-    fig.suptitle('Haplotype Composition Over Time by Country/Ocean', fontsize=14, fontweight='bold', y=1.02)
+    fig.suptitle('Records per haplotype by collection year, by country/ocean (reflects sampling)', fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
 
     # Save in multiple formats, routing each to its correct directory
@@ -1646,10 +1689,7 @@ def plot_emergence_timeline_country_faceted(
     max_countries: int = 16
 ) -> None:
     """
-    Plot country/ocean-faceted haplotype emergence timelines.
-
-    Creates a separate subplot for each country/ocean showing when haplotypes
-    were first and last detected in that region.
+    Plot first and last sampling dates of haplotypes, one panel per country/ocean.
 
     Parameters
     ----------
@@ -1678,7 +1718,7 @@ def plot_emergence_timeline_country_faceted(
         return
 
     if haplotype_col not in df.columns or country_col not in df.columns:
-        logger.warning(f"Required columns not found for country-faceted emergence plot")
+        logger.warning(f"Required columns not found for country-faceted sampling timeline")
         return
 
     # Filter to valid data
@@ -1689,7 +1729,7 @@ def plot_emergence_timeline_country_faceted(
     ].copy()
 
     if valid_df.empty:
-        logger.warning("No valid data for country-faceted emergence plot")
+        logger.warning("No valid data for country-faceted sampling timeline")
         return
 
     # Get countries ordered by sample count
@@ -1800,9 +1840,9 @@ def plot_emergence_timeline_country_faceted(
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=8, label='First Detection'),
+               markersize=8, label='First sampled'),
         Line2D([0], [0], marker='D', color='w', markerfacecolor='gray',
-               markersize=8, label='Last Detection'),
+               markersize=8, label='Last sampled'),
         Line2D([0], [0], color='gray', linewidth=3, alpha=0.6, label='Observation Span'),
     ]
     fig.legend(
@@ -1814,7 +1854,7 @@ def plot_emergence_timeline_country_faceted(
         title='Legend'
     )
 
-    fig.suptitle('Haplotype Detection Timeline by Country/Ocean\n(First ● and Last ◆ Detection)',
+    fig.suptitle('First ● and last ◆ sampling date per haplotype, by country/ocean\n(BOLD collection dates; reflects sampling)',
                  fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
 
@@ -1822,7 +1862,7 @@ def plot_emergence_timeline_country_faceted(
     _save_multi_format(fig, output_path, dpi=dpi)
 
     plt.close()
-    logger.info(f"Saved country-faceted emergence timeline: {output_path}")
+    logger.info(f"Saved country-faceted sampling timeline: {output_path}")
 
 
 # =============================================================================
@@ -1837,12 +1877,16 @@ def export_metadata_summary(
     fields: Optional[List[str]] = None,
     haplotype_col: str = 'haplotype_sp',
     normalize_sex: bool = False,
-    temporal_analysis: bool = True
+    temporal_analysis: bool = True,
+    extended: bool = False
 ) -> Dict[str, Path]:
     """
-    Export all metadata analysis results.
+    Export metadata summaries.
 
-    Runs all analyses and exports results to the specified directory.
+    Always writes field coverage (JSON, CSV, plot) and metadata_summary/README.md.
+    With extended=True it also writes cross-tabulations on normalized
+    vocabularies, the heatmap and, if temporal_analysis is set, the temporal
+    and first-sampled outputs (P1-3, P1-4, P1-5).
 
     Parameters
     ----------
@@ -1861,7 +1905,9 @@ def export_metadata_summary(
     normalize_sex : bool, optional
         Whether to normalize sex values (default: False)
     temporal_analysis : bool, optional
-        Whether to run temporal analysis (default: True)
+        Whether to run temporal analysis with extended=True (default: True)
+    extended : bool, optional
+        Write the cross-tabulations and temporal outputs (default: False)
 
     Returns
     -------
@@ -1894,9 +1940,9 @@ def export_metadata_summary(
 
     outputs = {}
 
-    # Optional sex normalization
+    # Empty values are missing and codes are expanded before anything is counted
+    df = normalize_vocabulary(df, [f for f in fields if f in df.columns])
     if normalize_sex and 'sex' in df.columns:
-        logger.info("Normalizing sex values...")
         df = normalize_sex_values(df, 'sex')
 
     # 1. Coverage Analysis
@@ -1930,6 +1976,13 @@ def export_metadata_summary(
     coverage_plot_path = viz_dir / f'{organism}_metadata_coverage'
     plot_metadata_coverage(coverage_stats, coverage_plot_path)
     outputs['coverage_plot'] = coverage_plot_path.with_suffix('.png')
+
+    temporal_analysis_performed = False
+    if not extended:
+        outputs['readme'] = write_metadata_readme(metadata_dir, organism, outputs)
+        outputs['_temporal_analysis_performed'] = temporal_analysis_performed
+        logger.info("Metadata coverage written; cross-tabulations and temporal summaries need --extended")
+        return outputs
 
     # 2. Categorical Field Tabulation (descriptive only — no hypothesis tests)
     logger.info("Tabulating haplotype × metadata distributions...")
@@ -1965,9 +2018,9 @@ def export_metadata_summary(
         outputs['heatmap'] = heatmap_path.with_suffix('.png')
 
     # 4. Temporal Analysis
-    temporal_analysis_performed = False
     if temporal_analysis and DATE_FIELD in df.columns:
         logger.info("Analyzing temporal patterns...")
+        logger.info(f"  Note: {SAMPLING_CAVEAT}")
 
         # Parse dates
         df, parse_stats = parse_collection_dates(df, DATE_FIELD)
@@ -1975,23 +2028,24 @@ def export_metadata_summary(
         if parse_stats['n_parsed'] > 0:
             temporal_analysis_performed = True
 
-            # Haplotype emergence (now includes first and last detection)
-            emergence_df = calculate_haplotype_emergence(df, haplotype_col)
-            if not emergence_df.empty:
-                emergence_path = metadata_dir / f'{organism}_haplotype_emergence.csv'
-                emergence_df.to_csv(emergence_path, index=False)
-                outputs['emergence_csv'] = emergence_path
+            # First and last sampling date per haplotype
+            first_sampled_df = calculate_haplotype_emergence(df, haplotype_col)
+            if not first_sampled_df.empty:
+                first_sampled_path = metadata_dir / f'{organism}_haplotype_first_sampled.csv'
+                first_sampled_df.to_csv(first_sampled_path, index=False)
+                outputs['first_sampled_csv'] = first_sampled_path
 
-                # Plot timeline (shows both first and last detection)
-                timeline_path = viz_dir / f'{organism}_haplotype_emergence_timeline'
-                plot_haplotype_emergence_timeline(emergence_df, timeline_path, color_map)
-                outputs['emergence_plot'] = timeline_path.with_suffix('.png')
+                timeline_path = viz_dir / f'{organism}_haplotype_sampling_timeline'
+                plot_haplotype_emergence_timeline(first_sampled_df, timeline_path, color_map)
+                outputs['sampling_timeline_plot'] = timeline_path.with_suffix('.png')
 
             # Temporal distribution
             temporal_df = analyze_temporal_distribution(df, haplotype_col, 'year')
             if not temporal_df.empty:
                 temporal_path = metadata_dir / f'{organism}_temporal_trends.csv'
-                temporal_df.to_csv(temporal_path, index=False)
+                with open(temporal_path, 'w') as f:
+                    f.write(f"# {SAMPLING_CAVEAT}\n")
+                    temporal_df.to_csv(f, index=False)
                 outputs['temporal_csv'] = temporal_path
 
                 # Save temporal summary CSV
@@ -2027,15 +2081,15 @@ def export_metadata_summary(
                     except Exception as e:
                         logger.warning(f"Species-faceted temporal composition failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
-                    # Species-faceted emergence timeline
-                    species_emergence_path = viz_dir / f'{organism}_emergence_timeline_species_faceted'
+                    # Species-faceted sampling timeline
+                    species_timeline_path = viz_dir / f'{organism}_sampling_timeline_species_faceted'
                     try:
                         plot_emergence_timeline_species_faceted(
-                            df, species_emergence_path, color_map, haplotype_col, species_col
+                            df, species_timeline_path, color_map, haplotype_col, species_col
                         )
-                        outputs['emergence_timeline_species_faceted'] = species_emergence_path.with_suffix('.png')
+                        outputs['sampling_timeline_species_faceted'] = species_timeline_path.with_suffix('.png')
                     except Exception as e:
-                        logger.warning(f"Species-faceted emergence timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
+                        logger.warning(f"Species-faceted sampling timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
             # 6. Country/Ocean-Faceted Temporal Plots (if geographic data available)
             country_col = 'country/ocean'
@@ -2054,24 +2108,73 @@ def export_metadata_summary(
                     except Exception as e:
                         logger.warning(f"Country-faceted temporal composition failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
-                    # Country-faceted emergence timeline
-                    country_emergence_path = viz_dir / f'{organism}_emergence_timeline_country_faceted'
+                    # Country-faceted sampling timeline
+                    country_timeline_path = viz_dir / f'{organism}_sampling_timeline_country_faceted'
                     try:
                         plot_emergence_timeline_country_faceted(
-                            df, country_emergence_path, color_map, haplotype_col, country_col
+                            df, country_timeline_path, color_map, haplotype_col, country_col
                         )
-                        outputs['emergence_timeline_country_faceted'] = country_emergence_path.with_suffix('.png')
+                        outputs['sampling_timeline_country_faceted'] = country_timeline_path.with_suffix('.png')
                     except Exception as e:
-                        logger.warning(f"Country-faceted emergence timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
+                        logger.warning(f"Country-faceted sampling timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
     elif temporal_analysis and DATE_FIELD not in df.columns:
         logger.info(f"Temporal analysis skipped: '{DATE_FIELD}' field not found in data")
 
+    outputs['readme'] = write_metadata_readme(metadata_dir, organism, outputs)
     outputs['_temporal_analysis_performed'] = temporal_analysis_performed
 
     logger.info(f"Metadata summarization complete. {len(outputs)} files exported to {metadata_dir}")
 
     return outputs
+
+
+SAMPLING_CAVEAT = ("Counts by collection year reflect when and where specimens were sampled "
+                   "and deposited in BOLD, not changes in haplotype frequency.")
+
+
+def write_metadata_readme(metadata_dir: Path, organism: str, outputs: Dict[str, Path]) -> Path:
+    """Describe the files in metadata_summary/ and how to read them."""
+    lines = [
+        "# Metadata summary",
+        "",
+        "Descriptive summaries of BOLD record metadata. No hypothesis tests are run.",
+        "Values are normalized before counting: empty and whitespace-only values are",
+        "missing, field codes are expanded (sex M/F -> Male/Female, U -> missing; life",
+        "stage A/I/M/J -> Adult/Immature/Mature/Juvenile; reproduction S/A ->",
+        "Sexual/Asexual), case variants are merged and BOLD GIS suffixes are removed.",
+        "",
+        "## Files",
+        "",
+        f"- `{organism}_metadata_coverage.json`, `{organism}_metadata_summary.csv`: for each",
+        "  field, the number and percentage of records with a value, the number of",
+        "  distinct values and the most common values.",
+    ]
+    if any(k.endswith('_tabulation') for k in outputs):
+        lines += [
+            f"- `{organism}_<field>_tabulation.csv`: records per haplotype and field value",
+            "  (`n_samples`, `pct_of_haplotype`, `pct_of_value`). Records without a value",
+            "  are left out.",
+        ]
+    if 'first_sampled_csv' in outputs:
+        lines += [
+            f"- `{organism}_haplotype_first_sampled.csv`: the first and last collection date",
+            "  among each haplotype's records (`first_sampled`, `last_sampled`), with the",
+            "  country/ocean of those records. These are sampling dates, not dates of origin",
+            "  or loss.",
+        ]
+    if 'temporal_csv' in outputs:
+        lines += [
+            f"- `{organism}_temporal_trends.csv`, `{organism}_temporal_summary.csv`: records",
+            "  per haplotype and collection year.",
+        ]
+    if 'first_sampled_csv' in outputs or 'temporal_csv' in outputs:
+        lines += ["", f"Note: {SAMPLING_CAVEAT}"]
+    if not any(k.endswith('_tabulation') for k in outputs):
+        lines += ["", "Cross-tabulations and collection-date summaries are written with `--extended`."]
+    path = Path(metadata_dir) / "README.md"
+    path.write_text("\n".join(lines) + "\n")
+    return path
 
 
 def run_metadata_summary(
@@ -2082,7 +2185,8 @@ def run_metadata_summary(
     normalize_sex: bool = False,
     temporal_analysis: bool = True,
     color_map: Optional[Dict[str, str]] = None,
-    haplotype_col: str = 'haplotype_sp'
+    haplotype_col: str = 'haplotype_sp',
+    extended: bool = False
 ) -> Dict[str, Any]:
     """
     Main entry point for running metadata summarization.
@@ -2110,6 +2214,8 @@ def run_metadata_summary(
         Haplotype color mapping
     haplotype_col : str, optional
         Column containing haplotype labels
+    extended : bool, optional
+        Write cross-tabulations and temporal outputs (default: False)
 
     Returns
     -------
@@ -2131,7 +2237,7 @@ def run_metadata_summary(
         logger.warning("No metadata fields found in data. Metadata summary will be limited.")
 
     temporal_field_available = DATE_FIELD in annotated_df.columns
-    if temporal_analysis and not temporal_field_available:
+    if extended and temporal_analysis and not temporal_field_available:
         logger.info(f"Temporal field '{DATE_FIELD}' not found. Temporal analysis will be skipped.")
 
     outputs = export_metadata_summary(
@@ -2142,7 +2248,8 @@ def run_metadata_summary(
         fields=fields,
         haplotype_col=haplotype_col,
         normalize_sex=normalize_sex,
-        temporal_analysis=temporal_analysis
+        temporal_analysis=temporal_analysis,
+        extended=extended
     )
 
     temporal_performed = outputs.pop('_temporal_analysis_performed', False)

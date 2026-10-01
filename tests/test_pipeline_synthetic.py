@@ -30,7 +30,7 @@ def run_synthetic(workdir, skip_geo=True, **cfg_updates):
     ok = cli.run_pipeline(
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
         no_report=True, skip_geo=skip_geo, export_plot_data=False,
-        export_popgen_formats=None, metadata_summary_enabled=False,
+        export_popgen_formats=None, metadata_summary_enabled=True, temporal_analysis=True,
     )
     return ok, out
 
@@ -273,3 +273,23 @@ def test_extended_run_writes_label_based_gap(extended_run):
     assert not (extended_run / "divergence_analysis" / "within_vs_between_species.csv").exists()
     d = json.loads((extended_run / "run_provenance.json").read_text())
     assert d["config"]["extended"] is True and d["warnings"] == []
+
+
+def test_default_metadata_output_is_coverage_only(synthetic_run):
+    """P1-3, P1-4, P1-5: cross-tabs, temporal and first-sampled outputs only with --extended."""
+    files = {p.name for p in (synthetic_run / "metadata_summary").iterdir()}
+    assert files == {f"{ORGANISM}_metadata_coverage.json", f"{ORGANISM}_metadata_summary.csv", "README.md"}
+
+
+def test_extended_metadata_outputs(extended_run):
+    md = extended_run / "metadata_summary"
+    sex = pd.read_csv(md / f"{ORGANISM}_sex_tabulation.csv")
+    assert set(sex["value"]) == {"Male", "Female"}
+    life = pd.read_csv(md / f"{ORGANISM}_life_stage_tabulation.csv")
+    assert set(life["value"]) == {"Adult", "Immature"}
+    first = pd.read_csv(md / f"{ORGANISM}_haplotype_first_sampled.csv")
+    assert "first_sampled" in first.columns and "first_collection_date" not in first.columns
+    assert not (md / f"{ORGANISM}_haplotype_emergence.csv").exists()
+    assert (md / f"{ORGANISM}_temporal_trends.csv").exists()
+    readme = (md / "README.md").read_text()
+    assert "sampling" in readme and "emergence" not in readme.lower()

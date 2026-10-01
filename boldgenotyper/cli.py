@@ -1304,7 +1304,8 @@ def run_pipeline(
                 normalize_sex=normalize_sex,
                 temporal_analysis=temporal_analysis,
                 color_map=color_map,
-                haplotype_col='haplotype_sp'
+                haplotype_col='haplotype_sp',
+                extended=cfg.extended
             )
 
             logger.info(f"  ✓ Metadata summarization complete")
