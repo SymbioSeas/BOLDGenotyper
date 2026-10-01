@@ -182,7 +182,7 @@ def extract_run_metrics(
     # Species richness (from depositor taxonomy — constant across thresholds,
     # included for completeness in the summary table)
     if 'species' in df.columns:
-        metrics['n_species_detected'] = df['species'].nunique()
+        metrics['n_species_labels_qc_passed'] = df['species'].nunique()  # P0-9 name
 
     # Potential misidentification flags — fraction of samples whose assigned
     # haplotype does not match their depositor species.  Can change when

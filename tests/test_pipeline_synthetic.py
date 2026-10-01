@@ -92,3 +92,16 @@ def test_no_assign_corrected_flag(tmp_path):
     assert ok
     diag = _diagnostics(out).set_index("processid")
     assert diag.loc["SYN021", "status"] == "excluded_error_singleton"
+
+
+def test_assignment_summary_denominators(synthetic_run):
+    """P0-3, P0-9: explicit denominators and named species counts."""
+    s = pd.read_csv(synthetic_run / "reports" / f"{ORGANISM}_assignment_summary.csv").iloc[0]
+    assert s["n_input"] == EXPECTED["n_input"]
+    assert s["n_unique"] == EXPECTED["n_unique"]
+    assert s["n_qc_pass"] == 23 and s["n_core_ok"] == 22
+    assert s["pct_assigned"] < 100.0
+    assert s["n_assigned_corrected"] == 1 and s["n_excluded_error"] == 1
+    assert s["n_haplotypes"] == 4
+    assert s["n_species_labels_input"] == 3          # Genus alpha, beta, gamma
+    assert s["n_species_haplotype_assigned"] == 3

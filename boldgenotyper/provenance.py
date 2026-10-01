@@ -16,6 +16,12 @@ from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
+
+def count_data_rows(tsv_path) -> int:
+    """Number of non-empty lines after the header."""
+    with open(tsv_path, "r", encoding="utf-8", errors="replace") as f:
+        return max(sum(1 for line in f if line.strip()) - 1, 0)
+
 # LogRecord attribute that names the step whose failure a warning reports.
 STEP_FAILURE = "step_failure"
 

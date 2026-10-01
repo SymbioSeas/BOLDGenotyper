@@ -46,7 +46,7 @@ from . import (
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
-    metadata_summary, shapefile_registry, provenance, record_status,
+    metadata_summary, shapefile_registry, provenance, record_status, taxon_labels,
 )
 from . import __version__
 
@@ -1728,10 +1728,20 @@ def run_pipeline(
     try:
         # Generate assignment summary report
         summary_output = dirs['reports'] / f"{organism}_assignment_summary.csv"
+        species_counts = taxon_labels.species_count_summary(
+            input_labels=df_with_basins['species'] if 'species' in df_with_basins.columns else [],
+            qc_passed_labels=df_qc_passed['species'] if 'species' in df_qc_passed.columns else [],
+            haplotype_taxonomy=assign_table,
+            majority_threshold=cfg.taxonomy.majority_species_threshold,
+        )
         reports.generate_assignment_summary(
             annotated_csv=str(annotated_csv),
             diagnostics_csv=str(diagnostics_csv),
-            output_csv=str(summary_output)
+            output_csv=str(summary_output),
+            n_input=provenance.count_data_rows(tsv_path),
+            n_haplotypes=len(haplotype_records),
+            species_counts=species_counts,
+            n_corrected_beyond_threshold=details.n_corrected_beyond_threshold,
         )
 
         # Verify file was created

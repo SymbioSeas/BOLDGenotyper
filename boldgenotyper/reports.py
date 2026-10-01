@@ -9,7 +9,7 @@ characterizations.
 import logging
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 import pandas as pd
 import numpy as np
 
@@ -141,81 +141,111 @@ def generate_taxonomy_conflicts_report(
     logger.info(f"Taxonomy conflict report saved: {out} ({len(report)} conflicts)")
 
 
+SUMMARY_COLUMNS = [
+    "n_input", "n_unique", "n_no_sequence", "n_failed_qc", "n_qc_pass",
+    "n_excluded_core", "n_core_ok", "n_assigned", "n_assigned_corrected",
+    "n_excluded_error", "n_corrected_beyond_threshold", "n_haplotypes",
+    "pct_assigned", "pct_assigned_exact",
+    "n_species_labels_input", "n_species_labels_species_level", "n_species_labels_qc_passed",
+    "n_species_haplotype_assigned", "n_species_confident",
+]
+
+# Record statuses (record_status.STATUSES) and their summary columns
+_STATUS_COLUMNS = {
+    "assigned": "n_assigned",
+    "assigned_corrected": "n_assigned_corrected",
+    "excluded_error_singleton": "n_excluded_error",
+    "excluded_core_coverage": "n_excluded_core",
+    "failed_qc": "n_failed_qc",
+    "no_sequence": "n_no_sequence",
+}
+
+
+def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
+                               n_corrected_beyond_threshold=0):
+    """Assignment summary with explicit denominators.
+
+    Percentages are of QC-passed records (n_qc_pass = unique records minus
+    no_sequence and failed_qc). Returns a dict with SUMMARY_COLUMNS keys.
+    """
+    counts = status_df["status"].value_counts()
+
+    def c(status):
+        return int(counts.get(status, 0))
+
+    n_unique = int(len(status_df))
+    n_qc_pass = n_unique - c("no_sequence") - c("failed_qc")
+    summary = {
+        "n_input": int(n_input if n_input is not None else n_unique),
+        "n_unique": n_unique,
+        "n_no_sequence": c("no_sequence"),
+        "n_failed_qc": c("failed_qc"),
+        "n_qc_pass": n_qc_pass,
+        "n_excluded_core": c("excluded_core_coverage"),
+        "n_core_ok": n_qc_pass - c("excluded_core_coverage"),
+        "n_assigned": c("assigned"),
+        "n_assigned_corrected": c("assigned_corrected"),
+        "n_excluded_error": c("excluded_error_singleton"),
+        "n_corrected_beyond_threshold": int(n_corrected_beyond_threshold),
+        "n_haplotypes": int(n_haplotypes),
+        "pct_assigned": round((c("assigned") + c("assigned_corrected")) / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
+        "pct_assigned_exact": round(c("assigned") / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
+    }
+    for key in SUMMARY_COLUMNS[14:]:
+        summary[key] = int((species_counts or {}).get(key, 0))
+    return {k: summary[k] for k in SUMMARY_COLUMNS}
+
+
 def generate_assignment_summary(
     annotated_csv: str,
     diagnostics_csv: str,
     output_csv: str,
-) -> None:
+    n_input: Optional[int] = None,
+    n_haplotypes: Optional[int] = None,
+    species_counts: Optional[Dict[str, int]] = None,
+    n_corrected_beyond_threshold: int = 0,
+) -> Dict[str, object]:
     """
-    Generate overall pipeline performance summary statistics.
+    Write the assignment summary: one row with explicit denominators.
 
     Parameters
     ----------
     annotated_csv : str
-        Path to annotated CSV with species assignments
+        Path to the annotated CSV (kept for compatibility; statuses come from
+        the diagnostics table)
     diagnostics_csv : str
-        Path to diagnostics CSV with assignment metrics
+        Path to the diagnostics CSV: one row per unique input record with
+        'status' and 'assigned_haplotype'
     output_csv : str
         Path for output summary CSV
+    n_input : int, optional
+        Data rows in the input TSV, before duplicate removal (default: the
+        number of unique records)
+    n_haplotypes : int, optional
+        Number of retained haplotypes (default: distinct assigned haplotypes)
+    species_counts : dict, optional
+        taxon_labels.species_count_summary() output
+    n_corrected_beyond_threshold : int, optional
+        Corrected records whose nearest haplotype is farther than the
+        error-filter threshold
+
+    Returns
+    -------
+    dict
+        The summary (SUMMARY_COLUMNS keys)
     """
     out = Path(output_csv)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load data with proper CSV parsing (handle quoted fields with commas)
-    df = pd.read_csv(annotated_csv, quoting=1, on_bad_lines='skip')  # quoting=1 is csv.QUOTE_MINIMAL
     diag = pd.read_csv(diagnostics_csv)
+    if n_haplotypes is None:
+        n_haplotypes = diag["assigned_haplotype"].dropna().nunique() if "assigned_haplotype" in diag else 0
 
-    # Merge (suffix diagnostics columns to avoid collisions)
-    merged = df.merge(diag, on='processid', how='left', suffixes=('', '_diag'))
-
-    # Identify haplotype column (ESV workflow stores in annotated CSV only)
-    haplotype_cols = [c for c in ['haplotype_id', 'haplotype_id_x', 'haplotype_id_diag'] if c in merged.columns]
-    haplotype_col = haplotype_cols[0] if haplotype_cols else None
-
-    # Calculate summary metrics
-    summary = {}
-
-    # Basic counts
-    summary['total_samples'] = len(diag) if len(diag) > 0 else len(df)
-
-    # Check if 'status' column exists (old format) or need to derive from flags (new format)
-    if 'status' in diag.columns:
-        summary['samples_with_sequence'] = len(diag[diag['status'] != 'no_sequence'])
-
-        # Assignment status breakdown
-        status_counts = diag['status'].value_counts()
-        summary['n_assigned'] = int(status_counts.get('assigned', 0))
-        summary['n_no_sequence'] = int(status_counts.get('no_sequence', 0))
-    else:
-        # New format: derive status from flags
-        diag_source = diag if len(diag) > 0 else df
-        total_records = len(diag_source)
-
-        has_assignment = diag_source['assigned_haplotype'].notna() if 'assigned_haplotype' in diag_source.columns else pd.Series([False] * total_records)
-
-        summary['samples_with_sequence'] = int(has_assignment.sum())
-        summary['n_assigned'] = int(has_assignment.sum())
-        summary['n_no_sequence'] = int(total_records - has_assignment.sum())
-
-    # Calculate percentages based on samples with sequence data
-    sws = summary['samples_with_sequence']
-    summary['pct_assigned'] = (summary['n_assigned'] / sws * 100) if sws > 0 else 0
-    total = summary['total_samples']
-    summary['pct_no_sequence'] = (summary['n_no_sequence'] / total * 100) if total > 0 else 0
-
-    # Haplotypes and species
-    if haplotype_col:
-        summary['n_haplotypes'] = merged[haplotype_col].nunique()
-    else:
-        summary['n_haplotypes'] = 0
-    summary['n_species_identified'] = merged['assigned_sp'].nunique() if 'assigned_sp' in merged.columns else 0
-
-    # Convert to DataFrame and transpose for easy reading
-    summary_df = pd.DataFrame([summary])
-
-    # Save
-    summary_df.to_csv(out, index=False)
+    summary = compute_assignment_summary(diag, n_input, n_haplotypes, species_counts,
+                                         n_corrected_beyond_threshold)
+    pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(out, index=False)
     logger.info(f"Assignment summary saved: {out}")
+    return summary
 
 
 def generate_consensus_characterization(
@@ -2571,16 +2601,16 @@ def _build_executive_summary_section(
 
     # Sample metrics
     html += '<div class="metric-card">\n'
-    html += '  <div class="title">Total Samples</div>\n'
-    html += f'  <div class="value">{_format_number(summary.get("total_samples", 0), 0)}</div>\n'
-    html += '  <div class="description">Samples analyzed</div>\n'
+    html += '  <div class="title">Unique Records</div>\n'
+    html += f'  <div class="value">{_format_number(summary.get("n_unique", 0), 0)}</div>\n'
+    html += f'  <div class="description">{_format_number(summary.get("n_input", 0), 0)} input rows before duplicate removal</div>\n'
     html += '</div>\n'
 
     html += '<div class="metric-card">\n'
-    html += '  <div class="title">With Sequence Data</div>\n'
-    html += f'  <div class="value">{_format_number(summary.get("samples_with_sequence", 0), 0)}</div>\n'
-    pct = (summary.get("samples_with_sequence", 0) / summary.get("total_samples", 1) * 100) if summary.get("total_samples", 0) > 0 else 0
-    html += f'  <div class="description">{_format_percentage(pct)} of total</div>\n'
+    html += '  <div class="title">QC-Passed</div>\n'
+    html += f'  <div class="value">{_format_number(summary.get("n_qc_pass", 0), 0)}</div>\n'
+    pct = (summary.get("n_qc_pass", 0) / summary.get("n_unique", 1) * 100) if summary.get("n_unique", 0) > 0 else 0
+    html += f'  <div class="description">{_format_percentage(pct)} of unique records</div>\n'
     html += '</div>\n'
 
     # Haplotype metrics
@@ -2591,16 +2621,17 @@ def _build_executive_summary_section(
     html += '</div>\n'
 
     html += '<div class="metric-card">\n'
-    html += '  <div class="title">Species Identified</div>\n'
-    html += f'  <div class="value">{_format_number(summary.get("n_species_identified", 0), 0)}</div>\n'
-    html += '  <div class="description">Distinct species</div>\n'
+    html += '  <div class="title">Species Assigned to Haplotypes</div>\n'
+    html += f'  <div class="value">{_format_number(summary.get("n_species_haplotype_assigned", 0), 0)}</div>\n'
+    html += '  <div class="description">Distinct species-level labels assigned to haplotypes</div>\n'
     html += '</div>\n'
 
     # Assignment metrics
     html += '<div class="metric-card">\n'
-    html += '  <div class="title">Successfully Assigned</div>\n'
-    html += f'  <div class="value">{_format_number(summary.get("n_assigned", 0), 0)}</div>\n'
-    html += f'  <div class="description">{_format_percentage(summary.get("pct_assigned", 0))} assignment rate</div>\n'
+    html += '  <div class="title">Assigned to a Haplotype</div>\n'
+    n_assigned_total = summary.get("n_assigned", 0) + summary.get("n_assigned_corrected", 0)
+    html += f'  <div class="value">{_format_number(n_assigned_total, 0)}</div>\n'
+    html += f'  <div class="description">{_format_percentage(summary.get("pct_assigned", 0))} of QC-passed records</div>\n'
     html += '</div>\n'
 
     # Geographic coverage
@@ -2638,17 +2669,22 @@ def _build_assignment_section(
     html += '<h3>Assignment Status Breakdown</h3>\n'
     html += '<div class="table-container">\n'
     html += '<table>\n'
-    html += '<thead><tr><th>Status</th><th>Count</th><th>Percentage</th></tr></thead>\n'
+    html += '<thead><tr><th>Status</th><th>Count</th><th>% of unique records</th></tr></thead>\n'
     html += '<tbody>\n'
 
     statuses = [
-        ('assigned', 'Successfully Assigned', 'badge-success'),
-        ('no_sequence', 'No Sequence Data', 'badge-info')
+        ('n_assigned', 'assigned', 'badge-success'),
+        ('n_assigned_corrected', 'assigned_corrected', 'badge-success'),
+        ('n_excluded_error', 'excluded_error_singleton', 'badge-warning'),
+        ('n_excluded_core', 'excluded_core_coverage', 'badge-warning'),
+        ('n_failed_qc', 'failed_qc', 'badge-info'),
+        ('n_no_sequence', 'no_sequence', 'badge-info'),
     ]
+    n_unique = summary.get('n_unique', 0)
 
-    for status_key, status_label, badge_class in statuses:
-        count = summary.get(f'n_{status_key}', 0)
-        pct = summary.get(f'pct_{status_key}', 0)
+    for count_key, status_label, badge_class in statuses:
+        count = summary.get(count_key, 0)
+        pct = (count / n_unique * 100) if n_unique else 0
         html += f'<tr><td><span class="badge {badge_class}">{status_label}</span></td>'
         html += f'<td>{_format_number(count, 0)}</td>'
         html += f'<td>{_format_percentage(pct)}</td></tr>\n'
@@ -4306,8 +4342,8 @@ def generate_html_report(
         if not assignment_summary.empty:
             summary = assignment_summary.iloc[0]
             builder.add_quick_stat(
-                _format_number(summary.get('total_samples', 0), 0),
-                'Total Samples'
+                _format_number(summary.get('n_unique', 0), 0),
+                'Unique Records'
             )
             builder.add_quick_stat(
                 _format_number(summary.get('n_haplotypes', 0), 0),
