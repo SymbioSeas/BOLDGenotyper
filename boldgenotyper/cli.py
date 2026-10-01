@@ -46,7 +46,7 @@ from . import (
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
-    metadata_summary, shapefile_registry, provenance,
+    metadata_summary, shapefile_registry, provenance, record_status,
 )
 from . import __version__
 
@@ -628,7 +628,7 @@ def run_pipeline(
         logger.info(f"  Maximum N fraction: {cfg.qc.max_raw_N_fraction:.1%}")
         logger.info(f"  Require valid ORF: {cfg.qc.require_valid_orf}")
 
-        df_qc_passed, qc_stats = quality_control.apply_dynamic_qc_filters(
+        df_qc_all, qc_stats = quality_control.apply_dynamic_qc_filters(
             df=df_with_basins,
             sequences_dict=corrected_sequences,
             orf_stats_df=orf_stats_df,
@@ -636,8 +636,11 @@ def run_pipeline(
             min_raw_length_frac_of_median=cfg.qc.min_raw_length_frac_of_median,
             max_raw_N_fraction=cfg.qc.max_raw_N_fraction,
             require_valid_orf=cfg.qc.require_valid_orf,
-            processid_col='processid'
+            processid_col='processid',
+            return_all=True,
         )
+        df_qc_all['qc_pass'] = df_qc_all['qc_pass'].fillna(False).astype(bool)
+        df_qc_passed = df_qc_all[df_qc_all['qc_pass']].copy()
 
         # Save QC-passed data
         qc_passed_tsv = dirs['qc'] / f"{organism}_qc_passed.tsv"
@@ -650,7 +653,7 @@ def run_pipeline(
         for _, row in df_qc_passed.iterrows():
             processid = row['processid']
             if processid in corrected_sequences:
-                header = f"{organism}_{processid}.COI-5P"
+                header = processid  # bare processid, as in every other table (P0-10)
                 sequence = corrected_sequences[processid]
                 qc_passed_fasta_records.append((header, sequence))
 
@@ -686,7 +689,7 @@ def run_pipeline(
         logger.info(f"  Singleton suspect flag threshold: >{cfg.haplotype.max_singleton_distance*100:.1f}% divergence")
 
         # Run haplotype discovery
-        haplotype_records, haplotype_mapping, haplotype_stats = dereplication.identify_haplotypes(
+        haplotype_records, haplotype_mapping, haplotype_stats, details = dereplication.identify_haplotypes(
             tsv_path=tsv_path,
             fasta_path=qc_passed_fasta,
             output_dir=dirs['haplotype_discovery'],
@@ -696,7 +699,10 @@ def run_pipeline(
             min_singleton_distance=cfg.haplotype.min_singleton_distance,
             max_singleton_distance=cfg.haplotype.max_singleton_distance,
             orf_validation_df=orf_stats_df,
-            cleanup_intermediates=False
+            cleanup_intermediates=False,
+            min_sequence_coverage=cfg.core_region.min_sequence_coverage,
+            assign_corrected=cfg.haplotype.assign_corrected,
+            return_details=True,
         )
 
         logger.info(f"  Identified {len(haplotype_records)} high-confidence haplotypes (after error filtering)")
@@ -745,74 +751,53 @@ def run_pipeline(
     logger.info("-" * 80)
 
     try:
-        logger.info("4.1: Assigning samples to haplotypes...")
+        logger.info("4.1: Assigning a status to every input record...")
         logger.info(f"  Using {len(df_qc_passed)} QC-passed samples")
-        logger.info("  Method: Direct mapping from ESV haplotype discovery (no tie detection)")
+        logger.info("  Method: direct mapping from ESV discovery; error-filtered singletons "
+                    + ("assigned to their nearest retained haplotype"
+                       if cfg.haplotype.assign_corrected else "left unassigned (--no-assign-corrected)"))
 
         annotated_tsv = dirs['intermediate_assignments'] / f"{organism}_with_haplotypes.tsv"
         diagnostics_csv = dirs['assignments'] / f"{organism}_diagnostics.csv"
 
-        # For ESV approach, use the direct mapping from Phase 3 (haplotype_mapping)
-        # This avoids false ties from identity-based re-assignment
+        # One status per unique input record (P0-2)
+        status_df = record_status.build_record_status(
+            unique_ids=list(df_with_basins['processid']),
+            sequence_ids=set(sequences_dict),
+            qc=df_qc_all[['processid', 'qc_pass', 'qc_fail_reason']],
+            exact_mapping=haplotype_mapping.loc[haplotype_mapping['assignment'] == 'exact',
+                                                ['processid', 'haplotype_id']],
+            excluded_core=details.excluded_core_coverage,
+            error_singletons=details.error_singletons,
+            singleton_distance=cfg.haplotype.min_singleton_distance,
+        )
 
-        # The haplotype_mapping has full FASTA headers (organism_processid.marker)
-        # Need to extract base processid to match metadata
-        # Format: "Rhizoprionodon_ANGBF12411-15.COI-5P" → "ANGBF12411-15"
-        haplotype_mapping_clean = haplotype_mapping.copy()
-        haplotype_mapping_clean['processid_base'] = haplotype_mapping_clean['processid'].str.replace(
-            f'^{organism}_', '', regex=True
-        ).str.replace(r'\.COI-5P$', '', regex=True)
-
-        # Merge haplotype assignments with QC-passed metadata
+        # Attach statuses and haplotype membership to the QC-passed records
         df_with_haplotypes = df_qc_passed.merge(
-            haplotype_mapping_clean[['processid_base', 'haplotype_id', 'n_members', 'is_singleton']],
-            left_on='processid',
-            right_on='processid_base',
-            how='left'
-        ).drop(columns=['processid_base'])
-
-        # Add assignment statistics columns for consistency with old approach
+            status_df, on='processid', how='left', validate='one_to_one'
+        ).merge(
+            haplotype_mapping[['processid', 'seq_md5', 'n_members', 'is_singleton', 'assignment']],
+            on='processid', how='left', validate='one_to_one'
+        )
         df_with_haplotypes['assigned_haplotype'] = df_with_haplotypes['haplotype_id']
-        df_with_haplotypes['is_tie'] = False  # No ties in ESV direct mapping
-        df_with_haplotypes['is_low_confidence'] = False  # All assignments are exact matches
-
-        # Count assignments
-        n_assigned = df_with_haplotypes['assigned_haplotype'].notna().sum()
-        n_total = len(df_with_haplotypes)
 
         # Save annotated data
         df_with_haplotypes.to_csv(annotated_tsv, sep="\t", index=False)
         logger.info(f"  ✓ Wrote annotated metadata: {annotated_tsv}")
 
-        # Create diagnostics file (minimal for ESV direct mapping)
-        # Status values: 'assigned' (successful), 'no_sequence' (no valid sequence), 'filtered' (failed QC)
-        diagnostics_data = []
-        for _, row in df_with_haplotypes.iterrows():
-            has_assignment = pd.notna(row['assigned_haplotype'])
-            # Determine status
-            if has_assignment:
-                status = 'assigned'
-            else:
-                # Sample didn't get a haplotype - likely had no sequence or failed core region extraction
-                status = 'no_sequence'
-
-            diagnostics_data.append({
-                'processid': row['processid'],
-                'assigned_haplotype': row['assigned_haplotype'],
-                'status': status,
-                'is_tie': False,
-                'is_low_confidence': False,
-                'assignment_method': 'ESV_direct_mapping',
-                'note': 'Exact match from core region during haplotype discovery' if has_assignment else 'No valid core region extracted'
-            })
-
-        diagnostics_df = pd.DataFrame(diagnostics_data)
+        # Diagnostics: every unique record, with its status
+        diagnostics_df = status_df.rename(columns={'haplotype_id': 'assigned_haplotype'})
+        diagnostics_df['assignment_method'] = diagnostics_df['status'].map({
+            'assigned': 'ESV_direct_mapping',
+            'assigned_corrected': 'nearest_retained_haplotype',
+        }).fillna('')
         diagnostics_df.to_csv(diagnostics_csv, index=False)
         logger.info(f"  ✓ Wrote diagnostics: {diagnostics_csv}")
 
-        logger.info(f"  ✓ Assigned {n_assigned}/{n_total} samples to haplotypes")
-        logger.info(f"  ✓ Assignment rate: {n_assigned/n_total*100:.1f}%")
-        logger.info(f"  ✓ Ties: 0 (ESV direct mapping - no ambiguous assignments)")
+        status_counts = status_df['status'].value_counts().reindex(record_status.STATUSES, fill_value=0)
+        logger.info("  Record statuses:")
+        for status, n in status_counts.items():
+            logger.info(f"    {status}: {n}")
 
     except Exception as e:
         logger.error(f"Phase 4 failed: {e}", exc_info=True)
@@ -841,7 +826,7 @@ def run_pipeline(
             all_groups=all_haplotype_ids or None
         )
 
-        # Build haplotype_sp labels (e.g., "Species name h1_n8")
+        # Build haplotype_sp labels (e.g., "Species name H0001")
         def _join_label(row):
             sp = row["assigned_sp"]
             hap_id = row["haplotype_id"]
@@ -2237,6 +2222,14 @@ Notes:
     )
 
     parser.add_argument(
+        '--no-assign-corrected',
+        action='store_true',
+        help='Leave records of error-filtered singletons unassigned (status '
+             'excluded_error_singleton) instead of assigning them to their nearest '
+             'retained haplotype (status assigned_corrected).'
+    )
+
+    parser.add_argument(
         '--keep-intermediates',
         action='store_true',
         help='Keep intermediate files (default: remove after pipeline completion)'
@@ -2352,6 +2345,7 @@ def main():
         genotype_assignment__tie_margin=args.tie_margin,
         genotype_assignment__tie_threshold=args.tie_threshold,
         haplotype__min_singleton_distance=args.singleton_distance,
+        haplotype__assign_corrected=not args.no_assign_corrected,
         n_threads=args.threads,
         output_dir=output_dir,
         log_level=args.log_level,

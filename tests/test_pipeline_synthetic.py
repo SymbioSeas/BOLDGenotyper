@@ -59,3 +59,36 @@ def test_log_ends_with_run_status(synthetic_run):
     last = (synthetic_run / f"{ORGANISM}_pipeline.log").read_text().strip().splitlines()[-1]
     assert last.endswith(f"Pipeline completed successfully for {ORGANISM}") or \
         "Pipeline completed with" in last
+
+
+def _diagnostics(out):
+    return pd.read_csv(out / "haplotype_assignments" / f"{ORGANISM}_diagnostics.csv")
+
+
+def test_statuses_match_planted_cases(synthetic_run):
+    """P0-2: every unique record has its specific status."""
+    diag = _diagnostics(synthetic_run).set_index("processid")
+    assert len(diag) == EXPECTED["n_unique"]
+    for pid, status in EXPECTED["status"].items():
+        assert diag.loc[pid, "status"] == status, pid
+
+
+def test_processid_is_bare_everywhere(synthetic_run):
+    """P0-10: one processid format in every table."""
+    mapping = pd.read_csv(synthetic_run / "haplotypes" / f"{ORGANISM}_haplotype_mapping.csv")
+    assert mapping["processid"].str.match(r"^SYN\d{3}$").all()
+
+
+def test_corrected_members_count_in_species_composition(synthetic_run):
+    """P0-2: corrected members are pooled into their haplotype."""
+    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    h1 = ann.loc[ann["haplotype_id"] == "H0001"]
+    assert len(h1) == EXPECTED["members"]["A"]
+    assert (h1["status"] == "assigned_corrected").sum() == 1
+
+
+def test_no_assign_corrected_flag(tmp_path):
+    ok, out = run_synthetic(tmp_path, haplotype__assign_corrected=False)
+    assert ok
+    diag = _diagnostics(out).set_index("processid")
+    assert diag.loc["SYN021", "status"] == "excluded_error_singleton"

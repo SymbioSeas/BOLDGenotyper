@@ -299,6 +299,12 @@ class HaplotypeConfig:
         while preserving biologically real rare variants. Analysis of empirical data shows
         ~85% of singletons fall within this error range.
 
+    assign_corrected : bool
+        Assign records of error-filtered singletons to their nearest retained
+        haplotype (status assigned_corrected) (default: True). Records
+        equidistant from two or more haplotypes are never assigned. If False,
+        all such records get status excluded_error_singleton.
+
     max_singleton_distance : float
         Maximum distance to nearest neighbor for singleton flagging (default: 0.05).
         Singletons >5% divergent from nearest haplotype are flagged as potential
@@ -339,6 +345,7 @@ class HaplotypeConfig:
     """
     min_singleton_distance: float = 0.005
     max_singleton_distance: float = 0.05
+    assign_corrected: bool = True
     flag_suspect_haplotypes: bool = False
     filter_suspect_haplotypes: bool = False
 

@@ -196,7 +196,8 @@ def apply_dynamic_qc_filters(
     min_raw_length_frac_of_median: float = 0.7,
     max_raw_N_fraction: float = 0.05,
     require_valid_orf: bool = True,
-    processid_col: str = 'processid'
+    processid_col: str = 'processid',
+    return_all: bool = False,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Apply dynamic quality control filters with median-based thresholds.
@@ -225,11 +226,15 @@ def apply_dynamic_qc_filters(
         contamination, and pseudogenes.
     processid_col : str, optional
         Name of processid column (default: 'processid')
+    return_all : bool, optional
+        Return every row with its QC columns (qc_pass, qc_fail_reason, ...)
+        instead of only the passing rows (default: False)
 
     Returns
     -------
     Tuple[pd.DataFrame, Dict[str, Any]]
         - filtered_df: DataFrame with QC columns and failed samples removed
+          (all rows when return_all=True)
         - qc_stats: Dictionary with QC statistics
 
     Notes
@@ -369,6 +374,8 @@ def apply_dynamic_qc_filters(
 
     logger.info(f"Retained {len(filtered_df)} samples after QC filtering")
 
+    if return_all:
+        return df_with_qc, qc_stats
     return filtered_df, qc_stats
 
 
