@@ -2790,7 +2790,7 @@ def _build_species_composition_section(
     # Add explanation
     html += '<p style="margin-bottom: 20px;">'
     html += 'This table shows which species names were reported for sequences within each haplotype. '
-    html += 'Multi-species haplotypes may indicate taxonomic uncertainty, cryptic species, or potential misidentifications in the BOLD database.'
+    html += 'When a haplotype\u2019s members carry more than one species label, the counts are shown; they do not decide which label is correct.'
     html += '</p>\n'
 
     # Summary statistics
@@ -2868,9 +2868,8 @@ def _build_species_composition_section(
     html += '<li><strong>Ambiguous:</strong> No single species accounts for >70% of the sequences in this consensus group</li>\n'
     html += '</ul>\n'
     html += '<p style="margin-top: 10px; margin-bottom: 0; font-size: 0.9em; color: #666;">'
-    html += '<strong>Note:</strong> Multi-species or ambiguous groups may indicate taxonomic uncertainty, cryptic species complexes, '
-    html += 'or potential misidentifications in the reference database. Cross-reference with phylogenetic trees and geographic distributions '
-    html += 'to investigate further.'
+    html += '<strong>Note:</strong> These counts describe the records\u2019 BOLD labels. Label conflicts within haplotypes, '
+    html += 'with the evidence for each record, are listed in <code>quality_control/label_conflicts.csv</code>.'
     html += '</p>\n'
     html += '</div>\n'
 
@@ -2888,85 +2887,80 @@ def _build_quality_control_section(quality_dir: Path) -> str:
         html += '</div>\n'
         return html
 
-    mixed_df = pd.DataFrame()
-    misid_df = pd.DataFrame()
-    depositor_df = pd.DataFrame()
+    summary_df = pd.DataFrame()
+    conflicts_df = pd.DataFrame()
+    hits_df = pd.DataFrame()
 
-    mixed_file = quality_dir / "mixed_species_summary.csv"
-    misid_file = quality_dir / "potential_misidentifications.csv"
-    depositor_file = quality_dir / "depositor_flags_summary.csv"
+    summary_file = quality_dir / "haplotype_label_summary.csv"
+    conflicts_file = quality_dir / "label_conflicts.csv"
+    hits_file = quality_dir / "depositor_keyword_hits.csv"
 
     try:
-        if mixed_file.exists():
-            mixed_df = pd.read_csv(mixed_file)
-        if misid_file.exists():
-            misid_df = pd.read_csv(misid_file)
-        if depositor_file.exists():
-            depositor_df = pd.read_csv(depositor_file)
+        if summary_file.exists():
+            summary_df = pd.read_csv(summary_file)
+        if conflicts_file.exists():
+            conflicts_df = pd.read_csv(conflicts_file)
+        if hits_file.exists():
+            hits_df = pd.read_csv(hits_file)
     except Exception as e:
-        html += f'<p class="alert alert-warning">Could not load QC outputs: {e}</p>\n'
+        html += f'<p class="alert alert-warning">Could not load label outputs: {e}</p>\n'
         html += '</div>\n'
         return html
 
-    total_groups = len(mixed_df)
-    clean = (mixed_df['flags'].str.upper() == 'CLEAN').sum() if 'flags' in mixed_df.columns else 0
-    contaminated = (mixed_df['flags'].str.upper() == 'CONTAMINATED').sum() if 'flags' in mixed_df.columns else 0
-    ambiguous = (mixed_df['flags'].str.upper() == 'AMBIGUOUS').sum() if 'flags' in mixed_df.columns else 0
+    total_groups = len(summary_df)
+    with_conflict = int((summary_df['n_label_conflicts'] > 0).sum()) if 'n_label_conflicts' in summary_df.columns else 0
+    n_missing = int(summary_df['n_missing_label'].sum()) if 'n_missing_label' in summary_df.columns else 0
 
+    html += '<p>Counts compare each haplotype\u2019s member records by their BOLD labels; they do not decide which label is correct. Definitions: <code>quality_control/README.md</code>.</p>\n'
     html += '<div class="metric-grid">\n'
-    html += '  <div class="metric-card"><div class="title">Haplotypes QC\u2019d</div>'
+    html += '  <div class="metric-card"><div class="title">Haplotypes</div>'
     html += f'  <div class="value">{_format_number(total_groups, 0)}</div>'
-    html += '  <div class="description">Groups evaluated for purity</div></div>\n'
+    html += '  <div class="description">With member labels summarized</div></div>\n'
 
-    html += '  <div class="metric-card"><div class="title">Pure Groups</div>'
-    html += f'  <div class="value">{_format_number(clean, 0)}</div>'
-    pct_clean = (clean / total_groups * 100) if total_groups else 0
-    html += f'  <div class="description">{_format_percentage(pct_clean)} of total</div></div>\n'
+    html += '  <div class="metric-card"><div class="title">With a Label Conflict</div>'
+    html += f'  <div class="value">{_format_number(with_conflict, 0)}</div>'
+    pct = (with_conflict / total_groups * 100) if total_groups else 0
+    html += f'  <div class="description">{_format_percentage(pct)} of haplotypes</div></div>\n'
 
-    html += '  <div class="metric-card"><div class="title">Mixed / Ambiguous</div>'
-    mixed_total = contaminated + ambiguous
-    html += f'  <div class="value">{_format_number(mixed_total, 0)}</div>'
-    pct_mixed = (mixed_total / total_groups * 100) if total_groups else 0
-    html += f'  <div class="description">{_format_percentage(pct_mixed)} flagged groups</div></div>\n'
+    html += '  <div class="metric-card"><div class="title">Label-Conflict Records</div>'
+    html += f'  <div class="value">{_format_number(len(conflicts_df), 0)}</div>'
+    html += '  <div class="description">See label_conflicts.csv</div></div>\n'
 
-    html += '  <div class="metric-card"><div class="title">Potential MisIDs</div>'
-    html += f'  <div class="value">{_format_number(len(misid_df), 0)}</div>'
-    html += '  <div class="description">See potential_misidentifications.csv</div></div>\n'
+    html += '  <div class="metric-card"><div class="title">Members Without a Label</div>'
+    html += f'  <div class="value">{_format_number(n_missing, 0)}</div>'
+    html += '  <div class="description">Not counted in majority fractions</div></div>\n'
 
-    html += '  <div class="metric-card"><div class="title">Depositor Flags</div>'
-    html += f'  <div class="value">{_format_number(len(depositor_df), 0)}</div>'
-    html += '  <div class="description">Samples with uncertainty notes</div></div>\n'
+    html += '  <div class="metric-card"><div class="title">Depositor-Note Keyword Hits</div>'
+    html += f'  <div class="value">{_format_number(len(hits_df), 0)}</div>'
+    html += '  <div class="description">Notes to read; not interpreted</div></div>\n'
     html += '</div>\n'
 
-    # Flagged haplotypes table
-    if not mixed_df.empty:
-        html += '<h3>Flagged Consensus Groups</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table: <code>quality_control/mixed_species_summary.csv</code></p>\n'
-        if 'flags' in mixed_df.columns:
-            flagged = mixed_df[mixed_df['flags'].str.upper() != 'CLEAN'].copy()
-        else:
-            flagged = mixed_df.copy()
-        keep_cols = [c for c in ['consensus_group', 'n_samples', 'primary_species', 'contaminating_species', 'contamination_pct', 'flags'] if c in flagged.columns]
+    if not summary_df.empty:
+        html += '<h3>Haplotypes with Label Conflicts</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table: <code>quality_control/haplotype_label_summary.csv</code></p>\n'
+        flagged = summary_df[summary_df['n_label_conflicts'] > 0] if 'n_label_conflicts' in summary_df.columns else summary_df
+        keep_cols = [c for c in ['haplotype_id', 'n_members', 'n_labeled', 'n_missing_label', 'majority_label',
+                                 'majority_fraction', 'labels', 'n_label_conflicts'] if c in flagged.columns]
         if not flagged.empty and keep_cols:
             html += _dataframe_to_html(flagged[keep_cols], max_rows=20)
         elif flagged.empty:
-            html += '<p class="alert alert-success">All consensus groups are pure (single-species).</p>\n'
+            html += '<p class="alert alert-success">No haplotype has members with conflicting labels.</p>\n'
 
-    # Potential misidentifications
-    if not misid_df.empty:
-        html += '<h3>Potential Misidentifications</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/potential_misidentifications.csv</code></p>\n'
-        keep_cols = [c for c in ['processid', 'species', 'haplotype_id', 'group_majority_species', 'group_majority_pct', 'misidentification_confidence'] if c in misid_df.columns]
+    if not conflicts_df.empty:
+        html += '<h3>Label-Conflict Records</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/label_conflicts.csv</code></p>\n'
+        keep_cols = [c for c in ['processid', 'label', 'haplotype_id', 'majority_label', 'n_majority', 'n_labeled',
+                                 'majority_fraction', 'nearest_haplotype_with_label',
+                                 'distance_to_nearest_with_label'] if c in conflicts_df.columns]
         if keep_cols:
-            html += _dataframe_to_html(misid_df[keep_cols], max_rows=15)
+            html += _dataframe_to_html(conflicts_df[keep_cols], max_rows=15)
 
-    # Depositor notes table
-    if not depositor_df.empty:
-        html += '<h3>Depositor-flagged Samples</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/depositor_flags_summary.csv</code></p>\n'
-        keep_cols = [c for c in ['processid', 'genotype', 'species_label', 'flag_category', 'pattern_matched'] if c in depositor_df.columns]
+    if not hits_df.empty:
+        html += '<h3>Depositor-Note Keyword Hits</h3>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/depositor_keyword_hits.csv</code></p>\n'
+        keep_cols = [c for c in ['processid', 'haplotype_id', 'label', 'keyword_hits', 'depositor_note'] if c in hits_df.columns]
         if keep_cols:
-            html += _dataframe_to_html(depositor_df[keep_cols], max_rows=15)
+            html += _dataframe_to_html(hits_df[keep_cols], max_rows=15)
 
     html += '</div>\n'
     return html

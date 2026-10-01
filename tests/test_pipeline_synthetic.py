@@ -234,3 +234,17 @@ def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
         assert phrase.lower() not in readme.lower(), phrase
     assert not re.search(r"[<>]\s*\d+(\.\d+)?%", readme)
     assert "uncorrected p-distance" in readme
+
+
+def test_label_report_replaces_contamination_outputs(synthetic_run):
+    """P1-6, P1-7, P1-8: label conflicts with evidence; no contamination or confidence."""
+    qc = synthetic_run / "quality_control"
+    summary = pd.read_csv(qc / "haplotype_label_summary.csv").set_index("haplotype_id")
+    # H0003 (C): two 'Genus alpha' and one genus-only 'Genus' member: compatible
+    assert summary.loc["H0003", "n_label_conflicts"] == 0
+    assert summary.loc["H0003", "majority_fraction"] == 1.0
+    assert (qc / "label_conflicts.csv").exists() and (qc / "depositor_keyword_hits.csv").exists()
+    assert not (qc / "potential_misidentifications.csv").exists()
+    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    assert {"label", "majority_label", "label_conflict", "majority_fraction"} <= set(ann.columns)
+    assert "misidentification_confidence" not in ann.columns

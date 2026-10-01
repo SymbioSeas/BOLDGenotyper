@@ -184,26 +184,20 @@ def extract_run_metrics(
     if 'species' in df.columns:
         metrics['n_species_labels_qc_passed'] = df['species'].nunique()  # P0-9 name
 
-    # Potential misidentification flags — fraction of samples whose assigned
-    # haplotype does not match their depositor species.  Can change when
+    # Label conflicts: records whose label differs from their haplotype's
+    # majority label (quality_control.add_label_columns). Can change when
     # singleton removal causes samples to be reassigned.
-    if 'potential_misidentification' in df.columns:
-        misid = (
-            df['potential_misidentification'].sum()
-            if df['potential_misidentification'].dtype == bool
-            else (df['potential_misidentification'] == True).sum()
-        )
-        metrics['pct_potential_misid'] = (misid / len(df) * 100) if len(df) > 0 else 0
+    if 'label_conflict' in df.columns:
+        conflict = df['label_conflict'].astype(str).str.lower() == 'true'
+        metrics['pct_label_conflict'] = (conflict.sum() / len(df) * 100) if len(df) > 0 else 0
+        if 'haplotype_id' in df.columns:
+            per_hap = conflict.groupby(df['haplotype_id']).any()
+            metrics['n_haplotypes_with_label_conflict'] = int(per_hap.sum())
 
-    # Mixed haplotype groups (haplotypes containing >1 depositor species)
-    if 'group_species_count' in df.columns and 'haplotype_id' in df.columns:
-        mixed = df.groupby('haplotype_id')['group_species_count'].first()
-        metrics['n_mixed_groups'] = int((mixed > 1).sum()) if len(mixed) > 0 else 0
-
-    # Average group purity
-    if 'group_majority_pct' in df.columns and 'haplotype_id' in df.columns:
-        purities = df.groupby('haplotype_id')['group_majority_pct'].first()
-        metrics['avg_group_purity'] = purities.mean() if len(purities) > 0 else 0
+    # Mean majority fraction across haplotypes
+    if 'majority_fraction' in df.columns and 'haplotype_id' in df.columns:
+        fractions = df.groupby('haplotype_id')['majority_fraction'].first()
+        metrics['mean_majority_fraction'] = float(fractions.mean()) if len(fractions) > 0 else 0
 
     return metrics
 
@@ -422,12 +416,12 @@ def create_threshold_stability_plot(
         ax.set_ylabel('% Assigned', color='tab:green')
         ax.tick_params(axis='y', labelcolor='tab:green')
 
-    if 'pct_potential_misid' in summary_df.columns:
+    if 'pct_label_conflict' in summary_df.columns:
         ax2 = ax.twinx()
-        ax2.plot(summary_df['threshold'], summary_df['pct_potential_misid'],
+        ax2.plot(summary_df['threshold'], summary_df['pct_label_conflict'],
                  's--', linewidth=2, markersize=6, color='tab:red', alpha=0.7,
-                 label='% Misid')
-        ax2.set_ylabel('% Potential Misidentification', color='tab:red')
+                 label='% Label conflict')
+        ax2.set_ylabel('% Records with a label conflict', color='tab:red')
         ax2.tick_params(axis='y', labelcolor='tab:red')
 
     ax.set_xlabel('min_singleton_distance')
@@ -614,9 +608,9 @@ KEY FINDINGS
 
 3. Assignment coverage at elbow:  {rec_row.get('pct_assigned', 'N/A'):.1f}%"""
 
-    if 'pct_potential_misid' in rec_row.index and pd.notna(rec_row.get('pct_potential_misid')):
+    if 'pct_label_conflict' in rec_row.index and pd.notna(rec_row.get('pct_label_conflict')):
         text += f"""
-   Potential misidentification rate:  {rec_row['pct_potential_misid']:.1f}%"""
+   Records with a label conflict:     {rec_row['pct_label_conflict']:.1f}%"""
 
     text += f"""
 

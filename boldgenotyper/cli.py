@@ -12,7 +12,7 @@ Workflow:
 3. Haplotype Discovery (Align, Extract core region, Identify ESVs, Flag suspects)
 4. Haplotype Assignment (Match samples to haplotypes)
 5. Taxonomy Assignment
-6. Post-assignment QC (Contamination detection)
+6. Record labels (majority labels, label conflicts, depositor-note keyword hits)
 6.5. Species-Level Aggregation (Group by species, diversity metrics)
 7. Geographic Enhancement
 8. Phylogenetic Analysis (Optional)
@@ -882,37 +882,36 @@ def run_pipeline(
     logger.info("-" * 80)
 
     try:
-        logger.info("6.1: Adding contamination analysis columns to main output...")
+        logger.info("6.1: Adding record labels and label conflicts to the annotated table...")
 
-        # Add contamination columns to the dataframe
-        df_final_enhanced = quality_control.add_contamination_columns(
+        # Record label, haplotype majority label, label conflicts, depositor-note keyword hits
+        df_final_enhanced = quality_control.add_label_columns(
             df_final,
             group_col="haplotype_id",
             species_col="species",
+            genus_col="genus",
             notes_col="notes" if "notes" in df_final.columns else None,
-            majority_threshold=cfg.taxonomy.majority_species_threshold
         )
 
         # Save enhanced annotated file
         annotated_csv_enhanced = dirs['base'] / f"{organism}_annotated.csv"
         df_final_enhanced.to_csv(annotated_csv_enhanced, index=False, quoting=1)
-        logger.info(f"  ✓ Enhanced annotated dataset with QC columns: {annotated_csv_enhanced}")
+        logger.info(f"  ✓ Annotated dataset with label columns: {annotated_csv_enhanced}")
 
         # Update df_final to use the enhanced version
         df_final = df_final_enhanced
 
-        logger.info("6.2: Generating quality control reports...")
-
-        # Generate comprehensive QC report
+        logger.info("6.2: Writing the label-conflict report...")
         qc_results = quality_control.generate_quality_control_report(
             df_final,
             output_dir=dirs['quality_control'],
             organism=organism,
             group_col="haplotype_id",
-            species_col="species"
+            species_col="species",
+            haplotype_sequences={r.id: str(r.seq) for r in haplotype_records},
         )
 
-        logger.info(f"  ✓ Quality control reports saved to: {dirs['quality_control']}")
+        logger.info(f"  ✓ Label report saved to: {dirs['quality_control']}")
 
         # Print quality alerts to console
         quality_control.print_quality_alert(qc_results)

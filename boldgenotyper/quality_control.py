@@ -2,24 +2,23 @@
 Quality Control Module for BOLDGenotyper
 
 This module provides quality control for COI barcode sequences, including
-sequence orientation normalization, ORF validation, dynamic filtering, and contamination
-detection.
+sequence orientation normalization, ORF validation, dynamic filtering, and a
+report of label conflicts within haplotypes.
 
 Key Features:
 - COI orientation normalization (forward/reverse complement detection)
 - Open reading frame (ORF) validation and quality checking
 - Dynamic QC filtering with median-based thresholds
-- Mixed-species group detection
-- Potential misidentification flagging
-- Depositor uncertainty note extraction
-- Contamination heatmaps and reports
-- Purity distribution analysis
+- Label conflicts: records whose label differs from their haplotype's majority
+  label, with the evidence (counts, majority fraction, distance to the nearest
+  haplotype carrying the record's label)
+- Depositor-note keyword hits (raw notes plus the keywords matched)
 
 Workflow:
 1. Orientation Normalization: Check ORF in both orientations, correct if needed
 2. ORF Validation: Check coverage and internal stop codons
 3. Dynamic QC: Apply absolute and median-based length/quality filters
-4. Contamination Detection: Identify mixed-species groups
+4. Label summary: majority labels, missing labels and label conflicts per haplotype
 
 Author: Steph Smith (symbioseas@outlook.com)
 """
@@ -380,677 +379,425 @@ def apply_dynamic_qc_filters(
 
 
 # ============================================================================
-# Depositor Uncertainty and Contamination Detection
+# Record labels, label conflicts and depositor-note keyword hits
 # ============================================================================
+#
+# Record label: the record's species, or its genus when the species is missing
+# (a genus-only label); missing when both are empty.
+# Majority label of a haplotype: the most common species-level label among its
+# members (exact and corrected); genus-only and open-nomenclature labels of the
+# majority's genus are compatible; a tie for most common gives no majority.
+# Label conflict: a member whose species-level label differs from the majority
+# label, any species-level member of a tied haplotype, or a genus-only label of
+# another genus. Missing labels are never conflicts; they are counted.
 
-def detect_depositor_uncertainty(
-    note: str
-) -> Tuple[bool, str, str]:
-    """
-    Detect uncertainty indicators in depositor notes.
+# Keywords searched for (as whole words) in depositor notes. A hit is reported
+# with the note itself; it is not an interpretation of the note.
+DEPOSITOR_KEYWORDS = [
+    'cryptic', 'complex', 'novel', 'undescribed',
+    'uncertain', 'tentative', 'probable', 'likely', 'possibly', 'unknown', 'unidentified',
+    'juvenile', 'damaged', 'incomplete', 'poor condition', 'pup', 'decomposed', 'larva',
+    'nymph', 'egg', 'cf.', 'aff.', 'sp.', 'spp.',
+    'mixed', 'contamination', 'multiple', 'contaminated',
+]
+_KEYWORD_PATTERNS = [(kw, re.compile(r'(?<![A-Za-z])' + re.escape(kw) + r'(?![A-Za-z])', re.IGNORECASE))
+                     for kw in DEPOSITOR_KEYWORDS]
 
-    Parameters
-    ----------
-    note : str
-        Depositor notes field
-
-    Returns
-    -------
-    tuple
-        (has_uncertainty: bool, flag_category: str, pattern_matched: str)
-    """
-    if pd.isna(note) or not note:
-        return False, "", ""
-
-    note_lower = str(note).lower()
-
-    for category, keywords in UNCERTAINTY_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword.lower() in note_lower:
-                return True, category, keyword
-
-    return False, "", ""
+LABEL_CONFLICT_COLUMNS = [
+    'processid', 'label', 'haplotype_id', 'n_members', 'n_labeled', 'majority_label',
+    'n_majority', 'majority_fraction', 'nearest_haplotype_with_label',
+    'distance_to_nearest_with_label', 'depositor_keyword_hits', 'depositor_note',
+]
+HAPLOTYPE_LABEL_COLUMNS = [
+    'haplotype_id', 'n_members', 'n_labeled', 'n_missing_label', 'n_species_labels',
+    'majority_label', 'n_majority', 'majority_fraction', 'labels', 'n_label_conflicts',
+]
 
 
-def analyze_group_contamination(
+def find_keyword_hits(note) -> List[str]:
+    """Keywords found as whole words in a depositor note, in order of appearance."""
+    if note is None or (isinstance(note, float) and pd.isna(note)) or not str(note).strip():
+        return []
+    text = str(note)
+    found = []
+    for kw, pattern in _KEYWORD_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            found.append((m.start(), kw))
+    return [kw for _, kw in sorted(found)]
+
+
+def detect_depositor_uncertainty(note: str) -> Tuple[bool, str, str]:
+    """Deprecated: categories are no longer assigned; use find_keyword_hits."""
+    import warnings
+    warnings.warn("detect_depositor_uncertainty is deprecated; use find_keyword_hits",
+                  DeprecationWarning, stacklevel=2)
+    hits = find_keyword_hits(note)
+    return bool(hits), "", hits[0] if hits else ""
+
+
+def record_labels(df: pd.DataFrame, species_col: str = "species",
+                  genus_col: str = "genus") -> pd.Series:
+    """Species label, or genus when the species is missing; '' when neither."""
+    species = (df[species_col] if species_col in df.columns
+               else pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+    genus = (df[genus_col] if genus_col in df.columns
+             else pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+    return species.where(species != "", genus)
+
+
+def _haplotype_label_stats(labels: List[str]) -> Dict[str, Any]:
+    """Majority label and counts for one haplotype's member labels."""
+    from .taxon_labels import pool_labels, label_level, genus_of
+    pooled = pool_labels(labels)
+    species_counts = {}
+    for lab in labels:
+        if lab and label_level(lab) == "species":
+            species_counts[lab] = species_counts.get(lab, 0) + 1
+    top = max(species_counts.values()) if species_counts else 0
+    tied = [lab for lab, n in species_counts.items() if n == top] if species_counts else []
+    tied_genera = {genus_of(lab) for lab in tied}
+
+    def is_conflict(lab):
+        if not lab or not species_counts:
+            return False
+        level = label_level(lab)
+        if pooled.leading_species is None:          # tie for most common
+            return level == "species" or genus_of(lab) not in tied_genera
+        if level == "species":
+            return lab != pooled.leading_species
+        return genus_of(lab) != genus_of(pooled.leading_species)
+
+    return {
+        "majority_label": pooled.leading_species,
+        "n_majority": pooled.n_leading if pooled.leading_species else top,
+        "majority_fraction": round(pooled.support, 4) if pooled.support is not None else np.nan,
+        "n_labeled": sum(1 for lab in labels if lab),
+        "n_missing_label": pooled.n_missing,
+        "n_species_labels": pooled.n_distinct_species,
+        "labels_text": pooled.text,
+        "is_conflict": is_conflict,
+    }
+
+
+def add_label_columns(
     df: pd.DataFrame,
-    group_col: str = "consensus_group",
+    group_col: str = "haplotype_id",
     species_col: str = "species",
-    min_samples: int = 3
-) -> pd.DataFrame:
-    """
-    Analyze contamination levels in each haplotype.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Annotated dataframe with genotype assignments
-    group_col : str
-        Column name for haplotypes
-    species_col : str
-        Column name for species labels
-    min_samples : int
-        Minimum samples required to analyze a group
-
-    Returns
-    -------
-    pd.DataFrame
-        Summary table with contamination metrics per group
-    """
-    results = []
-
-    for group_name, group_df in df.groupby(group_col):
-        n_samples = len(group_df)
-
-        # Skip very small groups
-        if n_samples < min_samples:
-            continue
-
-        # Count species
-        species_counts = group_df[species_col].value_counts()
-        n_species = len(species_counts)
-
-        # Primary species
-        primary_species = species_counts.index[0] if len(species_counts) > 0 else "Unknown"
-        primary_count = species_counts.iloc[0] if len(species_counts) > 0 else 0
-        primary_pct = (primary_count / n_samples * 100) if n_samples > 0 else 0
-
-        # Contaminating species
-        if n_species > 1:
-            contaminating_species = []
-            contamination_count = 0
-            contamination_breakdown = []
-
-            for i, (sp, count) in enumerate(species_counts.items()):
-                if i > 0:  # Skip primary species
-                    contaminating_species.append(sp)
-                    contamination_count += count
-                    pct = count / n_samples * 100
-                    contamination_breakdown.append(f"{sp}: {count} ({pct:.1f}%)")
-
-            contaminating_sp_str = ", ".join(contaminating_species)
-            contamination_pct = (contamination_count / n_samples * 100)
-            breakdown_str = ", ".join(contamination_breakdown)
-        else:
-            contaminating_sp_str = ""
-            contamination_count = 0
-            contamination_pct = 0.0
-            breakdown_str = ""
-
-        # Determine flag
-        if n_species == 1:
-            flag = "CLEAN"
-            confidence = "high"
-        elif primary_pct >= 90:
-            flag = "CONTAMINATED"
-            confidence = "high"
-        elif primary_pct >= 70:
-            flag = "CONTAMINATED"
-            confidence = "medium"
-        else:
-            flag = "AMBIGUOUS"
-            confidence = "low"
-
-        results.append({
-            'consensus_group': group_name,
-            'n_samples': n_samples,
-            'n_species': n_species,
-            'primary_species': primary_species,
-            'primary_pct': primary_pct,
-            'contaminating_species': contaminating_sp_str,
-            'contamination_count': contamination_count,
-            'contamination_pct': contamination_pct,
-            'contamination_breakdown': breakdown_str,
-            'flags': flag,
-            'confidence_level': confidence
-        })
-
-    return pd.DataFrame(results)
-
-
-def add_contamination_columns(
-    df: pd.DataFrame,
-    group_col: str = "consensus_group",
-    species_col: str = "species",
+    genus_col: str = "genus",
     notes_col: str = "notes",
-    majority_threshold: float = 0.7
 ) -> pd.DataFrame:
     """
-    Add contamination analysis columns to the main annotated dataframe.
+    Add record labels, haplotype majority labels and label conflicts.
 
-    This enhances the main output CSV with quality control information:
-    - group_majority_species: Most common species in the group
-    - group_majority_pct: Percentage of majority species
-    - group_species_count: Number of unique species in group
-    - matches_group_majority: Does sample match group majority?
-    - potential_misidentification: Likely mislabeled sample?
-    - depositor_uncertainty_flag: Has notes indicating uncertainty?
-    - depositor_notes: Full notes field for reference
-    - misidentification_confidence: Confidence level based on contamination and notes
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Annotated dataframe with genotype assignments
-    group_col : str
-        Column name for haplotypes
-    species_col : str
-        Column name for species labels
-    notes_col : str
-        Column name for depositor notes
-    majority_threshold : float
-        Threshold for flagging misidentifications (default: 0.7)
-
-    Returns
-    -------
-    pd.DataFrame
-        Enhanced dataframe with contamination columns
+    Added columns: label, majority_label, n_majority, n_labeled,
+    n_missing_label, majority_fraction, label_conflict, depositor_keyword_hits
+    (';'-joined), has_depositor_keyword_hit, depositor_notes. Records without a
+    haplotype get empty haplotype columns and label_conflict False.
     """
     df = df.copy()
+    df['label'] = record_labels(df, species_col, genus_col)
+    for col in ('majority_label', 'n_majority', 'n_labeled', 'n_missing_label', 'majority_fraction'):
+        df[col] = np.nan
+    df['majority_label'] = df['majority_label'].astype(object)
+    df['label_conflict'] = False
 
-    # Calculate group-level statistics
-    group_stats = df.groupby(group_col).agg({
-        species_col: lambda x: x.mode()[0] if len(x.mode()) > 0 else 'Unknown'
-    }).rename(columns={species_col: 'group_majority_species'})
+    if group_col in df.columns:
+        for hid, idx in df[df[group_col].notna()].groupby(group_col).groups.items():
+            labels = df.loc[idx, 'label'].tolist()
+            stats = _haplotype_label_stats(labels)
+            df.loc[idx, 'majority_label'] = stats['majority_label']
+            df.loc[idx, 'n_majority'] = stats['n_majority']
+            df.loc[idx, 'n_labeled'] = stats['n_labeled']
+            df.loc[idx, 'n_missing_label'] = stats['n_missing_label']
+            df.loc[idx, 'majority_fraction'] = stats['majority_fraction']
+            df.loc[idx, 'label_conflict'] = [stats['is_conflict'](lab) for lab in labels]
+    df['label_conflict'] = df['label_conflict'].astype(bool)
 
-    # Calculate majority percentage
-    def calc_majority_pct(group_df):
-        if len(group_df) == 0:
-            return 0
-        species_counts = group_df[species_col].value_counts()
-        if len(species_counts) == 0:
-            return 0
-        return (species_counts.iloc[0] / len(group_df)) * 100
-
-    group_majority_pct = df.groupby(group_col, group_keys=False).apply(calc_majority_pct, include_groups=False)
-    group_majority_pct.name = 'group_majority_pct'
-
-    # Species count per group
-    group_species_count = df.groupby(group_col)[species_col].nunique()
-    group_species_count.name = 'group_species_count'
-
-    # Merge back to main dataframe
-    df = df.merge(group_stats, left_on=group_col, right_index=True, how='left')
-    df = df.merge(group_majority_pct, left_on=group_col, right_index=True, how='left')
-    df = df.merge(group_species_count, left_on=group_col, right_index=True, how='left')
-
-    # Calculate matches_group_majority
-    df['matches_group_majority'] = df[species_col] == df['group_majority_species']
-
-    # Potential misidentification
-    df['potential_misidentification'] = (
-        (~df['matches_group_majority']) &
-        (df['group_majority_pct'] > (majority_threshold * 100))
-    )
-
-    # Depositor uncertainty analysis
-    if notes_col in df.columns:
-        uncertainty_results = df[notes_col].apply(detect_depositor_uncertainty)
-        df['depositor_uncertainty_flag'] = uncertainty_results.apply(lambda x: x[0])
-        df['uncertainty_category'] = uncertainty_results.apply(lambda x: x[1])
-        df['uncertainty_keyword'] = uncertainty_results.apply(lambda x: x[2])
-        df['depositor_notes'] = df[notes_col]
-    else:
-        df['depositor_uncertainty_flag'] = False
-        df['uncertainty_category'] = ""
-        df['uncertainty_keyword'] = ""
-        df['depositor_notes'] = ""
-
-    # Misidentification confidence
-    def assess_confidence(row):
-        if not row['potential_misidentification']:
-            return 'none'
-
-        # Check if we have identity score
-        has_identity = 'identity' in row and not pd.isna(row['identity'])
-        identity = float(row['identity']) if has_identity else 95.0
-
-        # High confidence: high identity, clear majority, no uncertainty
-        if identity >= 95 and row['group_majority_pct'] > 90 and not row['depositor_uncertainty_flag']:
-            return 'high'
-
-        # Medium confidence: moderate identity or moderate majority
-        elif identity >= 90 or row['group_majority_pct'] >= 80:
-            return 'medium'
-
-        # Low confidence: lower identity or weaker majority
-        else:
-            return 'low'
-
-    df['misidentification_confidence'] = df.apply(assess_confidence, axis=1)
-
+    notes = df[notes_col] if notes_col in df.columns else pd.Series("", index=df.index)
+    hits = notes.map(find_keyword_hits)
+    df['depositor_keyword_hits'] = hits.map(lambda h: "; ".join(h))
+    df['has_depositor_keyword_hit'] = hits.map(bool)
+    df['depositor_notes'] = notes
     return df
 
 
-def generate_depositor_flags_summary(
-    df: pd.DataFrame,
-    group_col: str = "consensus_group",
-    species_col: str = "species",
-    processid_col: str = "processid"
-) -> pd.DataFrame:
+def add_contamination_columns(df, group_col="haplotype_id", species_col="species",
+                              notes_col="notes", majority_threshold=0.7):
+    """Deprecated: renamed add_label_columns (label conflicts, not contamination)."""
+    import warnings
+    warnings.warn("add_contamination_columns is deprecated; use add_label_columns",
+                  DeprecationWarning, stacklevel=2)
+    return add_label_columns(df, group_col=group_col, species_col=species_col, notes_col=notes_col)
+
+
+def summarize_haplotype_labels(df: pd.DataFrame, group_col: str = "haplotype_id") -> pd.DataFrame:
+    """One row per haplotype: members, labeled and missing, majority label, conflicts."""
+    rows = []
+    for hid, g in df[df[group_col].notna()].groupby(group_col):
+        stats = _haplotype_label_stats(g['label'].tolist())
+        rows.append({
+            'haplotype_id': hid,
+            'n_members': len(g),
+            'n_labeled': stats['n_labeled'],
+            'n_missing_label': stats['n_missing_label'],
+            'n_species_labels': stats['n_species_labels'],
+            'majority_label': stats['majority_label'],
+            'n_majority': stats['n_majority'],
+            'majority_fraction': stats['majority_fraction'],
+            'labels': stats['labels_text'],
+            'n_label_conflicts': int(g['label_conflict'].sum()),
+        })
+    return pd.DataFrame(rows, columns=HAPLOTYPE_LABEL_COLUMNS)
+
+
+def build_label_conflicts(df: pd.DataFrame, group_col: str = "haplotype_id",
+                          haplotype_sequences: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+    """One row per label-conflict record, with the evidence.
+
+    nearest_haplotype_with_label / distance_to_nearest_with_label: the nearest
+    other haplotype with at least one member carrying the record's label, and
+    the p-distance to it (dereplication's definition); empty when no other
+    haplotype carries the label or sequences are not given.
     """
-    Generate summary of samples with depositor uncertainty flags.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Annotated dataframe with contamination columns
-    group_col : str
-        Column name for haplotypes
-    species_col : str
-        Column name for species labels
-    processid_col : str
-        Column name for process IDs
-
-    Returns
-    -------
-    pd.DataFrame
-        Summary of flagged samples
-    """
-    flagged = df[df['depositor_uncertainty_flag']].copy()
-
-    if len(flagged) == 0:
-        return pd.DataFrame(columns=[
-            'processid', 'genotype', 'species_label', 'depositor_note',
-            'flag_category', 'pattern_matched'
-        ])
-
-    summary = flagged[[
-        processid_col, group_col, species_col, 'depositor_notes',
-        'uncertainty_category', 'uncertainty_keyword'
-    ]].copy()
-
-    summary.columns = [
-        'processid', 'genotype', 'species_label', 'depositor_note',
-        'flag_category', 'pattern_matched'
-    ]
-
-    return summary
+    from .dereplication import distances_to_references
+    members = df[df[group_col].notna()]
+    n_members = members.groupby(group_col).size()
+    haps_by_label = members.groupby('label')[group_col].agg(lambda s: sorted(set(s))).to_dict()
+    cache = {}
+    rows = []
+    for _, r in members[members['label_conflict']].iterrows():
+        hid, lab = r[group_col], r['label']
+        key = (hid, lab)
+        if key not in cache:
+            cache[key] = (None, np.nan)
+            others = [h for h in haps_by_label.get(lab, []) if h != hid]
+            if haplotype_sequences and hid in haplotype_sequences and others:
+                others = [h for h in others if h in haplotype_sequences]
+                if others:
+                    d = distances_to_references(haplotype_sequences[hid],
+                                                [haplotype_sequences[h] for h in others])
+                    k = int(np.argmin(d))
+                    cache[key] = (others[k], float(d[k]))
+        nearest, dist = cache[key]
+        rows.append({
+            'processid': r.get('processid'), 'label': lab, 'haplotype_id': hid,
+            'n_members': int(n_members[hid]), 'n_labeled': r['n_labeled'],
+            'majority_label': r['majority_label'], 'n_majority': r['n_majority'],
+            'majority_fraction': r['majority_fraction'],
+            'nearest_haplotype_with_label': nearest, 'distance_to_nearest_with_label': dist,
+            'depositor_keyword_hits': r.get('depositor_keyword_hits', ''),
+            'depositor_note': r.get('depositor_notes', ''),
+        })
+    return pd.DataFrame(rows, columns=LABEL_CONFLICT_COLUMNS)
 
 
-def create_contamination_heatmap(
+def create_label_composition_heatmap(
     df: pd.DataFrame,
     output_path: Path,
-    group_col: str = "consensus_group",
-    species_col: str = "species",
+    group_col: str = "haplotype_id",
+    label_col: str = "label",
     min_samples: int = 3
 ) -> None:
-    """
-    Create a heatmap showing species composition of haplotypes.
+    """Heatmap of record counts: haplotypes (rows) by record label (columns).
 
-    Uses mako_r colormap with custom annotations: zeros shown as "×" on white
-    background, non-zero values shown with adaptive text color for readability.
-    Species names are italicized on x-axis.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Annotated dataframe with genotype assignments
-    output_path : Path
-        Output path for PDF
-    group_col : str
-        Column name for haplotypes
-    species_col : str
-        Column name for species labels
-    min_samples : int
-        Minimum samples to include a group
+    Zero cells are shown as "×"; missing labels as "(no species label)".
     """
-    # Filter to groups with sufficient samples
     group_sizes = df[group_col].value_counts()
     valid_groups = group_sizes[group_sizes >= min_samples].index
     df_filtered = df[df[group_col].isin(valid_groups)].copy()
-
     if len(df_filtered) == 0:
-        logger.warning("No groups with sufficient samples for heatmap")
+        logger.warning("No haplotypes with enough members for the label heatmap")
         return
-
-    # Ensure species values exist so groups with missing species are retained
-    df_filtered[species_col] = df_filtered[species_col].fillna("Unknown")
-
-    # Create contingency table
-    ct = pd.crosstab(df_filtered[group_col], df_filtered[species_col])
-
-    # Sort by group size
-    group_order = df_filtered[group_col].value_counts().index
-    # Reindex to preserve group order even if some groups had only missing species
-    ct = ct.reindex(group_order, fill_value=0)
-
-    # Mask for zero values
+    df_filtered[label_col] = df_filtered[label_col].fillna("").replace("", "(no species label)")
+    ct = pd.crosstab(df_filtered[group_col], df_filtered[label_col])
+    ct = ct.reindex(df_filtered[group_col].value_counts().index, fill_value=0)
     zero_mask = ct.eq(0)
-
-    # Colormap
     cmap = sns.color_palette("mako_r", as_cmap=True)
     vmin, vmax = 0, ct.to_numpy().max()
-
-    # Create figure with adaptive sizing
     fig, ax = plt.subplots(figsize=(max(8, len(ct.columns) * 0.6), max(6, len(ct) * 0.4)))
-
-    # Set background for masked cells (zeros) to white
     ax.set_facecolor("white")
+    sns.heatmap(ct, cmap=cmap, ax=ax, mask=zero_mask, vmin=vmin, vmax=vmax,
+                linewidths=0.5, linecolor="lightgray", cbar_kws={'label': 'Records'})
 
-    # Create heatmap with masked zeros
-    sns.heatmap(
-        ct,
-        cmap=cmap,
-        ax=ax,
-        mask=zero_mask,
-        vmin=vmin,
-        vmax=vmax,
-        linewidths=0.5,
-        linecolor="lightgray",
-        cbar_kws={'label': 'Sample Count'},
-    )
-
-    # Add custom cell annotations with adaptive text color
-    def get_text_color(value):
-        """Determine text color based on cell background."""
-        if vmax > vmin:
-            norm = (value - vmin) / (vmax - vmin)
-        else:
-            norm = 0
+    def text_color(value):
+        norm = (value - vmin) / (vmax - vmin) if vmax > vmin else 0
         r, g, b, _ = cmap(norm)
-        luminance = 0.299 * r + 0.587 * g + 0.114 * b
-        return "white" if luminance < 0.5 else "black"
+        return "white" if 0.299 * r + 0.587 * g + 0.114 * b < 0.5 else "black"
 
-    n_rows, n_cols = ct.shape
-    for i in range(n_rows):
-        for j in range(n_cols):
+    for i in range(ct.shape[0]):
+        for j in range(ct.shape[1]):
             val = ct.iat[i, j]
-
-            if val == 0:
-                # Zero cells: white background + × (always black)
-                ax.text(
-                    j + 0.5,
-                    i + 0.5,
-                    "×",
-                    ha="center",
-                    va="center",
-                    fontsize=8,
-                    color="black",
-                )
-            else:
-                # Non-zero cells: show value with adaptive color
-                text_color = get_text_color(val)
-                ax.text(
-                    j + 0.5,
-                    i + 0.5,
-                    f"{int(val)}",
-                    ha="center",
-                    va="center",
-                    fontsize=8,
-                    color=text_color,
-                )
-
-    # Axis labels and title
-    ax.set_xlabel("BOLD Reported Species")
-    ax.set_ylabel("BOLDGenotyper Haplotype")
-    ax.set_title(
-        "BOLDGenotyper Haplotype vs. BOLD Reported Species",
-        fontsize=12,
-        pad=12
-    )
-
-    # X-axis tick labels: italicized species names
+            ax.text(j + 0.5, i + 0.5, "×" if val == 0 else f"{int(val)}", ha="center",
+                    va="center", fontsize=8, color="black" if val == 0 else text_color(val))
+    ax.set_xlabel("Record label (BOLD species, or genus when species is missing)")
+    ax.set_ylabel("Haplotype")
+    ax.set_title("Record labels by haplotype", fontsize=12, pad=12)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     for label in ax.get_xticklabels():
         label.set_fontstyle("italic")
-
-    # Y-axis tick labels: haplotype IDs
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-    for label in ax.get_yticklabels():
-        label.set_fontstyle("italic")
-
     plt.tight_layout()
-
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
+    logger.info(f"Label composition heatmap saved to {output_path}")
 
-    logger.info(f"Contamination heatmap saved to {output_path}")
 
-
-def create_purity_distribution(
-    contamination_summary: pd.DataFrame,
-    output_path: Path
-) -> None:
-    """
-    Create histogram of majority fractions (group purity).
-
-    Parameters
-    ----------
-    contamination_summary : pd.DataFrame
-        Output from analyze_group_contamination
-    output_path : Path
-        Output path for PDF
-    """
-    if len(contamination_summary) == 0:
-        logger.warning("No contamination data for purity distribution")
+def create_majority_fraction_distribution(summary: pd.DataFrame, output_path: Path) -> None:
+    """Histogram of each haplotype's majority_fraction (no thresholds drawn)."""
+    values = summary['majority_fraction'].dropna().to_numpy() if len(summary) else np.array([])
+    if len(values) == 0:
+        logger.warning("No majority fractions to plot")
         return
-
     fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Define purity bins and colors
-    bins = [0, 70, 90, 99, 100]
-    colors = ['#d73027', '#fc8d59', '#fee08b', '#91cf60']
-    labels = ['<70% (Ambiguous)', '70-90% (Moderate)', '90-99% (Minor)', '100% (Pure)']
-
-    # Create histogram
-    purity = contamination_summary['primary_pct'].values
-
-    # Create histogram with default color first
-    counts, bin_edges, patches = ax.hist(purity, bins=bins, edgecolor='black', linewidth=1.2)
-
-    # Color each bar according to its bin
-    for patch, color in zip(patches, colors):
-        patch.set_facecolor(color)
-
-    # Add threshold line
-    ax.axvline(70, color='red', linestyle='--', linewidth=2, label='70% threshold')
-
-    # Labels and styling
-    ax.set_xlabel('Majority Fraction (%)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Number of Groups', fontsize=12, fontweight='bold')
-    ax.set_title('Purity Distribution of Consensus Groups', fontsize=14, fontweight='bold', pad=20)
-    ax.legend(loc='upper left')
+    ax.hist(values, bins=np.linspace(0, 1, 21), edgecolor='black', linewidth=1.0, color='#4C72B0')
+    ax.set_xlabel('Majority fraction (majority label / labeled members)', fontsize=12)
+    ax.set_ylabel('Haplotypes', fontsize=12)
+    ax.set_title('Majority fraction per haplotype', fontsize=14, pad=20)
     ax.grid(axis='y', alpha=0.3)
-
-    # Add statistics
-    stats_text = f"Mean: {purity.mean():.1f}%\nMedian: {np.median(purity):.1f}%"
-    ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
+    ax.text(0.98, 0.98, f"n = {len(values)}\nmedian = {np.median(values):.2f}",
+            transform=ax.transAxes, va='top', ha='right',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
-
-    logger.info(f"Purity distribution saved to {output_path}")
+    logger.info(f"Majority fraction distribution saved to {output_path}")
 
 
 def generate_quality_control_report(
     df: pd.DataFrame,
     output_dir: Path,
     organism: str,
-    group_col: str = "consensus_group",
-    species_col: str = "species"
+    group_col: str = "haplotype_id",
+    species_col: str = "species",
+    haplotype_sequences: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
-    Generate quality control report.
+    Write the label-conflict report.
 
-    This creates:
-    - mixed_species_summary.csv
-    - contamination_heatmap.pdf
-    - depositor_flags_summary.csv
-    - potential_misidentifications.csv
-    - purity_distribution.pdf
-    - README.md
+    Files: label_conflicts.csv, haplotype_label_summary.csv,
+    depositor_keyword_hits.csv, label_composition_heatmap.pdf,
+    majority_fraction_distribution.pdf, README.md.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Enhanced annotated dataframe with contamination columns
-    output_dir : Path
-        Output directory for QC files
-    organism : str
-        Organism name
-    group_col : str
-        Column name for haplotypes
-    species_col : str
-        Column name for species labels
-
-    Returns
-    -------
-    dict
-        Summary statistics and file paths
+    df must carry the columns from add_label_columns. haplotype_sequences
+    (haplotype_id -> aligned core sequence) enables the distance evidence.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if 'label_conflict' not in df.columns:
+        df = add_label_columns(df, group_col=group_col, species_col=species_col)
+    results: Dict[str, Any] = {}
 
-    results = {}
+    summary = summarize_haplotype_labels(df, group_col)
+    summary.to_csv(output_dir / "haplotype_label_summary.csv", index=False)
+    results['haplotype_label_summary'] = output_dir / "haplotype_label_summary.csv"
 
-    # 1. Analyze contamination
-    contamination_summary = analyze_group_contamination(df, group_col, species_col)
-    contamination_path = output_dir / "mixed_species_summary.csv"
-    contamination_summary.to_csv(contamination_path, index=False)
-    results['mixed_species_summary'] = contamination_path
+    conflicts = build_label_conflicts(df, group_col, haplotype_sequences)
+    conflicts.to_csv(output_dir / "label_conflicts.csv", index=False)
+    results['label_conflicts'] = output_dir / "label_conflicts.csv"
 
-    # 2. Depositor flags
-    depositor_flags = generate_depositor_flags_summary(df, group_col, species_col)
-    flags_path = output_dir / "depositor_flags_summary.csv"
-    depositor_flags.to_csv(flags_path, index=False)
-    results['depositor_flags'] = flags_path
+    hits = df[df['has_depositor_keyword_hit']]
+    hits_out = pd.DataFrame({
+        'processid': hits.get('processid'), 'haplotype_id': hits.get(group_col),
+        'label': hits['label'], 'depositor_note': hits['depositor_notes'],
+        'keyword_hits': hits['depositor_keyword_hits'],
+    })
+    hits_out.to_csv(output_dir / "depositor_keyword_hits.csv", index=False)
+    results['depositor_keyword_hits'] = output_dir / "depositor_keyword_hits.csv"
 
-    # 3. Potential misidentifications
-    misidentified = df[df['potential_misidentification']].copy()
-    if len(misidentified) > 0:
-        misid_cols = [
-            'processid', species_col, group_col, 'group_majority_species',
-            'group_majority_pct', 'misidentification_confidence',
-            'depositor_uncertainty_flag', 'depositor_notes'
-        ]
-        misid_cols = [c for c in misid_cols if c in misidentified.columns]
-        misid_path = output_dir / "potential_misidentifications.csv"
-        misidentified[misid_cols].to_csv(misid_path, index=False)
-        results['potential_misidentifications'] = misid_path
-
-    # 4. Contamination heatmap
-    heatmap_path = output_dir / "contamination_heatmap.pdf"
     try:
-        create_contamination_heatmap(df, heatmap_path, group_col, species_col)
-        results['contamination_heatmap'] = heatmap_path
+        create_label_composition_heatmap(df, output_dir / "label_composition_heatmap.pdf", group_col)
+        results['label_composition_heatmap'] = output_dir / "label_composition_heatmap.pdf"
     except Exception as e:
-        logger.warning(f"Could not create contamination heatmap: {e}", extra={"step_failure": "6 post-assignment QC"})
-
-    # 5. Purity distribution
-    purity_path = output_dir / "purity_distribution.pdf"
+        logger.warning(f"Could not create label composition heatmap: {e}",
+                       extra={"step_failure": "6 post-assignment QC"})
     try:
-        create_purity_distribution(contamination_summary, purity_path)
-        results['purity_distribution'] = purity_path
+        create_majority_fraction_distribution(summary, output_dir / "majority_fraction_distribution.pdf")
+        results['majority_fraction_distribution'] = output_dir / "majority_fraction_distribution.pdf"
     except Exception as e:
-        logger.warning(f"Could not create purity distribution: {e}", extra={"step_failure": "6 post-assignment QC"})
+        logger.warning(f"Could not create majority fraction distribution: {e}",
+                       extra={"step_failure": "6 post-assignment QC"})
 
-    # 6. Summary statistics
-    n_groups = len(contamination_summary)
-    n_mixed = len(contamination_summary[contamination_summary['n_species'] > 1])
-    n_pure = len(contamination_summary[contamination_summary['n_species'] == 1])
-    pct_contaminated = (n_mixed / n_groups * 100) if n_groups > 0 else 0
-    n_flagged_samples = len(df[df['depositor_uncertainty_flag']])
-    n_potential_misid = len(df[df['potential_misidentification']])
-
+    n_haps = len(summary)
+    n_with_conflict = int((summary['n_label_conflicts'] > 0).sum()) if n_haps else 0
+    n_conflicts = len(conflicts)
+    n_missing = int(summary['n_missing_label'].sum()) if n_haps else 0
     results['summary'] = {
-        'total_groups': n_groups,
-        'pure_groups': n_pure,
-        'mixed_groups': n_mixed,
-        'pct_contaminated': pct_contaminated,
-        'flagged_samples': n_flagged_samples,
-        'potential_misidentifications': n_potential_misid
+        'total_groups': n_haps,
+        'groups_with_label_conflict': n_with_conflict,
+        'n_label_conflicts': n_conflicts,
+        'n_missing_label': n_missing,
+        'n_keyword_hits': len(hits_out),
     }
 
-    # 7. README
-    readme_path = output_dir / "README.md"
-    readme_content = f"""# Quality Control Report for {organism}
+    readme = f"""# Record labels within haplotypes: {organism}
 
-## Overview
+These tables compare each haplotype's member records by their BOLD labels. They
+report counts; they do not decide which label is correct.
 
-This directory contains quality control analysis identifying potential
-contamination and misidentifications in the genotype assignments.
+## Definitions
+
+- **label**: the record's BOLD species, or its genus when the species is missing
+  (a genus-only label); empty when both are missing.
+- **majority label**: the most common species-level label among a haplotype's
+  members (exact and corrected). Genus-only and open-nomenclature labels
+  (`sp.`, `cf.`, `aff.`) of the majority's genus are compatible with it. When
+  two or more labels tie for most common, there is no majority label.
+- **majority_fraction**: members with the majority label / members with a
+  species-level label (plus genus-only labels of other genera). Records without
+  a label are not in the denominator; they are counted in `n_missing_label`.
+- **label conflict**: a member whose species-level label differs from the
+  majority label, any species-level member of a haplotype without a majority
+  label, or a genus-only label of another genus.
 
 ## Files
 
-- **mixed_species_summary.csv**: Summary of contamination in each haplotype
-- **contamination_heatmap.pdf**: Visual overview of species × groups
-- **depositor_flags_summary.csv**: Samples with depositor uncertainty notes
-- **potential_misidentifications.csv**: Flagged samples that were likely misidentified based on group majority and depositor notes
-- **purity_distribution.pdf**: Distribution of majority fractions
+- **label_conflicts.csv**: one row per label-conflict record:
+  `processid, label, haplotype_id, n_members, n_labeled, majority_label,
+  n_majority, majority_fraction, nearest_haplotype_with_label,
+  distance_to_nearest_with_label, depositor_keyword_hits, depositor_note`.
+  `nearest_haplotype_with_label` is the nearest other haplotype with at least
+  one member carrying the record's label, and `distance_to_nearest_with_label`
+  the uncorrected p-distance to it (empty when no other haplotype carries it).
+- **haplotype_label_summary.csv**: one row per haplotype:
+  `haplotype_id, n_members, n_labeled, n_missing_label, n_species_labels,
+  majority_label, n_majority, majority_fraction, labels, n_label_conflicts`
+  (`labels` lists every label with its count).
+- **depositor_keyword_hits.csv**: records whose depositor note contains one of a
+  fixed list of keywords (whole words), with the note and the keywords matched.
+  A keyword hit is a pointer to read the note, not an interpretation of it.
+- **label_composition_heatmap.pdf**: record counts by haplotype and label.
+- **majority_fraction_distribution.pdf**: histogram of `majority_fraction`.
 
-## Summary Statistics
+## Counts
 
-- **Total haplotypes analyzed**: {n_groups}
-- **Pure groups (single species)**: {n_pure} ({n_pure/n_groups*100:.1f}%)
-- **Mixed groups (multiple species)**: {n_mixed} ({pct_contaminated:.1f}%)
-- **Samples with depositor uncertainty flags**: {n_flagged_samples}
-- **Potential misidentifications**: {n_potential_misid}
-
-## Interpretation
-
-### Group Purity Flags
-
-- **CLEAN**: 100% single species - high confidence this haplotype is a homogeneous group
-- **CONTAMINATED**: <100% but >70% majority - minor contamination present (some samples were likely originally misidentified or contaminated)
-- **AMBIGUOUS**: <70% majority - the haplotype is valid, but default to genus-level assignment because species-level assignment is unclear
-
-### Misidentification Confidence
-
-- **high**: >95% identity, clear majority (>90%), no depositor uncertainty
-- **medium**: 90-95% identity, moderate majority (70-90%), or has uncertainty notes
-- **low**: <90% identity, weak majority (<70%), or flagged as ambiguous
+- Haplotypes: {n_haps}
+- Haplotypes with at least one label conflict: {n_with_conflict}
+- Label-conflict records: {n_conflicts}
+- Members without a label: {n_missing}
+- Records with a depositor-note keyword hit: {len(hits_out)}
 """
-
-    with open(readme_path, 'w') as f:
-        f.write(readme_content)
-
-    results['readme'] = readme_path
-
-    logger.info(f"Quality control report generated in {output_dir}")
-
+    (output_dir / "README.md").write_text(readme)
+    results['readme'] = output_dir / "README.md"
+    logger.info(f"Label report written to {output_dir}")
     return results
 
 
 def print_quality_alert(qc_summary: Dict[str, Any]) -> None:
-    """
-    Print quality control alerts to console.
-
-    Parameters
-    ----------
-    qc_summary : dict
-        Summary dictionary from generate_quality_control_report
-    """
-    summary = qc_summary.get('summary', {})
-
-    n_mixed = summary.get('mixed_groups', 0)
-    total_groups = summary.get('total_groups', 0)
-    n_flagged = summary.get('flagged_samples', 0)
-    n_misid = summary.get('potential_misidentifications', 0)
-
-    if n_mixed > 0 or n_flagged > 0 or n_misid > 0:
-        print("\n" + "="*70)
-        print("QUALITY CONTROL ALERTS")
-        print("="*70)
-
-        if n_mixed > 0:
-            pct = (n_mixed / total_groups * 100) if total_groups > 0 else 0
-            print(f"\n{n_mixed} of {total_groups} haplotypes contain multiple species ({pct:.1f}%)")
-            print("    See: quality_control/mixed_species_summary.csv")
-
-        if n_misid > 0:
-            print(f"\n{n_misid} samples flagged as potential misidentifications")
-            print("    See: quality_control/potential_misidentifications.csv")
-
-        if n_flagged > 0:
-            print(f"\n {n_flagged} samples have depositor notes indicating uncertainty")
-            print("    See: quality_control/depositor_flags_summary.csv")
-
-        print("\n TIP: Consider running family-level analysis for quality control")
-        print("   Run: python scripts/compare_analyses.py --help")
-        print("="*70 + "\n")
+    """Print label-conflict counts to the console."""
+    s = qc_summary.get('summary', {})
+    n_conflicts = s.get('n_label_conflicts', 0)
+    if n_conflicts or s.get('n_keyword_hits', 0):
+        print("\n" + "=" * 70)
+        print("RECORD LABELS")
+        print("=" * 70)
+        print(f"{s.get('groups_with_label_conflict', 0)} of {s.get('total_groups', 0)} haplotypes "
+              f"have label conflicts ({n_conflicts} records); "
+              f"{s.get('n_missing_label', 0)} members have no label")
+        print("    See: quality_control/label_conflicts.csv and haplotype_label_summary.csv")
+        if s.get('n_keyword_hits', 0):
+            print(f"{s['n_keyword_hits']} records have depositor-note keyword hits")
+            print("    See: quality_control/depositor_keyword_hits.csv")
+        print("=" * 70 + "\n")
     else:
-        print("\n Quality control: No significant contamination detected")
+        print("\nRecord labels: no label conflicts within haplotypes")
