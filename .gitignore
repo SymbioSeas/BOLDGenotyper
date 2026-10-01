@@ -100,3 +100,6 @@ tests/*.log
 # Word documents and lock files
 *.docx
 ~$*
+
+# Tutorial notebook runs
+notebooks/tutorial_output/
