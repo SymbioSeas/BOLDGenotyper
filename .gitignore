@@ -87,6 +87,7 @@ docs/guides/BENCHMARKING_QUICKSTART.md
 # Benchmarking and analysis scripts (local work in progress)
 benchmarking/
 scripts/
+scripts_v1.0.0_backup/
 
 # Shapefiles (too large for git; see README for download instructions)
 shapefiles/
