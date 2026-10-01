@@ -2,62 +2,83 @@
 
 ## Overview
 
-BOLDGenotyper now supports exporting genotyping results to multiple population genetics software formats, enabling seamless integration with downstream analysis tools.
+BOLDGenotyper exports haplotype assignments to population genetics software formats
+with `--export-format`. Nothing is exported unless you ask for it.
+
+Populations are the regions of the run's region column (`--geo-category`; `ocean_basin`
+with GOaS, or the field of a custom shapefile). Because haplotypes are exact sequence
+variants of the core region, every record of a haplotype has the same core sequence, so
+the haplotype's sequence is used for each of its records.
 
 ## Quick Start
 
-### Basic Usage
-
 Export to all formats:
 ```bash
-boldgenotyper Sphyrnidae.tsv --export-format all
+boldgenotyper Sphyrnidae.tsv --singleton-distance 0.015 --export-format all
 ```
 
 Export to specific formats:
 ```bash
-boldgenotyper Sphyrnidae.tsv --export-format arlequin popart dnasp
+boldgenotyper Sphyrnidae.tsv --singleton-distance 0.015 --export-format arlequin popart dnasp
 ```
 
 ### Available Formats
 
 1. **Arlequin** (`arlequin`) - For Arlequin software
-2. **PopART/NEXUS** (`popart`) - For PopART haplotype network analysis
+2. **PopART/NEXUS** (`popart`) - For PopART haplotype networks
 3. **DnaSP** (`dnasp`) - For DNA sequence polymorphism analysis
-4. **Generic** (`generic`) - CSV and FASTA formats for general use
-5. **All** (`all`) - Export all formats at once
+4. **Generic** (`generic`) - CSV tables for general use
+5. **All** (`all`) - All of the above
+
+## Which Records Are Exported
+
+Exports include the records assigned to a haplotype (status `assigned` or
+`assigned_corrected` in `records.csv`). A record has a region only when its coordinates
+are of geographic quality (`coord_status` ok); records with missing, centroid or zero
+coordinates, or outside every region, have no region.
+
+| Format | Records without a region |
+|---|---|
+| Arlequin | left out (every sample needs a population) |
+| DnaSP | left out (populations are read from the sequence names) |
+| PopART | kept, with the region trait `Unassigned` |
+| Generic | kept, with an empty region |
+
+The log reports how many records each format left out. If many records have no region,
+check `coord_status` in `records.csv` before interpreting population comparisons.
 
 ## Output Structure
-
-When you run the pipeline with `--export-format`, exports are saved to:
 
 ```
 {organism}_output/
 └── exports/
-    ├── README.md                    # Format descriptions and usage instructions
+    ├── README.md                    # format descriptions and usage
     ├── arlequin/
-    │   ├── {organism}.arp          # Arlequin project file
-    │   └── populations.txt         # Population definitions
+    │   ├── {organism}.arp           # Arlequin project file
+    │   └── populations.csv          # populations: records, haplotypes, most common species
     ├── popart/
-    │   ├── {organism}.nexus        # NEXUS alignment with traits
-    │   └── populations.csv         # Population mapping
+    │   ├── {organism}.nexus         # NEXUS alignment with traits
+    │   └── popart_traits.csv        # traits per taxon
     ├── dnasp/
-    │   └── {organism}.fas          # FASTA with population labels
+    │   └── {organism}.fas           # FASTA named by population
     └── generic/
-        ├── alignment.fasta         # Consensus sequences
-        ├── genotype_membership.csv # Sample-to-genotype mapping
-        └── haplotypes.csv          # Haplotype summary table
+        ├── haplotype_membership.csv # record-to-haplotype table
+        └── haplotype_summary.csv    # one row per haplotype
 ```
+
+The haplotype sequences themselves are in the run's `haplotypes.fasta`. The run's
+`README.md` defines every column of these files.
 
 ## Format Details
 
 ### 1. Arlequin Format (.arp)
 
 **Software:** Arlequin (http://cmpg.unibe.ch/software/arlequin35/)
-**Use for:** Population genetics analysis, AMOVA, genetic diversity, population structure
+**Use for:** AMOVA, genetic diversity, population structure
 
 **Files:**
-- `{organism}.arp` - Main project file
-- `populations.txt` - Population metadata
+- `{organism}.arp` - project file, one sample group per region
+- `populations.csv` - `population`, `n_samples`, `n_haplotypes`, `dominant_species`
 
 **How to use:**
 1. Open Arlequin
@@ -68,17 +89,18 @@ When you run the pipeline with `--export-format`, exports are saved to:
 ### 2. PopART/NEXUS Format
 
 **Software:** PopART (http://popart.otago.ac.nz/)
-**Use for:** Haplotype network visualization, phylogeography, TCS networks
+**Use for:** Haplotype networks, phylogeography
 
 **Files:**
-- `{organism}.nexus` - NEXUS alignment with trait data
-- `populations.csv` - Population assignments
+- `{organism}.nexus` - alignment with one taxon per record and trait data
+- `popart_traits.csv` - `taxon` (haplotype ID and a running number, e.g. `H0001_001`),
+  `haplotype`, `species`, and the region (`Unassigned` when none)
 
 **How to use:**
 1. Open PopART
 2. File → Open → Select the .nexus file
 3. Choose network method (TCS, Median-Joining, etc.)
-4. Compute network
+4. Color by the region trait
 
 ### 3. DnaSP Format (.fas)
 
@@ -86,223 +108,132 @@ When you run the pipeline with `--export-format`, exports are saved to:
 **Use for:** Nucleotide diversity, neutrality tests, haplotype analysis
 
 **Files:**
-- `{organism}.fas` - FASTA with metadata in headers
+- `{organism}.fas` - one sequence per record with a region
 
-**Header format:**
+**Header format** (`{population}|{processid}`, then metadata):
 ```
->sample_id [genotype=c1_n10;species=Sphyrna_lewini;basin=Atlantic;processid=SAMPLE001]
+>Indian_Ocean|EMADA222-09 [haplotype=H0001;species=Sphyrna_lewini;ocean_basin=Indian_Ocean;processid=EMADA222-09]
 ```
 
 **How to use:**
 1. Open DnaSP
 2. File → Open Data File → Select the .fas file
-3. Parse population assignments from headers
+3. Define Sequence Sets → Auto-detect by name (reads the population before `|`)
 4. Run analyses
 
 ### 4. Generic Formats
 
-**Use for:** Custom analyses, R/Python scripts, any software accepting standard formats
+**Use for:** R/Python scripts and other software
 
-**Files:**
-
-1. **alignment.fasta** - Consensus sequences for all genotypes
-   ```
-   >c1_n10 n=10 species=Sphyrna_lewini
-   ATCGATCGATCG...
-   ```
-
-2. **genotype_membership.csv** - Complete sample metadata
+1. **haplotype_membership.csv** - one row per assigned record
    ```csv
-   processid,consensus_group,species,lat,lon,ocean_basin,consensus_sequence,sequence_length
-   SAMPLE001,c1_n10,Sphyrna lewini,-25.3,35.2,Indian Ocean,ATCG...,650
+   processid,haplotype_id,species,lat,lon,ocean_basin,country/ocean,consensus_sequence,sequence_length
+   SAMPLE001,H0001,Sphyrna lewini,-25.3,35.2,Indian Ocean,Mozambique,ATCG...,650
    ```
 
-3. **haplotypes.csv** - Haplotype summary statistics
+2. **haplotype_summary.csv** - one row per haplotype
    ```csv
-   haplotype_id,sequence,sequence_length,n_samples,species,primary_basin,n_basins
-   c1_n10,ATCG...,650,386,Sphyrna lewini,Indian Ocean,3
+   haplotype_id,sequence,sequence_length,n_samples,species,primary_population,n_populations
+   H0001,ATCG...,650,386,Sphyrna lewini,Indian Ocean,3
    ```
 
 ## Example Workflows
 
-### Workflow 1: Haplotype Network in PopART
+### Haplotype Network in PopART
 
 ```bash
-# Run pipeline with PopART export
-boldgenotyper Sphyrnidae.tsv --export-format popart
-
+boldgenotyper Sphyrnidae.tsv --singleton-distance 0.015 --export-format popart
 # Output: Sphyrnidae_output/exports/popart/Sphyrnidae.nexus
 ```
 
-Then in PopART:
-1. File → Open → Select `Sphyrnidae.nexus`
-2. Network → TCS Network
-3. Color by trait: `ocean_basin`
-4. Generate network
+Then in PopART: File → Open → `Sphyrnidae.nexus`; Network → TCS Network; color by
+`ocean_basin`.
 
-### Workflow 2: Population Structure in Arlequin
+### Population Structure in Arlequin
 
 ```bash
-# Run pipeline with Arlequin export
-boldgenotyper Sphyrnidae.tsv --export-format arlequin
-
+boldgenotyper Sphyrnidae.tsv --singleton-distance 0.015 --export-format arlequin
 # Output: Sphyrnidae_output/exports/arlequin/Sphyrnidae.arp
 ```
 
-Then in Arlequin:
-1. File → Open → Select `Sphyrnidae.arp`
-2. Settings → AMOVA
-3. Define population structure
-4. Execute → AMOVA
+Then in Arlequin: File → Open → `Sphyrnidae.arp`; Settings → AMOVA; Execute.
 
-### Workflow 3: Custom Analysis in R
+### Custom Analysis in R
 
-```bash
-# Export generic formats
-boldgenotyper Sphyrnidae.tsv --export-format generic
-```
+The run's own tables need no export:
 
-Then in R:
 ```r
-# Load genotype membership
 library(tidyverse)
-membership <- read_csv("Sphyrnidae_output/exports/generic/genotype_membership.csv")
+records <- read_csv("Sphyrnidae_output/records.csv")
 
-# Load haplotypes
-haplotypes <- read_csv("Sphyrnidae_output/exports/generic/haplotypes.csv")
-
-# Analyze geographic distribution
-membership %>%
-  group_by(consensus_group, ocean_basin) %>%
-  summarize(n = n()) %>%
-  ggplot(aes(x = ocean_basin, y = n, fill = consensus_group)) +
+records %>%
+  filter(status %in% c("assigned", "assigned_corrected"), !is.na(ocean_basin)) %>%
+  count(haplotype_id, ocean_basin) %>%
+  ggplot(aes(x = ocean_basin, y = n, fill = haplotype_id)) +
   geom_col()
 ```
 
-### Workflow 4: Export Multiple Formats
-
-```bash
-# Export all formats for comprehensive analysis
-boldgenotyper Sphyrnidae.tsv \
-  --export-format all \
-  --clustering-threshold 0.015 \
-  --threads 8
-```
-
-## Integration with Full Pipeline
-
-The export formats integrate seamlessly with the full pipeline:
-
-```bash
-boldgenotyper Sphyrnidae.tsv \
-  --clustering-threshold 0.015 \
-  --similarity-threshold 0.50 \
-  --build-tree \
-  --export-format all \
-  --export-plot-data \
-  --threads 8
-```
-
-This will:
-1. Run complete genotyping pipeline
-2. Generate all visualizations
-3. Export population genetics formats
-4. Export plot data for custom figures
-5. Generate HTML report
-
-## File Naming Conventions
-
-All exported files use the organism name from your input file:
-
-- Input: `Sphyrna_lewini.tsv` → Organism: `Sphyrna_lewini`
-- Exports: `Sphyrna_lewini.arp`, `Sphyrna_lewini.nexus`, etc.
-
-## Data Included in Exports
-
-### Genotype Information
-- Consensus sequences for each genotype
-- Sample assignments to genotypes
-- Genotype labels (e.g., `c15_n386`)
-
-### Geographic Data (if available)
-- Ocean basin assignments
-- Latitude/longitude coordinates
-- Country information
-
-### Taxonomic Data
-- Species assignments
-- Sample identifiers (processid)
-
-### Metadata
-- Sequence lengths
-- Sample counts per genotype
-- Population structure
+(`geography/haplotype_by_region.csv` already holds these counts.)
 
 ## Tips and Best Practices
 
-1. **Format Selection**: Choose formats based on your analysis goals
-   - Phylogeography → PopART
+1. **Format selection**
+   - Phylogeography and networks → PopART
    - Population structure → Arlequin
-   - Diversity metrics → DnaSP
-   - Custom analyses → Generic
+   - Diversity statistics → DnaSP
+   - Custom analyses → Generic, or the run's `records.csv`
 
-2. **Data Quality**: Exports only include samples successfully assigned to genotypes
-   - Unassigned samples are excluded
-   - Check assignment diagnostics before exporting
+2. **Records without a region** are left out of Arlequin and DnaSP; see
+   [Which Records Are Exported](#which-records-are-exported).
 
-3. **Downstream Analysis**: Always check the generated README.md for format-specific details
+3. **Corrected records**: `assigned_corrected` records (error-filtered singletons
+   assigned to their nearest haplotype) are exported with that haplotype's sequence.
+   Use `--no-assign-corrected` to leave them out.
 
-4. **Large Datasets**: Consider exporting only needed formats to save time
-   ```bash
-   # Only export what you need
-   boldgenotyper large_dataset.tsv --export-format generic
-   ```
-
-5. **Combining with Other Tools**: Generic formats are ideal for custom pipelines
-   ```bash
-   # Export generic, then process with custom scripts
-   boldgenotyper data.tsv --export-format generic
-   python my_analysis.py exports/generic/genotype_membership.csv
-   ```
+4. **Format details**: see `exports/README.md` in the run folder.
 
 ## Troubleshooting
 
 ### Issue: No sequences in export
 
-**Cause**: No samples were assigned to genotypes
-**Solution**: Check genotype assignment diagnostics, adjust similarity threshold
+**Cause**: no records were assigned to a haplotype.
+**Solution**: check `summary.csv` and the statuses in `records.csv`.
 
-### Issue: Missing geographic data
+### Issue: Arlequin or DnaSP file is empty or small
 
-**Cause**: GOaS shapefile not available
-**Solution**: Download manually from https://www.marineregions.org/downloads.php (search for `GOaS_v1_20211214.zip`, registration form required), extract to `shapefiles/GOaS_v1_20211214/`, then verify with `python -m boldgenotyper.goas_downloader`. Alternatively, use `--no-geo` to skip geographic analysis.
+**Cause**: few records have a region (missing or centroid coordinates, or no shapefile).
+**Solution**: check `coord_status` in `records.csv` and the warnings at the end of the log.
+For GOaS, download from https://www.marineregions.org/downloads.php
+(`GOaS_v1_20211214.zip`, registration form required), extract to
+`shapefiles/GOaS_v1_20211214/`, and verify with `python -m boldgenotyper.goas_downloader`.
 
 ### Issue: Format-specific software won't open file
 
-**Cause**: Incorrect file format or path
-**Solution**: Check README.md for format specifications, verify software version
+**Cause**: incorrect file format or path.
+**Solution**: check `exports/README.md`; verify the software version.
 
 ## Advanced Usage
 
 ### Custom Population Grouping
 
-By default, exports group samples by consensus genotype. For custom grouping:
+Populations come from the region column. To export by another column, for example
+country, call the exporter on the run's `records.csv`:
 
 ```python
 from boldgenotyper import popgen_export
 import pandas as pd
 
-# Load annotated data
-df = pd.read_csv("Sphyrnidae_output/Sphyrnidae_annotated.csv")
+run = "Sphyrnidae_output"
+records = pd.read_csv(f"{run}/records.csv")
+records = records[records["status"].isin(["assigned", "assigned_corrected"])]
 
-# Export grouped by ocean basin instead
-results = popgen_export.export_population_genetics_formats(
-    df=df,
-    consensus_fasta_path="consensus.fasta",
+popgen_export.export_population_genetics_formats(
+    df=records,
+    consensus_fasta_path=f"{run}/haplotypes.fasta",
     output_dir="custom_exports",
     organism="Sphyrnidae",
-    formats=['arlequin'],
-    group_by='ocean_basin'  # Custom grouping
+    formats=["arlequin", "dnasp"],
+    pop_column="country/ocean",
 )
 ```
 
@@ -310,8 +241,7 @@ results = popgen_export.export_population_genetics_formats(
 
 If you use these exports in a publication, please cite:
 
-1. **BOLDGenotyper:**
-   Smith et al. (in prep) BOLDGenotyper: Automated genotyping and quality control for DNA barcode data.
+1. **BOLDGenotyper:** see [CITATION.cff](../../CITATION.cff).
 
 2. **BOLD Database:**
    Ratnasingham S, Hebert PDN (2007) BOLD: The Barcode of Life Data System.
@@ -324,13 +254,10 @@ If you use these exports in a publication, please cite:
 
 ## Support
 
-For questions or issues:
-- GitHub: https://github.com/yourusername/boldgenotyper
-- Documentation: [BOLDGenotyper docs]
+- GitHub: https://github.com/SymbioSeas/BOLDGenotyper/issues
 - Email: symbioseas@outlook.com
 
 ---
 
-**Version:** 1.0.0
-**Last Updated:** 2025-11-25
+**BOLDGenotyper version:** 2.0.0
 **Module:** `boldgenotyper.popgen_export`

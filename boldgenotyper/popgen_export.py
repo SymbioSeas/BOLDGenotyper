@@ -741,7 +741,7 @@ def export_population_genetics_formats(
         f"Exporting population genetics formats (populations defined by '{pop_column}')..."
     )
 
-    exports_dir = output_dir / "exports"
+    exports_dir = Path(output_dir) / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
 
     results: Dict[str, Any] = {'formats': formats, 'pop_column': pop_column, 'files': {}}

@@ -337,14 +337,18 @@ FILE_DOCS = [
     {"pattern": "exports/README.md", "text": "--export-format. How to use the exported files."},
     {"pattern": "exports/arlequin/*.arp", "text": "--export-format arlequin. Arlequin project file."},
     {"pattern": "exports/arlequin/populations.csv",
-     "text": "--export-format arlequin. Populations (regions) in the Arlequin file.",
+     "text": "--export-format arlequin. Populations (regions) in the Arlequin file; records without a "
+             "region are left out of the Arlequin and DnaSP files.",
      "columns": {"population": "region", "n_samples": "records", "n_haplotypes": "haplotypes",
                  "dominant_species": "most common species label"}},
     {"pattern": "exports/dnasp/*.fas", "text": "--export-format dnasp. DnaSP FASTA, one sequence per record."},
     {"pattern": "exports/popart/*.nexus", "text": "--export-format popart. PopART NEXUS file."},
     {"pattern": "exports/popart/popart_traits.csv",
-     "text": "--export-format popart. Traits table for PopART.",
-     "columns": {"taxon": "processid", "haplotype": "haplotype ID", "species": "species label"}},
+     "text": "--export-format popart. Traits table for PopART (every assigned record; records without "
+             "a region are 'Unassigned').",
+     "columns": {"taxon": "taxon name in the NEXUS file: haplotype ID and a running number (H0001_001)",
+                 "haplotype": "haplotype ID", "species": "species label (spaces as underscores)",
+                 REGION: "region, or 'Unassigned' for records without one"}},
     {"pattern": "exports/generic/haplotype_membership.csv",
      "text": "--export-format generic. Record-to-haplotype table.",
      "columns": {"species": "species label", "consensus_sequence": "the haplotype's sequence",
@@ -404,7 +408,7 @@ def _column_text(col: str, entry: dict, region_col: str) -> Optional[str]:
     if col in own:
         return own[col]
     if col == region_col:
-        return COLUMNS[REGION]
+        return own.get(REGION, COLUMNS[REGION])
     if col in COLUMNS:
         return COLUMNS[col]
     if col in KEY_BOLD_FIELDS:
