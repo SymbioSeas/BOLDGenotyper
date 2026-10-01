@@ -5,6 +5,23 @@
 **Target Output**: All benchmarking figures, tables, and statistics for manuscript
 **Date**: 2026-01-28
 
+> **Version note (2.0.0)**: This protocol was written for, and the results in
+> `benchmarking/` were produced with, BOLDGenotyper 1.0.0. In 2.0.0:
+> - Records are mapped to haplotypes directly, with one status per record
+>   (`assigned`, `assigned_corrected`, `excluded_error_singleton`,
+>   `excluded_core_coverage`, `failed_qc`, `no_sequence`). There are no identity scores,
+>   ties or low-confidence flags, so the identity-based metrics of Benchmark 2 do not
+>   apply; use `status` and agreement measures such as the Adjusted Rand Index.
+> - The annotated table is `records.csv` (`haplotype_id`, `status`, `label`, ...);
+>   haplotype IDs are `H0001`, ... with a stable `seq_md5`; per-haplotype data are in
+>   `haplotypes.csv`.
+> - Pass `--singleton-distance` explicitly; the sweep reports the elbow with the share of
+>   records that change haplotype between thresholds.
+> - "Contamination" reporting is replaced by label conflicts with evidence
+>   (`label_conflicts.csv`).
+>
+> See [MIGRATION_v1_to_v2.md](MIGRATION_v1_to_v2.md) for every file and column.
+
 ---
 
 ## Overview
