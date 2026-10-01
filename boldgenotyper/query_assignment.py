@@ -1,70 +1,198 @@
-"""Query assignment verdict: turn a query's matches into an interpretable call.
+"""Query assignment verdict: turn a query's matches into numbers and a call.
 
-Given the full list of haplotype matches for one query and a species map, decide
-whether the query is confidently one haplotype, tied among several, or not a
-confident match to anything, and whether it resolves to a single species.
+Given every haplotype match for one query (from the overlap alignment) and the
+reference run's member labels, decide which haplotypes the query cannot tell
+apart (its equivalence set) and whether their pooled member labels support a
+species call. No interpretive labels: the verdict reports numbers and flags.
+
+Eligible match: overlap_coverage >= min_query_coverage and identity_pct >=
+100 * min_identity. Ranking: eligible first, then fewer differences
+(mismatches + gap columns), higher coverage, higher identity, longer
+alignment, haplotype ID. Equivalence set: eligible matches within
+max_mismatch_delta differences of the best.
+
+Flags: indel_in_query, low_coverage, below_identity, set_not_identical,
+label_conflict_in_set, species_support_below_threshold, no_species_labels,
+no_reference_labels.
 """
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
+
+from . import taxon_labels
+
+CALL_LEVELS = ("haplotype", "haplotype_set", "none")
 
 
 @dataclass(frozen=True)
 class QueryVerdict:
     query_id: str
-    haplotype_call: str
-    assigned_haplotypes: List[str]
+    query_length: int
+    best_haplotype: Optional[str]
     best_identity: float
-    n_tied: int
-    species_call: str
-    assigned_species: Optional[str]
-    candidate_species: List[str]
-    reason: str
+    aligned_length: int
+    query_coverage: float
+    overlap_coverage: float
+    n_mismatches: int
+    n_gaps: int
+    differences: Optional[int]
+    call_level: str                       # haplotype | haplotype_set | none
+    equivalence_set: List[str]
+    n_equivalent: int
+    set_identical_over_region: Optional[bool]
+    pooled_member_labels: str
+    species_call: str                     # "" when no species is called
+    species_support: Optional[float]
+    flags: List[str]
+    notes: str
+    max_mismatch_delta: int               # delta applied to this query
+    n_reference_haplotypes: int = 0
 
 
-def assign_query(query_id, matches, species_by_haplotype, min_identity, tie_margin):
-    """Compute a QueryVerdict from a query's full, identity-sorted match list."""
-    min_pct = min_identity * 100.0
-    if not matches:
-        return QueryVerdict(query_id, "no_confident_match", [], 0.0, 0,
-                            "unassigned", None, [], "no haplotype matches")
+def is_eligible(match, min_identity: float, min_query_coverage: float) -> bool:
+    return (match.overlap_coverage >= min_query_coverage
+            and match.identity_pct >= min_identity * 100.0)
 
-    best = matches[0]
-    if best.identity_pct < min_pct:
+
+def rank_matches(matches: Sequence, min_identity: float, min_query_coverage: float) -> list:
+    """Order matches: eligible first, then fewer differences, higher coverage,
+    higher identity, longer alignment, haplotype ID."""
+    return sorted(matches, key=lambda m: (
+        not is_eligible(m, min_identity, min_query_coverage),
+        m.differences, -m.overlap_coverage, -m.identity_pct, -m.aligned_length,
+        m.haplotype_id,
+    ))
+
+
+def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]], *,
+                 min_identity: float = 0.97, min_query_coverage: float = 0.95,
+                 max_mismatch_delta: int = 0, min_species_support: float = 0.70,
+                 tie_margin: Optional[float] = None) -> QueryVerdict:
+    """Compute a QueryVerdict from a query's full list of haplotype matches.
+
+    member_labels maps haplotype_id -> labels of its member records (exact
+    and corrected); None when the reference has no record labels (bare FASTA
+    or a v1 run folder). tie_margin is the deprecated fractional margin: when
+    given, this query's delta is floor(tie_margin * aligned_length of the best
+    match).
+    """
+    ranked = rank_matches(matches, min_identity, min_query_coverage)
+    eligible = [m for m in ranked if is_eligible(m, min_identity, min_query_coverage)]
+    top = ranked[0] if ranked else None
+    flags: List[str] = []
+
+    def _verdict(best, call_level, eq, identical, pooled_text, species_call, support, delta, notes):
         return QueryVerdict(
-            query_id, "no_confident_match", [], best.identity_pct, 0,
-            "unassigned", None, [],
-            f"best match {best.identity_pct:.2f}% below {min_pct:.1f}% threshold",
+            query_id=query_id,
+            query_length=(best or top).query_length if (best or top) else 0,
+            best_haplotype=best.haplotype_id if best else None,
+            best_identity=best.identity_pct if best else 0.0,
+            aligned_length=best.aligned_length if best else 0,
+            query_coverage=best.query_coverage if best else 0.0,
+            overlap_coverage=best.overlap_coverage if best else 0.0,
+            n_mismatches=best.n_mismatches if best else 0,
+            n_gaps=best.n_gaps if best else 0,
+            differences=best.differences if best else None,
+            call_level=call_level,
+            equivalence_set=[m.haplotype_id for m in eq],
+            n_equivalent=len(eq),
+            set_identical_over_region=identical,
+            pooled_member_labels=pooled_text,
+            species_call=species_call,
+            species_support=support,
+            flags=flags,
+            notes=notes,
+            max_mismatch_delta=delta,
+            n_reference_haplotypes=len(matches),
         )
 
-    tie_floor = max(best.identity_pct - tie_margin * 100.0, min_pct)
-    tie_set = [m for m in matches if m.identity_pct >= tie_floor]
-    assigned_haplotypes = [m.haplotype_id for m in tie_set]
-    haplotype_call = "confident" if len(tie_set) == 1 else "tied"
+    if not eligible:
+        if top is None:
+            return _verdict(None, "none", [], None, "", "", None, max_mismatch_delta,
+                            "no haplotypes to match")
+        if not any(m.overlap_coverage >= min_query_coverage for m in ranked):
+            flags.append("low_coverage")
+            why = f"no match covers {min_query_coverage:.0%} of the overlap"
+        else:
+            flags.append("below_identity")
+            why = f"no match with enough coverage reaches {min_identity * 100:.1f}% identity"
+        return _verdict(top, "none", [], None, "", "", None, max_mismatch_delta, why)
 
-    tie_species = [species_by_haplotype.get(h) for h in assigned_haplotypes]
-    distinct = sorted({s for s in tie_species if s})
-    if not species_by_haplotype or not distinct:
-        species_call, assigned_species, candidate_species = "unknown", None, []
-        sp_reason = "species metadata unavailable"
-    elif len(distinct) == 1:
-        species_call, assigned_species, candidate_species = "confident", distinct[0], []
-        sp_reason = f"all {distinct[0]}"
+    best = eligible[0]
+    if best.indel_in_query:
+        flags.append("indel_in_query")
+    delta = (math.floor(tie_margin * best.aligned_length) if tie_margin is not None
+             else int(max_mismatch_delta))
+    eq = [m for m in eligible if m.differences <= best.differences + delta]
+    identical = len({m.haplotype_region for m in eq}) == 1
+    if not identical:
+        flags.append("set_not_identical")
+    call_level = "haplotype" if len(eq) == 1 else "haplotype_set"
+    notes = (f"{len(eq)} haplotype(s) within {delta} difference(s) of the best "
+             f"({best.differences} differences, {best.identity_pct:.2f}% identity)")
+
+    if member_labels is None:
+        flags.append("no_reference_labels")
+        return _verdict(best, call_level, eq, identical, "", "", None, delta,
+                        notes + "; species support needs a v2 run folder")
+
+    pooled = taxon_labels.pool_labels(
+        label for m in eq for label in member_labels.get(m.haplotype_id, []))
+    if pooled.n_distinct_species > 1:
+        flags.append("label_conflict_in_set")
+    species_call = ""
+    if pooled.support is None:
+        flags.append("no_species_labels")
+    elif pooled.leading_species and pooled.support >= min_species_support:
+        species_call = pooled.leading_species
     else:
-        species_call, assigned_species, candidate_species = "ambiguous", None, distinct
-        sp_reason = f"spans {len(distinct)} species: {', '.join(distinct)}"
+        flags.append("species_support_below_threshold")
+    support = round(pooled.support, 4) if pooled.support is not None else None
+    return _verdict(best, call_level, eq, identical, pooled.text, species_call, support,
+                    delta, notes)
 
-    if haplotype_call == "confident":
-        hap_reason = f"single best match {best.identity_pct:.2f}%"
-    else:
-        hap_reason = f"{len(tie_set)} haplotypes tied at >= {tie_floor:.2f}%"
 
-    return QueryVerdict(
-        query_id, haplotype_call, assigned_haplotypes, best.identity_pct,
-        len(tie_set), species_call, assigned_species, candidate_species,
-        f"{hap_reason}; {sp_reason}",
-    )
+# Record tables that carry per-record statuses (v2): records.csv (v2 layout) or
+# <organism>_annotated.csv (v2.0.0 development layout).
+RECORD_TABLE_GLOBS = ("records.csv", "*_annotated.csv")
+MEMBER_STATUSES = ("assigned", "assigned_corrected")
+
+
+def load_member_labels(run_dir) -> tuple:
+    """Labels of each haplotype's member records in a v2 run folder.
+
+    Returns (labels_by_haplotype or None, reason). A record's label is its
+    species label, or its genus when the species is missing. Members are the
+    records with status assigned or assigned_corrected. None (with the reason)
+    for a bare FASTA reference, a v1 run folder (no run_provenance.json) or a
+    folder without a record table.
+    """
+    import pandas as pd
+
+    if run_dir is None:
+        return None, "the reference is a FASTA file, not a run folder"
+    run_dir = Path(run_dir)
+    if not (run_dir / "run_provenance.json").exists():
+        return None, (f"{run_dir} has no run_provenance.json (a v1 run folder?); "
+                      "species support needs a v2 run folder")
+    table = next((p for pattern in RECORD_TABLE_GLOBS for p in sorted(run_dir.glob(pattern))), None)
+    if table is None:
+        return None, f"no record table ({' or '.join(RECORD_TABLE_GLOBS)}) in {run_dir}"
+    wanted = {"haplotype_id", "status", "species", "genus"}
+    df = pd.read_csv(table, usecols=lambda c: c in wanted, dtype=str, low_memory=False)
+    if not {"haplotype_id", "status"} <= set(df.columns):
+        return None, f"{table.name} has no record statuses"
+    df = df[df["status"].isin(MEMBER_STATUSES) & df["haplotype_id"].notna()]
+    species = df["species"] if "species" in df.columns else pd.Series("", index=df.index)
+    genus = df["genus"] if "genus" in df.columns else pd.Series("", index=df.index)
+    label = species.fillna("").str.strip()
+    label = label.where(label != "", genus.fillna("").str.strip())
+    labels = {}
+    for hid, lab in zip(df["haplotype_id"], label):
+        labels.setdefault(hid, []).append(lab)
+    return labels, f"member labels from {table.name}"
 
 
 def resolve_reference(haplotypes_arg, analysis_dir_arg):

@@ -15,9 +15,17 @@ species_count_summary() returns the species counts defined in the run README:
     n_species_haplotype_assigned    unique species-level assigned_sp across haplotypes
     n_species_confident             unique species among haplotypes whose majority_fraction
                                     is at least the majority threshold
+
+pool_labels() pools the labels of a set of records (for boldgenotyper-query's
+species support): species-level labels count toward support; genus-only and
+open-nomenclature labels of the leading species' genus are compatible and left
+out of the denominator; genus-only labels of other genera count against;
+missing labels are listed separately.
 """
 
 import math
+from collections import Counter
+from dataclasses import dataclass
 from typing import Dict, Iterable, Optional
 
 import pandas as pd
@@ -67,3 +75,54 @@ def species_count_summary(input_labels: Iterable, qc_passed_labels: Iterable,
         "n_species_haplotype_assigned": int(species_level["assigned_sp"].nunique()),
         "n_species_confident": int(confident["assigned_sp"].nunique()),
     }
+
+
+MISSING_LABEL_TEXT = "(no species label)"
+
+
+@dataclass(frozen=True)
+class PooledLabels:
+    """Pooled labels of a set of records."""
+    text: str                         # "Genus alpha 42; Genus beta 4; Genus 3; (no species label) 2"
+    leading_species: Optional[str]    # most common species-level label; None if tied or none
+    support: Optional[float]          # n_leading / n_species_level; None without species labels
+    n_leading: int
+    n_species_level: int              # species labels + genus-only labels of other genera
+    n_compatible: int                 # genus-only / open labels of the leading genus
+    n_missing: int
+    n_distinct_species: int
+
+
+def pool_labels(labels: Iterable) -> PooledLabels:
+    """Pool record labels and compute species support (see module docstring)."""
+    cleaned = [_clean(x) for x in labels]
+    n_missing = sum(1 for x in cleaned if not x)
+    counts = Counter(x for x in cleaned if x)
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    parts = [f"{label} {n}" for label, n in ordered]
+    if n_missing:
+        parts.append(f"{MISSING_LABEL_TEXT} {n_missing}")
+    text = "; ".join(parts)
+
+    species = [(label, n) for label, n in ordered if label_level(label) == "species"]
+    if not species:
+        return PooledLabels(text, None, None, 0, 0, 0, n_missing, 0)
+
+    top_label, n_top = species[0]
+    tied = len(species) > 1 and species[1][1] == n_top
+    leading_genus = genus_of(top_label)
+    n_species_labels = sum(n for _, n in species)
+    other = [(label, n) for label, n in ordered if label_level(label) in ("genus", "open")]
+    n_compatible = sum(n for label, n in other if genus_of(label) == leading_genus)
+    n_conflicting = sum(n for label, n in other if genus_of(label) != leading_genus)
+    denominator = n_species_labels + n_conflicting
+    return PooledLabels(
+        text=text,
+        leading_species=None if tied else top_label,
+        support=n_top / denominator,
+        n_leading=n_top,
+        n_species_level=denominator,
+        n_compatible=n_compatible,
+        n_missing=n_missing,
+        n_distinct_species=len(species),
+    )

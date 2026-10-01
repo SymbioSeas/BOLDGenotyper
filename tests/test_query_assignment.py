@@ -1,85 +1,108 @@
-from collections import namedtuple
+"""Query verdict (Q3-Q6), reference resolution and the summary writer."""
+
 from pathlib import Path
 import pytest
 from boldgenotyper import query_assignment as qa
 
-M = namedtuple("M", "haplotype_id identity_pct")
+
+from boldgenotyper.haplotype_query import AlignmentResult
+
+QLEN = 220
 
 
-def _matches(*pairs):
-    return [M(h, p) for h, p in pairs]
+def _m(hid, d=0, cov=1.0, region="R", identity=None, aligned=QLEN, indel=False, n_gaps=0):
+    """A match as align_query_to_haplotype would return it."""
+    ident = identity if identity is not None else (aligned - (d - n_gaps)) / aligned * 100
+    return AlignmentResult(
+        query_id="q1", haplotype_id=hid, score=0.0, identity_pct=ident,
+        matches=aligned - (d - n_gaps), aligned_length=aligned, query_length=QLEN,
+        haplotype_length=595, divergence=1 - ident / 100, aligned_query="",
+        aligned_haplotype="", n_mismatches=d - n_gaps, n_gaps=n_gaps,
+        indel_in_query=indel, query_coverage=cov, overlap_coverage=cov,
+        differences=d, haplotype_region=region)
 
 
-# ---------------------------------------------------------------------------
-# Task 1: verdict logic
-# ---------------------------------------------------------------------------
-
-def test_confident_single_haplotype_and_species():
-    matches = _matches(("h1", 99.6), ("h2", 92.0))
-    v = qa.assign_query("q1", matches, {"h1": "Sphyrna lewini"}, 0.97, 0.005)
-    assert v.haplotype_call == "confident"
-    assert v.assigned_haplotypes == ["h1"]
-    assert v.n_tied == 1
-    assert v.species_call == "confident"
-    assert v.assigned_species == "Sphyrna lewini"
-    assert v.candidate_species == []
+LABELS = {"H0001": ["Genus alpha"] * 30, "H0002": ["Genus alpha"] * 10 + ["Genus"] * 2,
+          "H0003": ["Genus alpha"] * 2, "H0004": ["Genus beta"] * 4,
+          "H0005": ["Genus alpha"] * 4 + ["Genus beta"] * 4}
 
 
-def test_tied_same_species_is_species_confident():
-    matches = _matches(("h1", 99.6), ("h2", 99.6), ("h3", 99.6), ("h4", 90.0))
-    sp = {"h1": "Sphyrna lewini", "h2": "Sphyrna lewini", "h3": "Sphyrna lewini"}
-    v = qa.assign_query("q1", matches, sp, 0.97, 0.005)
-    assert v.haplotype_call == "tied"
-    assert v.assigned_haplotypes == ["h1", "h2", "h3"]
-    assert v.n_tied == 3
-    assert v.species_call == "confident"
-    assert v.assigned_species == "Sphyrna lewini"
+def _call(matches, labels=LABELS, **kw):
+    return qa.assign_query("q1", matches, labels, **kw)
 
 
-def test_tied_across_species_is_ambiguous():
-    matches = _matches(("h1", 99.6), ("h2", 99.5))
-    sp = {"h1": "Sphyrna lewini", "h2": "Sphyrna mokarran"}
-    v = qa.assign_query("q1", matches, sp, 0.97, 0.005)
-    assert v.haplotype_call == "tied"
-    assert v.species_call == "ambiguous"
-    assert v.assigned_species is None
-    assert v.candidate_species == ["Sphyrna lewini", "Sphyrna mokarran"]
+def test_exact_match_to_identical_haplotypes_is_a_haplotype_set():
+    v = _call([_m("H0002"), _m("H0001"), _m("H0003"), _m("H0004", d=5, region="X")])
+    assert v.call_level == "haplotype_set"
+    assert v.equivalence_set == ["H0001", "H0002", "H0003"]
+    assert v.n_equivalent == 3 and v.set_identical_over_region is True
+    assert v.species_call == "Genus alpha" and v.species_support == 1.0
+    assert v.pooled_member_labels == "Genus alpha 42; Genus 2"
+    assert v.flags == []
 
 
-def test_no_confident_match_below_threshold():
-    matches = _matches(("h1", 94.2), ("h2", 90.0))
-    v = qa.assign_query("q1", matches, {"h1": "Sphyrna lewini"}, 0.97, 0.005)
-    assert v.haplotype_call == "no_confident_match"
-    assert v.assigned_haplotypes == []
-    assert v.species_call == "unassigned"
-    assert "94.2" in v.reason
+def test_single_best_is_a_haplotype_call():
+    v = _call([_m("H0004", d=2, region="X"), _m("H0001")])
+    assert v.call_level == "haplotype" and v.equivalence_set == ["H0001"]
+    assert v.best_haplotype == "H0001" and v.differences == 0
 
 
-def test_missing_species_metadata_is_unknown():
-    matches = _matches(("h1", 99.6),)
-    v = qa.assign_query("q1", matches, {}, 0.97, 0.005)
-    assert v.haplotype_call == "confident"
-    assert v.species_call == "unknown"
-    assert v.assigned_species is None
+def test_terminal_difference_and_delta():
+    matches = [_m("H0001"), _m("H0002", d=1, region="Y")]
+    assert _call(matches).equivalence_set == ["H0001"]
+    v = _call(matches, max_mismatch_delta=1)
+    assert v.equivalence_set == ["H0001", "H0002"]
+    assert v.set_identical_over_region is False and "set_not_identical" in v.flags
 
 
-def test_tie_floor_never_dips_below_min_identity():
-    # best 97.1, tie_margin 0.5% -> naive floor 96.6, but min_identity 97 wins.
-    matches = _matches(("h1", 97.1), ("h2", 96.8))
-    v = qa.assign_query("q1", matches, {"h1": "A", "h2": "B"}, 0.97, 0.005)
-    assert v.assigned_haplotypes == ["h1"]
-    assert v.haplotype_call == "confident"
+def test_deprecated_tie_margin_converts_per_query():
+    matches = [_m("H0001"), _m("H0002", d=1, region="Y"), _m("H0003", d=2, region="Z")]
+    v = _call(matches, tie_margin=0.005)          # floor(0.005 * 220) = 1 difference
+    assert v.equivalence_set == ["H0001", "H0002"] and v.max_mismatch_delta == 1
 
 
-def test_no_matches_is_no_confident_match():
-    v = qa.assign_query("q1", [], {}, 0.97, 0.005)
-    assert v.haplotype_call == "no_confident_match"
-    assert v.best_identity == 0.0
+def test_low_coverage_and_low_identity_give_no_call():
+    v = _call([_m("H0001", cov=0.6)])
+    assert v.call_level == "none" and v.flags == ["low_coverage"] and v.equivalence_set == []
+    v = _call([_m("H0001", d=20, region="X")])     # 200/220 = 90.9% identity
+    assert v.call_level == "none" and v.flags == ["below_identity"]
+    assert v.species_call == "" and v.species_support is None
 
 
-# ---------------------------------------------------------------------------
-# Task 2: reference-by-run-directory resolution
-# ---------------------------------------------------------------------------
+def test_no_matches():
+    v = _call([])
+    assert v.call_level == "none" and v.best_haplotype is None and v.best_identity == 0.0
+
+
+def test_ranking_prefers_eligible_then_fewer_differences():
+    ranked = qa.rank_matches([_m("H0001", cov=0.5), _m("H0002", d=1, region="Y"), _m("H0003")],
+                             min_identity=0.97, min_query_coverage=0.95)
+    assert [m.haplotype_id for m in ranked] == ["H0003", "H0002", "H0001"]
+
+
+def test_mixed_pool_gives_no_species_call():
+    v = _call([_m("H0005")])
+    assert v.call_level == "haplotype" and v.species_call == ""
+    assert v.species_support == 0.5
+    assert set(v.flags) == {"species_support_below_threshold", "label_conflict_in_set"}
+
+
+def test_conflicting_set_still_calls_a_dominant_species():
+    v = _call([_m("H0001"), _m("H0004")])          # 30 alpha + 4 beta
+    assert v.species_call == "Genus alpha" and round(v.species_support, 2) == 0.88
+    assert "label_conflict_in_set" in v.flags
+
+
+def test_no_reference_labels():
+    v = _call([_m("H0001")], labels=None)
+    assert v.call_level == "haplotype" and v.species_call == ""
+    assert v.flags == ["no_reference_labels"]
+
+
+def test_indel_flag_comes_from_the_best_match():
+    v = _call([_m("H0001", d=1, n_gaps=1, indel=True)])
+    assert "indel_in_query" in v.flags and v.n_gaps == 1
+
 
 def test_resolve_reference_file_unchanged(tmp_path):
     f = tmp_path / "X_haplotypes.fasta"
@@ -126,10 +149,10 @@ def test_resolve_reference_directory_multiple_fastas_errors(tmp_path):
 def test_write_query_summary_roundtrip(tmp_path):
     import pandas as pd
     from boldgenotyper import haplotype_query
-    v = qa.QueryVerdict("q1", "tied", ["h1", "h2"], 99.6, 2,
-                        "confident", "Sphyrna lewini", [], "reason text")
-    out = haplotype_query.write_query_summary([v], tmp_path, 0.97, 0.005)
-    df = pd.read_csv(out)
+    v = _call([_m("H0002"), _m("H0001")])
+    out = haplotype_query.write_query_summary([v], tmp_path, parameters={"max_mismatch_delta": 0})
+    df = pd.read_csv(out, comment="#")
     assert list(df["query_id"]) == ["q1"]
-    assert df.loc[0, "assigned_haplotypes"] == "h1;h2"
-    assert df.loc[0, "species_call"] == "confident"
+    assert df.loc[0, "equivalence_set"] == "H0001;H0002"
+    assert df.loc[0, "species_call"] == "Genus alpha"
+    assert list(df.columns) == haplotype_query.QUERY_SUMMARY_COLUMNS

@@ -2493,18 +2493,22 @@ Examples:
                        --min-length 150 \\
                        --max-length 1500
 
-Output Formats:
-  All three formats are generated automatically:
-  - query_results.csv: Machine-readable table
-  - query_results.json: Structured data for programmatic access
-  - query_results_detailed.txt: Human-readable report with alignments
+Output Files:
+  - query_summary.csv: one row per query (call, equivalence set, pooled member
+    labels, species support, flags); '#' header lines record the reference run
+    and parameters (read with pandas.read_csv(path, comment='#'))
+  - query_results.csv: top matches per query with their numbers
+  - query_results.json: structured results, reference run and parameters
+  - query_results_detailed.txt: report with alignments
 
-Match Quality Classification:
-  - perfect: 100% identity - exact haplotype match
-  - high: ≥99.5% identity - likely same haplotype
-  - good: ≥97% identity - same species, possibly different haplotype
-  - moderate: ≥95% identity - same genus, divergent haplotype
-  - low: <95% identity - different species or contamination
+How queries are called:
+  Each query is aligned over its whole overlap with every haplotype. A match is
+  eligible when it covers --min-query-coverage of the shorter sequence and
+  reaches --assign-identity. The equivalence set is every eligible haplotype
+  within --max-mismatch-delta differences (mismatches + gap columns) of the
+  best. species_call is the leading species of the set's pooled member labels
+  when species_support >= --min-species-support. No identity value is
+  interpreted as "same species" or "same genus"; the numbers are reported.
 
 For more information:
   https://github.com/SymbioSeas/BOLDGenotyper
@@ -2557,11 +2561,34 @@ For more information:
     )
 
     parser.add_argument(
+        '--min-query-coverage',
+        type=float,
+        default=0.95,
+        help='Minimum fraction of the shorter sequence (query or haplotype) that the '
+             'alignment must cover for a match to be eligible (default: 0.95).'
+    )
+
+    parser.add_argument(
+        '--max-mismatch-delta',
+        type=int,
+        default=0,
+        help='Haplotypes within this many differences (mismatches + gap columns) of '
+             'the best eligible match form the equivalence set (default: 0).'
+    )
+
+    parser.add_argument(
+        '--min-species-support',
+        type=float,
+        default=0.70,
+        help='Minimum share of pooled member labels for a species call (default: 0.70).'
+    )
+
+    parser.add_argument(
         '--tie-margin',
         type=float,
-        default=0.005,
-        help='Haplotypes within this fraction of the best match are tied with it '
-             '(default: 0.005).'
+        default=None,
+        help='Deprecated: use --max-mismatch-delta. A fractional margin is converted per '
+             'query to floor(tie_margin x aligned length) differences.'
     )
 
     parser.add_argument(
@@ -2587,6 +2614,9 @@ For more information:
 
     # Parse arguments
     args = parser.parse_args(argv)
+    if args.tie_margin is not None:
+        print("Warning: --tie-margin is deprecated; use --max-mismatch-delta (integer differences). "
+              "Converting per query to floor(tie_margin x aligned length).", file=sys.stderr)
 
     # Determine output directory
     output_dir = args.output if args.output else Path("haplotype_query_results")
@@ -2630,7 +2660,18 @@ For more information:
             max_length=args.max_length,
             min_identity=args.assign_identity,
             tie_margin=args.tie_margin,
+            min_query_coverage=args.min_query_coverage,
+            max_mismatch_delta=args.max_mismatch_delta,
+            min_species_support=args.min_species_support,
         )
+        parameters = {
+            "assign_identity": args.assign_identity,
+            "min_query_coverage": args.min_query_coverage,
+            "max_mismatch_delta": args.max_mismatch_delta,
+            "min_species_support": args.min_species_support,
+            "tie_margin_deprecated": args.tie_margin,
+            "top_n": args.top_n,
+        }
 
         # Write results
         logger.info("Writing results...")
@@ -2641,8 +2682,7 @@ For more information:
             haplotype_file=reference_fasta,
             analysis_dir=analysis_dir,
             verdicts=verdicts,
-            min_identity=args.assign_identity,
-            tie_margin=args.tie_margin,
+            parameters=parameters,
         )
 
         logger.info("")

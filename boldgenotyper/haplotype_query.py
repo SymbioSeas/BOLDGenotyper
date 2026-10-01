@@ -397,7 +397,10 @@ def query_against_haplotypes(
     min_length: int = 100,
     max_length: int = 2000,
     min_identity: float = 0.97,
-    tie_margin: float = 0.005,
+    tie_margin: Optional[float] = None,
+    min_query_coverage: float = 0.95,
+    max_mismatch_delta: int = 0,
+    min_species_support: float = 0.70,
 ) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame], List["query_assignment.QueryVerdict"]]:
     """
     Query sequences against haplotype consensuses.
@@ -473,11 +476,14 @@ def query_against_haplotypes(
     if analysis_dir:
         metadata = load_haplotype_metadata(analysis_dir)
 
-    species_by_haplotype = {}
-    if metadata is not None and 'haplotype_id' in metadata.columns and 'assigned_sp' in metadata.columns:
-        for _, row in metadata.iterrows():
-            sp = row['assigned_sp']
-            species_by_haplotype[row['haplotype_id']] = sp if pd.notna(sp) and str(sp).strip() else None
+    # Member labels for species support (Q6): exact and corrected members of
+    # each haplotype in a v2 run folder; None otherwise (Q-v1 decision).
+    member_labels, label_source = query_assignment.load_member_labels(analysis_dir)
+    if member_labels is None:
+        logger.warning(f"Species support not computed: {label_source}")
+    else:
+        logger.info(f"Species support uses {label_source} "
+                    f"(members with status assigned or assigned_corrected)")
 
     # Perform alignments
     logger.info(f"Performing alignments: {len(valid_queries)} queries × {len(haplotype_records)} haplotypes")
@@ -502,11 +508,15 @@ def query_against_haplotypes(
             )
             query_results.append(result)
 
-        # Sort by identity (descending); compute the verdict from the full list
-        # before truncating to top N for display.
-        query_results.sort(key=lambda x: x.identity_pct, reverse=True)
+        # Rank (eligible first, then fewer differences, ...) and compute the
+        # verdict from the full list before truncating to top N for display.
+        query_results = query_assignment.rank_matches(
+            query_results, min_identity=min_identity, min_query_coverage=min_query_coverage)
         verdicts.append(query_assignment.assign_query(
-            query_id, query_results, species_by_haplotype, min_identity, tie_margin
+            query_id, query_results, member_labels,
+            min_identity=min_identity, min_query_coverage=min_query_coverage,
+            max_mismatch_delta=max_mismatch_delta, min_species_support=min_species_support,
+            tie_margin=tie_margin,
         ))
         all_results.extend(query_results[:top_n])
 
@@ -569,8 +579,8 @@ def results_to_dataframe(
 
     df = pd.DataFrame(records)
 
-    # Add rank within each query
-    df['rank'] = df.groupby('query_id')['identity_pct'].rank(ascending=False, method='first').astype(int)
+    # Rank within each query, in the order given (rank_matches ordering)
+    df['rank'] = df.groupby('query_id').cumcount() + 1
 
     # Merge with metadata if provided
     if metadata is not None:
@@ -648,8 +658,9 @@ def write_results(
     haplotype_file: Path = None,
     analysis_dir: Path = None,
     verdicts=None,
-    min_identity: float = 0.97,
-    tie_margin: float = 0.005,
+    parameters: Optional[Dict[str, Any]] = None,
+    reference_run: Optional[Dict[str, Any]] = None,
+    record_matches: Optional[Dict[str, int]] = None,
 ) -> None:
     """
     Write query results in all output formats.
@@ -695,28 +706,67 @@ def write_results(
 
     # Write per-query verdict summary
     if verdicts is not None:
-        write_query_summary(verdicts, output_dir, min_identity, tie_margin)
+        write_query_summary(verdicts, output_dir, parameters=parameters,
+                            reference_run=reference_run, record_matches=record_matches)
 
 
-def write_query_summary(verdicts, output_dir, min_identity, tie_margin):
-    """Write one-row-per-query verdict summary to query_summary.csv."""
+QUERY_SUMMARY_COLUMNS = [
+    "query_id", "query_length", "aligned_length", "query_coverage", "n_mismatches",
+    "n_gaps", "best_identity", "call_level", "equivalence_set", "n_equivalent",
+    "set_identical_over_region", "pooled_member_labels", "species_call",
+    "species_support", "flags", "n_exact_record_matches", "reference_run_id",
+]
+
+POOLED_LABELS_NOTE = ("pooled_member_labels and species_support use the labels of every record "
+                      "assigned to the equivalence set's haplotypes, including assigned_corrected "
+                      "records; genus-only labels of the leading genus are compatible")
+
+
+def query_summary_header(parameters: Optional[Dict[str, Any]] = None,
+                         reference_run: Optional[Dict[str, Any]] = None) -> List[str]:
+    """'#' comment lines written above the query_summary.csv header."""
+    lines = [f"# BOLDGenotyper query summary; read with pandas.read_csv(path, comment='#')"]
+    if reference_run:
+        for key, value in reference_run.items():
+            lines.append(f"# reference_run.{key}: {value}")
+    else:
+        lines.append("# reference_run: unknown (no run_provenance.json)")
+    for key, value in (parameters or {}).items():
+        lines.append(f"# parameter.{key}: {value}")
+    lines.append("# alignment: " + ", ".join(f"{k}={v}" for k, v in ALIGNMENT_SCORING.items()))
+    lines.append(f"# note: {POOLED_LABELS_NOTE}")
+    return lines
+
+
+def write_query_summary(verdicts, output_dir, parameters=None, reference_run=None,
+                        record_matches=None):
+    """Write one row per query to query_summary.csv, below '#' header lines."""
+    run_id = (reference_run or {}).get("provenance_md5", "")
     rows = []
     for v in verdicts:
         rows.append({
-            'query_id': v.query_id,
-            'haplotype_call': v.haplotype_call,
-            'assigned_haplotypes': ';'.join(v.assigned_haplotypes),
-            'best_identity': round(v.best_identity, 4),
-            'n_tied': v.n_tied,
-            'species_call': v.species_call,
-            'assigned_species': v.assigned_species or '',
-            'candidate_species': ';'.join(v.candidate_species),
-            'reason': v.reason,
-            'assign_identity': min_identity,
-            'tie_margin': tie_margin,
+            "query_id": v.query_id,
+            "query_length": v.query_length,
+            "aligned_length": v.aligned_length,
+            "query_coverage": round(v.query_coverage, 4),
+            "n_mismatches": v.n_mismatches,
+            "n_gaps": v.n_gaps,
+            "best_identity": round(v.best_identity, 4),
+            "call_level": v.call_level,
+            "equivalence_set": ";".join(v.equivalence_set),
+            "n_equivalent": v.n_equivalent,
+            "set_identical_over_region": v.set_identical_over_region,
+            "pooled_member_labels": v.pooled_member_labels,
+            "species_call": v.species_call,
+            "species_support": v.species_support,
+            "flags": ";".join(v.flags),
+            "n_exact_record_matches": (record_matches or {}).get(v.query_id) if record_matches is not None else None,
+            "reference_run_id": run_id,
         })
     summary_file = Path(output_dir) / "query_summary.csv"
-    pd.DataFrame(rows).to_csv(summary_file, index=False)
+    with open(summary_file, "w", newline="") as f:
+        f.write("\n".join(query_summary_header(parameters, reference_run)) + "\n")
+        pd.DataFrame(rows, columns=QUERY_SUMMARY_COLUMNS).to_csv(f, index=False)
     logger.info(f"Wrote query verdict summary: {summary_file}")
     return summary_file
 
@@ -819,23 +869,20 @@ def write_text_report(
         for query_id, query_results in queries_dict.items():
             v = verdict_by_id.get(query_id)
             if v is not None:
-                if v.haplotype_call == "confident":
-                    hap = f"CONFIDENT: {v.assigned_haplotypes[0]} ({v.best_identity:.2f}%)"
-                elif v.haplotype_call == "tied":
-                    hap = (f"TIED among {v.n_tied} haplotypes "
-                           f"({', '.join(v.assigned_haplotypes)}) at {v.best_identity:.2f}%")
+                if v.call_level == "none":
+                    hap = f"no eligible match (best {v.best_identity:.2f}%, coverage {v.query_coverage:.2f})"
                 else:
-                    hap = f"NO CONFIDENT MATCH (best {v.best_identity:.2f}%)"
-                if v.species_call == "confident":
-                    sp = f"SPECIES: confident ({v.assigned_species})"
-                elif v.species_call == "ambiguous":
-                    sp = f"SPECIES: ambiguous ({', '.join(v.candidate_species)})"
-                elif v.species_call == "unknown":
-                    sp = "SPECIES: unknown (no metadata)"
-                else:
-                    sp = "SPECIES: unassigned"
+                    hap = (f"{v.call_level} {';'.join(v.equivalence_set)} "
+                           f"({v.differences} difference{'' if v.differences == 1 else 's'}, "
+                           f"{v.best_identity:.2f}% identity, "
+                           f"coverage {v.query_coverage:.2f})")
+                sp = (f"species {v.species_call} (support {v.species_support:.2f})" if v.species_call
+                      else f"no species call (support {v.species_support:.2f})" if v.species_support is not None
+                      else "no species call")
                 f.write(f"{query_id} : {hap}\n")
-                f.write(f"{' ' * len(query_id)}   {sp}\n")
+                f.write(f"{' ' * len(query_id)}   {sp}; pooled labels: {v.pooled_member_labels or '-'}\n")
+                if v.flags:
+                    f.write(f"{' ' * len(query_id)}   flags: {', '.join(v.flags)}\n")
                 continue
 
             best = query_results[0]

@@ -32,3 +32,35 @@ def test_species_count_summary_uses_distinct_definitions():
         "n_species_haplotype_assigned": 2,
         "n_species_confident": 1,
     }
+
+
+# --- Pooled member labels (Q5, Q6) -------------------------------------------
+
+def test_pool_labels_support_and_text():
+    p = tl.pool_labels(["Genus alpha"] * 42 + ["Genus beta"] * 4 + ["Genus"] * 3 + [""] * 2)
+    assert p.leading_species == "Genus alpha"
+    assert p.n_leading == 42 and p.n_species_level == 46
+    assert round(p.support, 2) == 0.91
+    assert p.n_compatible == 3 and p.n_missing == 2 and p.n_distinct_species == 2
+    assert p.text == "Genus alpha 42; Genus beta 4; Genus 3; (no species label) 2"
+
+
+def test_genus_only_congeners_do_not_conflict():
+    p = tl.pool_labels(["Genus alpha"] * 5 + ["Genus"] * 5 + ["Genus sp. 1"])
+    assert p.support == 1.0 and p.n_compatible == 6 and p.n_distinct_species == 1
+
+
+def test_genus_only_label_of_another_genus_counts_against():
+    p = tl.pool_labels(["Genus alpha"] * 3 + ["Othergenus"])
+    assert p.n_species_level == 4 and p.support == 0.75
+
+
+def test_tied_species_have_no_leading_species():
+    p = tl.pool_labels(["Genus alpha"] * 4 + ["Genus beta"] * 4)
+    assert p.leading_species is None and p.support == 0.5
+
+
+def test_no_species_level_labels():
+    p = tl.pool_labels(["Genus", "", "Genus"])
+    assert p.leading_species is None and p.support is None
+    assert p.text == "Genus 2; (no species label) 1"
