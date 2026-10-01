@@ -436,7 +436,7 @@ class TestAssignOceanBasins(unittest.TestCase):
     @patch('boldgenotyper.geographic.gpd.sjoin')
     @patch('boldgenotyper.geographic.create_points_geodataframe')
     def test_assign_basins_handles_samples_outside_basins(self, mock_create_points, mock_sjoin):
-        """Test that samples outside all basins are assigned 'Unknown'."""
+        """Samples outside all basins have no basin (NaN), not 'Unknown' (P0-4)."""
         if not geographic.GEOPANDAS_AVAILABLE:
             self.skipTest("GeoPandas not available")
 
@@ -470,8 +470,8 @@ class TestAssignOceanBasins(unittest.TestCase):
         # Perform assignment
         result = geographic.assign_ocean_basins(df, goas_data=mock_goas)
 
-        # Check that sample is assigned to 'Unknown'
-        self.assertEqual(result.loc[0, 'ocean_basin'], 'Unknown')
+        # One missing-value code: NaN (empty in CSV)
+        self.assertTrue(pd.isna(result.loc[0, 'ocean_basin']))
 
     @patch('boldgenotyper.geographic.gpd.sjoin')
     @patch('boldgenotyper.geographic.create_points_geodataframe')

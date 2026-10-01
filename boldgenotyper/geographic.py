@@ -439,7 +439,7 @@ def assign_ocean_basins(
     Basin Assignment Logic:
     1. For samples with coordinates → spatial point-in-polygon
     2. For samples without coordinates and fallback enabled → use country/ocean column
-    3. For samples outside all basins → "Unknown"
+    3. For samples outside all basins → no basin (NaN, empty in CSV)
     4. For samples on boundaries → first match selected
     
     Coordinate handling:
@@ -447,8 +447,8 @@ def assign_ocean_basins(
 
     Missing Data Handling:
     - Samples with missing coordinates get basin from country/ocean column (if available)
-    - Samples outside all basins are assigned "Unknown"
-    - Warning logged for high proportion of "Unknown" assignments
+    - Samples outside all basins, or without coordinates, have no basin (NaN)
+    - Warning logged for a high proportion of coordinates outside all basins
 
     Examples
     --------
@@ -568,21 +568,20 @@ def assign_ocean_basins(
                     fallback_mask, country_ocean_col
                 ]
 
-    # Set remaining null basins to "Unknown"
+    # Samples still without a basin keep NaN (one missing-value code; empty in CSV)
     still_missing = df_copy[basin_col].isna()
     if still_missing.any():
-        df_copy.loc[still_missing, basin_col] = "Unknown"
         logger.info(
-            f"Assigned {still_missing.sum()} samples to 'Unknown' basin "
+            f"{still_missing.sum()} samples have no basin "
             "(no coordinates or outside all basins)"
         )
 
     # Validate marine coordinates if requested
     if validate_marine:
         logger.info("Validating marine coordinates")
-        # Samples assigned to "Unknown" with coordinates might be terrestrial
+        # Samples without a basin but with coordinates might be terrestrial
         unknown_with_coords = (
-            (df_copy[basin_col] == "Unknown") &
+            df_copy[basin_col].isna() &
             df_copy[[lat_col, lon_col]].notna().all(axis=1)
         )
 
@@ -718,7 +717,7 @@ def assign_regions_from_shapefile(
     # Check if coordinate columns exist
     if lat_col not in df_copy.columns or lon_col not in df_copy.columns:
         logger.warning(f"Coordinate columns not found: {lat_col}, {lon_col}")
-        df_copy[output_column] = 'Unknown'
+        df_copy[output_column] = np.nan
         return df_copy
 
     # Filter to samples with valid coordinates
@@ -727,7 +726,7 @@ def assign_regions_from_shapefile(
 
     if n_with_coords == 0:
         logger.warning("No samples with coordinates found")
-        df_copy[output_column] = 'Unknown'
+        df_copy[output_column] = np.nan
         return df_copy
 
     logger.info(f"Processing {n_with_coords} samples with coordinates")
@@ -737,8 +736,8 @@ def assign_regions_from_shapefile(
         regions_gdf = gpd.read_file(shapefile_path)
         logger.info(f"Loaded shapefile with {len(regions_gdf)} regions")
     except Exception as e:
-        logger.error(f"Failed to load shapefile: {e}")
-        df_copy[output_column] = 'Unknown'
+        logger.error(f"Failed to load shapefile: {e}", extra={"step_failure": "1.3 region assignment"})
+        df_copy[output_column] = np.nan
         return df_copy
 
     # Auto-detect shapefile field if not provided
@@ -778,8 +777,8 @@ def assign_regions_from_shapefile(
             lon_col=lon_col
         )
     except Exception as e:
-        logger.error(f"Failed to create point geometries: {e}")
-        df_copy[output_column] = 'Unknown'
+        logger.error(f"Failed to create point geometries: {e}", extra={"step_failure": "1.3 region assignment"})
+        df_copy[output_column] = np.nan
         return df_copy
 
     # Perform spatial join
@@ -793,18 +792,20 @@ def assign_regions_from_shapefile(
 
         # Extract region assignments; convert to string so numeric fields (e.g. HYBAS_ID)
         # are handled consistently throughout the rest of the pipeline.
-        region_assignments = joined[shapefile_field].fillna('Unknown').astype(str)
+        # Points outside every region keep NaN (one missing-value code).
+        region_assignments = joined[shapefile_field]
+        region_assignments = region_assignments.where(
+            region_assignments.isna(), region_assignments.astype(str)).astype(object)
 
-        # Assign to output dataframe
+        # Assign to output dataframe; samples without coordinates have no region
+        df_copy[output_column] = np.nan
+        df_copy[output_column] = df_copy[output_column].astype(object)
         df_copy.loc[has_coords, output_column] = region_assignments.values
 
-        # Fill samples without coordinates
-        df_copy.loc[~has_coords, output_column] = 'Unknown'
-
         # Report statistics
-        n_assigned = (df_copy[output_column] != 'Unknown').sum()
-        n_unassigned = (df_copy[output_column] == 'Unknown').sum()
-        unique_regions = df_copy[df_copy[output_column] != 'Unknown'][output_column].nunique()
+        n_assigned = int(df_copy[output_column].notna().sum())
+        n_unassigned = int(df_copy[output_column].isna().sum())
+        unique_regions = df_copy[output_column].dropna().nunique()
 
         logger.info(f"Region assignment complete:")
         logger.info(f"  {n_assigned} samples assigned to {unique_regions} regions")
@@ -812,12 +813,12 @@ def assign_regions_from_shapefile(
 
         # Show top regions
         if n_assigned > 0:
-            top_regions = df_copy[df_copy[output_column] != 'Unknown'][output_column].value_counts().head(5)
+            top_regions = df_copy[output_column].dropna().value_counts().head(5)
             logger.info(f"  Top regions: {', '.join(str(r) for r in top_regions.index)}")
 
     except Exception as e:
-        logger.error(f"Spatial join failed: {e}")
-        df_copy[output_column] = 'Unknown'
+        logger.error(f"Spatial join failed: {e}", extra={"step_failure": "1.3 region assignment"})
+        df_copy[output_column] = np.nan
 
     return df_copy
 

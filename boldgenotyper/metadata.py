@@ -645,120 +645,139 @@ def filter_by_coordinate_quality(
     return df_filtered
 
 
-def mark_coordinate_quality(
+_COORD_PAIR = re.compile(r"^\s*\[?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]?\s*$")
+
+
+def parse_coord_column(
     df: pd.DataFrame,
-    coord_source_column: str = 'coord_source',
+    coord_col: str = "coord",
+    lat_col: str = "lat",
+    lon_col: str = "lon",
 ) -> pd.DataFrame:
     """
-    Mark samples with low-quality coordinates instead of filtering them out.
+    Add float lat/lon columns for every record with a parseable coordinate pair.
 
-    This function adds boolean columns to identify samples with questionable
-    coordinates WITHOUT removing them from the dataset. This ensures that:
-    - Samples with centroid coordinates are INCLUDED in clustering/genotyping
-    - Samples with centroid coordinates are EXCLUDED from geographic analysis
-    - Users can see which samples have coordinate quality issues
-
-    Added Columns
-    -------------
-    has_missing_coords : bool
-        True if latitude or longitude is missing/NaN
-    has_centroid_coords : bool
-        True if coord_source contains 'centroid'
-    has_zero_coords : bool
-        True if coordinates are exactly [0, 0]
-    has_invalid_coords : bool
-        True if coordinates are out of valid range
-    is_geographic_quality : bool
-        True if coordinates are suitable for geographic analysis
-        (False if any of the above quality issues exist)
+    Accepts "[lat, lon]" (current BOLD portal exports; integer or decimal
+    values, any sign) and "lat, lon" (older exports). Existing non-empty
+    lat/lon values are kept (legacy exports with separate columns). Records
+    without a parseable pair get NaN.
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame with parsed latitude/longitude columns
-    coord_source_column : str
-        Name of coordinate source column (default: 'coord_source')
+        Records, typically from parse_bold_tsv
+    coord_col, lat_col, lon_col : str
+        Column names
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with added coordinate quality marker columns
+        Copy of df with float lat_col and lon_col
+    """
+    out = df.copy()
+    lat = pd.Series(np.nan, index=out.index, dtype=float)
+    lon = pd.Series(np.nan, index=out.index, dtype=float)
+    if coord_col in out.columns:
+        parsed = out[coord_col].fillna("").astype(str).str.extract(_COORD_PAIR)
+        lat = pd.to_numeric(parsed[0], errors="coerce")
+        lon = pd.to_numeric(parsed[1], errors="coerce")
+    for col, values in ((lat_col, lat), (lon_col, lon)):
+        if col in out.columns:
+            existing = pd.to_numeric(out[col], errors="coerce")
+            out[col] = existing.where(existing.notna(), values).astype(float)
+        else:
+            out[col] = values.astype(float)
+    return out
 
-    Examples
-    --------
-    >>> df = parse_bold_tsv("data.tsv")
-    >>> df = parse_coordinates_column(df)
-    >>> df = mark_coordinate_quality(df)
-    >>> print(f"Samples with centroids: {df['has_centroid_coords'].sum()}")
-    >>> print(f"Geographic quality: {df['is_geographic_quality'].sum()}")
 
-    Notes
-    -----
-    This approach ensures that ALL samples with valid sequences are included
-    in clustering and genotyping, regardless of coordinate quality. Only
-    geographic analysis uses the quality markers to exclude problematic coordinates.
+COORD_STATUSES = ("ok", "missing", "unparseable", "centroid", "zero", "out_of_range")
+
+
+def mark_coordinate_quality(
+    df: pd.DataFrame,
+    coord_source_column: str = 'coord_source',
+    lat_col: str = 'lat',
+    lon_col: str = 'lon',
+    coord_col: str = 'coord',
+) -> pd.DataFrame:
+    """
+    Mark coordinate quality without removing any records.
+
+    Every record keeps its parsed lat/lon (see parse_coord_column); only
+    region assignment and maps use is_geographic_quality.
+
+    Added Columns
+    -------------
+    coord_status : str
+        One of:
+        ok            parseable, in range, not [0, 0], not a centroid
+        missing       no coordinate given
+        unparseable   a coordinate was given but could not be parsed
+        centroid      coord_source says the coordinate is a country or province
+                      centroid; lat/lon are kept, but the record is not assigned
+                      a region or mapped
+        zero          exactly [0, 0]
+        out_of_range  latitude outside [-90, 90] or longitude outside [-180, 180]
+    has_missing_coords, has_centroid_coords, has_zero_coords, has_invalid_coords : bool
+        One flag per problem (has_missing_coords covers missing and unparseable)
+    is_geographic_quality : bool
+        coord_status == "ok"
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Records with lat/lon columns (call parse_coord_column first)
+    coord_source_column : str
+        Name of the coordinate source column (default: 'coord_source')
+    lat_col, lon_col, coord_col : str
+        Column names
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of df with the columns above
     """
     df_marked = df.copy()
+    idx = df_marked.index
 
-    # Initialize quality marker columns
-    df_marked['has_missing_coords'] = False
-    df_marked['has_centroid_coords'] = False
-    df_marked['has_zero_coords'] = False
-    df_marked['has_invalid_coords'] = False
-
-    # 1. Mark missing coordinates
-    if 'latitude' in df_marked.columns:
-        df_marked['has_missing_coords'] = (
-            df_marked['latitude'].isna() | df_marked['longitude'].isna()
-        )
-        n_missing = df_marked['has_missing_coords'].sum()
-        if n_missing > 0:
-            logger.info(f"Marked {n_missing} samples with missing coordinates")
-
-    # 2. Mark centroid coordinates
+    lat = pd.to_numeric(df_marked[lat_col], errors="coerce") if lat_col in df_marked else pd.Series(np.nan, index=idx)
+    lon = pd.to_numeric(df_marked[lon_col], errors="coerce") if lon_col in df_marked else pd.Series(np.nan, index=idx)
+    if coord_col in df_marked.columns:
+        has_text = df_marked[coord_col].fillna("").astype(str).str.strip() != ""
+    else:
+        has_text = pd.Series(False, index=idx)
+    parsed = lat.notna() & lon.notna()
     if coord_source_column in df_marked.columns:
-        df_marked['has_centroid_coords'] = df_marked[coord_source_column].str.contains(
-            'centroid', case=False, na=False
-        )
-        n_centroid = df_marked['has_centroid_coords'].sum()
-        if n_centroid > 0:
-            logger.info(f"Marked {n_centroid} samples with centroid coordinates")
+        centroid = df_marked[coord_source_column].fillna("").astype(str).str.contains(
+            "centroid", case=False)
+    else:
+        centroid = pd.Series(False, index=idx)
 
-    # 3. Mark [0, 0] coordinates
-    if 'latitude' in df_marked.columns:
-        df_marked['has_zero_coords'] = (
-            (df_marked['latitude'] == 0) & (df_marked['longitude'] == 0)
-        )
-        n_zero = df_marked['has_zero_coords'].sum()
-        if n_zero > 0:
-            logger.info(f"Marked {n_zero} samples with [0, 0] coordinates")
+    # Precedence (later assignments win): missing/unparseable, out of range, zero, centroid
+    status = pd.Series("ok", index=idx, dtype=object)
+    status[~parsed & ~has_text] = "missing"
+    status[~parsed & has_text] = "unparseable"
+    status[parsed & ((lat.abs() > 90) | (lon.abs() > 180))] = "out_of_range"
+    status[parsed & (lat == 0) & (lon == 0)] = "zero"
+    status[parsed & centroid] = "centroid"
 
-    # 4. Mark invalid coordinate ranges
-    if 'latitude' in df_marked.columns:
-        df_marked['has_invalid_coords'] = (
-            (df_marked['latitude'] < -90) | (df_marked['latitude'] > 90) |
-            (df_marked['longitude'] < -180) | (df_marked['longitude'] > 180)
-        )
-        n_invalid = df_marked['has_invalid_coords'].sum()
-        if n_invalid > 0:
-            logger.info(f"Marked {n_invalid} samples with invalid coordinate ranges")
+    df_marked['coord_status'] = status
+    df_marked['has_missing_coords'] = status.isin(["missing", "unparseable"])
+    df_marked['has_centroid_coords'] = status == "centroid"
+    df_marked['has_zero_coords'] = status == "zero"
+    df_marked['has_invalid_coords'] = status == "out_of_range"
+    df_marked['is_geographic_quality'] = status == "ok"
 
-    # 5. Create overall geographic quality flag
-    # Geographic quality = no quality issues
-    df_marked['is_geographic_quality'] = (~(
-        df_marked['has_missing_coords'] |
-        df_marked['has_centroid_coords'] |
-        df_marked['has_zero_coords'] |
-        df_marked['has_invalid_coords']
-    )).astype(bool)
-
+    counts = status.value_counts()
+    for s in COORD_STATUSES[1:]:
+        if counts.get(s, 0):
+            logger.info(f"Marked {counts[s]} samples with coord_status '{s}'")
     n_total = len(df_marked)
-    n_geo_quality = df_marked['is_geographic_quality'].sum()
+    n_geo_quality = int(df_marked['is_geographic_quality'].sum())
     pct_geo_quality = (n_geo_quality / n_total * 100) if n_total > 0 else 0
-
     logger.info(
         f"Geographic quality: {n_geo_quality}/{n_total} samples ({pct_geo_quality:.1f}%) "
-        f"suitable for ocean basin assignment"
+        f"have parseable, non-zero, in-range, non-centroid coordinates"
     )
 
     return df_marked

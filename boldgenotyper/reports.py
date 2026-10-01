@@ -3849,8 +3849,8 @@ def _parse_pipeline_log(log_file: Path) -> dict:
                     metrics['ocean_basin_assigned'] = int(match.group(1))
                     metrics['outside_basins'] = int(match.group(2))
 
-            if "Assigned" in line and "to 'Unknown' basin" in line:
-                match = re.search(r'Assigned (\d+) samples', line)
+            if "samples have no basin" in line or ("Assigned" in line and "to 'Unknown' basin" in line):
+                match = re.search(r'(\d+) samples have no basin', line) or re.search(r'Assigned (\d+) samples', line)
                 if match:
                     metrics['unknown_basin'] = int(match.group(1))
 

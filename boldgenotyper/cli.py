@@ -37,6 +37,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import numpy as np
 import pandas as pd
 from Bio import SeqIO
 
@@ -395,22 +396,42 @@ def run_pipeline(
         parsed_tsv = dirs['intermediate'] / "01_parsed_metadata.tsv"
         df.to_csv(parsed_tsv, sep='\t', index=False)
 
-        # Mark coordinate quality (don't filter - keep all samples for genotyping)
-        logger.info("1.2: Marking coordinate quality...")
-        df = metadata.mark_coordinate_quality(df)
+        # Parse coordinates for every record and mark their quality. Records are
+        # never removed here; only region assignment and maps use the flag (P0-4).
+        logger.info("1.2: Parsing coordinates and marking coordinate quality...")
+        df = metadata.mark_coordinate_quality(metadata.parse_coord_column(df))
+        prov.data_notes["coord_status"] = {
+            str(k): int(v) for k, v in df['coord_status'].value_counts().items()
+        }
+        n_centroid = int((df['coord_status'] == 'centroid').sum())
+        if n_centroid:
+            logger.info(f"  {n_centroid} records have country- or province-centroid coordinates; "
+                        f"they keep lat/lon but are not assigned a region ({geo_category}) or mapped")
 
         # Save metadata with quality markers
         marked_tsv = dirs['intermediate'] / "02_marked_metadata.tsv"
         df.to_csv(marked_tsv, sep='\t', index=False)
 
-        # Assign geographic regions (only to samples with geographic quality)
+        # Assign geographic regions (only to samples with geographic quality).
+        # A record without a region has NaN (empty in CSV), never 'Unknown'.
         logger.info(f"1.3: Assigning geographic regions ({geo_category})...")
         geo_analysis_performed = False  # Track whether geographic analysis was successful
+        df_with_basins = df.copy()
+        df_with_basins[geo_category] = np.nan
+
+        def _attach_regions(assigned_df, region_col):
+            """Copy region assignments onto df_with_basins by processid."""
+            regions = assigned_df.set_index('processid')[region_col].replace('Unknown', np.nan)
+            df_with_basins[geo_category] = df_with_basins['processid'].map(regions)
+            n_quality = int(df['is_geographic_quality'].sum())
+            n_assigned = int(df_with_basins[geo_category].notna().sum())
+            logger.info(f"  ✓ Assigned {geo_category} to {n_assigned} samples")
+            logger.info(f"  → {n_quality - n_assigned} geographic-quality samples fall outside all regions; "
+                        f"{len(df) - n_quality} samples lack geographic-quality coordinates "
+                        f"(missing, unparseable, centroid, zero or out of range)")
 
         if skip_geo:
             logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
-            df_with_basins = df.copy()
-            df_with_basins[geo_category] = 'Unknown'
         elif shapefile_path:
             # Use custom shapefile
             logger.info(f"  → Using custom shapefile: {shapefile_path}")
@@ -418,7 +439,6 @@ def run_pipeline(
             logger.info(f"  → Geographic category: {geo_category}")
 
             try:
-                # Only assign regions to samples with geographic quality coordinates
                 df_geo_quality = df[df['is_geographic_quality']].copy()
                 logger.info(f"  → {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
 
@@ -430,56 +450,16 @@ def run_pipeline(
                         output_column=geo_category,
                         coord_col="coord"
                     )
-
-                    # Merge back with full dataset, preserving lat/lon columns for visualization
-                    df_with_basins = df.copy()
-                    # First set all to Unknown
-                    df_with_basins[geo_category] = 'Unknown'
-
-                    # Initialize lat/lon columns if not present
-                    if 'lat' not in df_with_basins.columns:
-                        df_with_basins['lat'] = pd.NA
-                    if 'lon' not in df_with_basins.columns:
-                        df_with_basins['lon'] = pd.NA
-
-                    # Extract columns to merge: geo_category and lat/lon (if they exist in df_geo_assigned)
-                    cols_to_merge = ['processid', geo_category]
-                    if 'lat' in df_geo_assigned.columns:
-                        cols_to_merge.append('lat')
-                    if 'lon' in df_geo_assigned.columns:
-                        cols_to_merge.append('lon')
-
-                    # Merge the geographic data back
-                    merged_geo = df_with_basins[['processid']].merge(
-                        df_geo_assigned[cols_to_merge], on='processid', how='left', suffixes=('', '_new')
-                    )
-
-                    # Update the columns
-                    df_with_basins[geo_category] = merged_geo[geo_category].fillna('Unknown')
-                    if 'lat_new' in merged_geo.columns:
-                        df_with_basins['lat'] = merged_geo['lat_new']
-                    elif 'lat' in merged_geo.columns:
-                        df_with_basins['lat'] = merged_geo['lat']
-                    if 'lon_new' in merged_geo.columns:
-                        df_with_basins['lon'] = merged_geo['lon_new']
-                    elif 'lon' in merged_geo.columns:
-                        df_with_basins['lon'] = merged_geo['lon']
-
-                    n_assigned = (df_with_basins[geo_category] != 'Unknown').sum()
-                    logger.info(f"  ✓ Assigned {geo_category} to {n_assigned} samples")
-                    logger.info(f"  → {len(df) - n_assigned} samples marked as 'Unknown' (missing coordinates)")
+                    _attach_regions(df_geo_assigned, geo_category)
                     geo_analysis_performed = True
                 else:
                     logger.warning("  ⚠ No samples with geographic-quality coordinates")
-                    df_with_basins = df.copy()
-                    df_with_basins[geo_category] = 'Unknown'
 
             except Exception as e:
                 step_warnings.record("1.3 region assignment",
                                      f"Custom shapefile failed: {e}; continuing without geographic analysis")
                 _print_geo_failure_to_stderr(shapefile_path, e)
-                df_with_basins = df.copy()
-                df_with_basins[geo_category] = 'Unknown'
+                df_with_basins[geo_category] = np.nan
 
         elif not cfg.geographic.goas_shapefile_path.exists():
             logger.warning(f"  ⚠ GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
@@ -494,15 +474,12 @@ def run_pipeline(
             step_warnings.record("1.3 region assignment",
                                  f"GOaS shapefile not found at {cfg.geographic.goas_shapefile_path}; "
                                  "geographic analysis skipped")
-            df_with_basins = df.copy()
-            df_with_basins[geo_category] = 'Unknown'
         else:
             # Use default GOaS shapefile
             logger.info("  → Using default GOaS ocean basin shapefile")
             try:
                 goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
 
-                # Only assign basins to samples with geographic quality coordinates
                 df_geo_quality = df[df['is_geographic_quality']].copy()
                 logger.info(f"  → {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
 
@@ -510,56 +487,15 @@ def run_pipeline(
                     df_geo_assigned = geographic.assign_ocean_basins(
                         df_geo_quality, goas_data=goas_data, coord_col="coord"
                     )
-
-                    # Merge back with full dataset, preserving lat/lon columns for visualization
-                    df_with_basins = df.copy()
-                    # First set all to Unknown
-                    df_with_basins[geo_category] = 'Unknown'
-
-                    # Initialize lat/lon columns if not present
-                    if 'lat' not in df_with_basins.columns:
-                        df_with_basins['lat'] = pd.NA
-                    if 'lon' not in df_with_basins.columns:
-                        df_with_basins['lon'] = pd.NA
-
-                    # Extract columns to merge: ocean_basin and lat/lon (if they exist in df_geo_assigned)
-                    cols_to_merge = ['processid', 'ocean_basin']
-                    if 'lat' in df_geo_assigned.columns:
-                        cols_to_merge.append('lat')
-                    if 'lon' in df_geo_assigned.columns:
-                        cols_to_merge.append('lon')
-
-                    # Merge the geographic data back
-                    merged_geo = df_with_basins[['processid']].merge(
-                        df_geo_assigned[cols_to_merge], on='processid', how='left', suffixes=('', '_new')
-                    )
-
-                    # Update the columns (rename ocean_basin to geo_category if different)
-                    if 'ocean_basin' in merged_geo.columns:
-                        df_with_basins[geo_category] = merged_geo['ocean_basin'].fillna('Unknown')
-                    if 'lat_new' in merged_geo.columns:
-                        df_with_basins['lat'] = merged_geo['lat_new']
-                    elif 'lat' in merged_geo.columns:
-                        df_with_basins['lat'] = merged_geo['lat']
-                    if 'lon_new' in merged_geo.columns:
-                        df_with_basins['lon'] = merged_geo['lon_new']
-                    elif 'lon' in merged_geo.columns:
-                        df_with_basins['lon'] = merged_geo['lon']
-
-                    n_assigned = (df_with_basins[geo_category] != 'Unknown').sum()
-                    logger.info(f"  ✓ Assigned {geo_category} to {n_assigned} samples")
-                    logger.info(f"  → {len(df) - n_assigned} samples marked as 'Unknown' (centroid/missing coordinates)")
+                    _attach_regions(df_geo_assigned, 'ocean_basin')
                     geo_analysis_performed = True
                 else:
                     logger.warning("  ⚠ No samples with geographic-quality coordinates")
-                    df_with_basins = df.copy()
-                    df_with_basins[geo_category] = 'Unknown'
 
             except Exception as e:
                 step_warnings.record("1.3 region assignment",
                                      f"GOaS data failed: {e}; continuing without geographic analysis")
-                df_with_basins = df.copy()
-                df_with_basins[geo_category] = 'Unknown'
+                df_with_basins[geo_category] = np.nan
 
         basins_tsv = dirs['intermediate_geographic'] / f"samples_with_{geo_category}.tsv"
         df_with_basins.to_csv(basins_tsv, sep='\t', index=False)

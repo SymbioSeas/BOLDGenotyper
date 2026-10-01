@@ -270,7 +270,7 @@ def create_plot_config(
         'filters': {
             'include_genotypes': [],
             'exclude_genotypes': [],
-            'exclude_unknown_geography': False  # Set to true to omit 'Unknown' ocean basins
+            'exclude_unknown_geography': False  # Set to true to omit samples without a region
         },
         'map': {
             # Map-specific dimensions (overrides general settings)

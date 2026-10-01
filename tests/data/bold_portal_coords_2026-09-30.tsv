@@ -1,0 +1,44 @@
+# Source: BOLD portal TSV export (Carcharhiniformes), downloaded 2026-09-30; public records. Columns trimmed for coordinate tests.
+processid	species	country/ocean	coord	coord_source	coord_accuracy
+AMS041-06	Sphyrna zygaena	Australia	[-34, 151.183]		
+FOA038-04	Galeorhinus galeus	Australia	[-43, 145.317]		
+AMS013-06	Pseudotriakis microdon	Indian Ocean	[-27, 87]		
+DSFSE081-07	Mustelus mustelus	South Africa	[-36, 21]		
+ANGBF15993-19	Sphyrna lewini	Brazil	[-2.76, -42.2]		
+ANGBF48269-19	Carcharhinus acronotus	Brazil	[-2.76, -42.2]		
+ANGBF48723-19	Galeocerdo cuvier	Brazil	[-2.43, -44]		
+EWHHS099-06	Sphyrna lewini	Brazil	[-32.5, -50]		
+AMS002-06	Carcharhinus obscurus	Australia	[-32.933, 151.75]		
+AMS003-06	Carcharhinus leucas	Australia	[-33.9, 151.267]		
+DSFSE039-07	Galeorhinus galeus	South Africa	[-35.5, 21]		
+FOA032-04	Asymbolus rubiginosus	Australia	[-33.0333, 152]		
+MLFPI001-09	Galeus atlanticus	Portugal	[37, -8.94]		
+MLFPI002-09	Galeus atlanticus	Portugal	[37, -8.94]		
+ESHKA039-07	Carcharhinus longimanus	United States	[31, -79]		
+ESHKC035-07	Carcharhinus signatus	United States	[33, -78]		
+ESHKC006-07	Carcharhinus limbatus	Pacific Ocean	[14, 139.1]		
+ESHKC008-07	Carcharhinus limbatus	Pacific Ocean	[14, 139.1]		
+ANGBF12460-15	Scyliorhinus retifer	United States	[38.48, -73.3517]		
+ANGBF12461-15	Scyliorhinus retifer	United States	[38.48, -73.3517]		
+ANGBF16037-19	Sphyrna tudes	Brazil	[0.9, -52]		
+ANGBF48473-19	Carcharhinus leucas	Brazil	[0.9, -52]		
+ANGBF10965-15	Mustelus asterias	Sweden	[56.9333, 12.35]		
+ANGBF10993-15	Scyliorhinus canicula	Denmark	[57.8308, 10.559]		
+ANGBF10719-15	Iago sp. B KKB2014	India	[23.5863, 81.173004]	Coordinates from country centroid	
+ANGBF10745-15	Eridacnis radcliffei	India	[23.5863, 81.173004]	Coordinates from country centroid	
+ANGBF10746-15	Eridacnis radcliffei	India	[23.5863, 81.173004]	Coordinates from country centroid	
+ANGBF10747-15	Eridacnis radcliffei	India	[23.5863, 81.173004]	Coordinates from country centroid	
+SCFAC147-05	Prionace glauca	Canada	[45.0002, -62.9987]	Coordinates from province centroid	
+CNCC001-12	Apristurus nakayai	New Caledonia	[-21.4183, 157.842]	GPS	
+FLBAR500-18	Sphyrna tiburo	United States	[26.3117, -81.9347]	Collector	1.428
+COFKU003-25	Carcharhinus limbatus	India	[20.907, 70.376]	Garmin Unit	2.0
+FLBAR543-18	Sphyrna mokarran	United States	[26.70931, -82.2647]	Map	1.5
+LTSM057-12		Canada	[43.425, -79.2]	google earth	
+ANGBF11654-15	Scyliorhinus canicula	Spain			
+ANGBF11655-15	Scyliorhinus canicula	Spain			
+ANGBF11656-15	Scyliorhinus canicula	Spain			
+ANGBF11657-15	Scyliorhinus canicula	Spain			
+ANGBF1032-12	Carcharhinus limbatus				
+ANGBF11743-15	Carcharhinus albimarginatus				
+ANGBF11744-15	Carcharhinus altimus				
+ANGBF11745-15	Carcharhinus amblyrhynchos				

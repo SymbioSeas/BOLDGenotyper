@@ -314,6 +314,18 @@ def get_genotype_colors(n_genotypes: int) -> List[str]:
     return out
 
 
+def _as_bool_flag(series: pd.Series, missing: bool = True) -> pd.Series:
+    """Boolean version of a True/False column read back from CSV.
+
+    Records without a haplotype have NaN in flags such as is_ambiguous, which
+    turns the column into objects or floats; '~' then fails on a float. Missing
+    values become `missing` (default True, so they are treated as ambiguous).
+    """
+    mapping = {True: True, False: False, "True": True, "False": False,
+               "true": True, "false": False, 1: True, 0: False}
+    return series.map(lambda v: mapping.get(v, missing) if not pd.isna(v) else missing).astype(bool)
+
+
 def _add_map_gridlines(ax):
     """Draw coordinate labels on a map without visible grid lines.
 
@@ -620,7 +632,8 @@ def plot_distribution_map(
         }
         # Include ocean basin data if available
         if has_ocean_basin:
-            location_entry['ocean_basins'] = geno_data['ocean_basin'].fillna('Unknown').tolist()
+            location_entry['ocean_basins'] = [b if isinstance(b, str) else None
+                                              for b in geno_data['ocean_basin'].tolist()]
         location_data[geno] = location_entry
 
     # Get unique ocean basins if available
@@ -2026,7 +2039,7 @@ def plot_species_distribution_map(
     # Filter to confident species assignments
     df_confident = df.copy()
     if 'is_ambiguous' in df_confident.columns:
-        df_confident = df_confident[~df_confident['is_ambiguous']].copy()
+        df_confident = df_confident[~_as_bool_flag(df_confident['is_ambiguous'])].copy()
 
     # Call the existing distribution map function with species column
     return plot_distribution_map(
@@ -2086,7 +2099,7 @@ def plot_species_ocean_basin_abundance(
     # Filter to confident species assignments
     df_confident = df.copy()
     if 'is_ambiguous' in df_confident.columns:
-        df_confident = df_confident[~df_confident['is_ambiguous']].copy()
+        df_confident = df_confident[~_as_bool_flag(df_confident['is_ambiguous'])].copy()
 
     # Call the existing ocean basin abundance function with species column
     return plot_ocean_basin_abundance(
@@ -2145,7 +2158,7 @@ def plot_species_ocean_basin_abundance_total(
     # Filter to confident species assignments
     df_confident = df.copy()
     if 'is_ambiguous' in df_confident.columns:
-        df_confident = df_confident[~df_confident['is_ambiguous']].copy()
+        df_confident = df_confident[~_as_bool_flag(df_confident['is_ambiguous'])].copy()
 
     # Call the existing ocean basin abundance function with species column
     return plot_ocean_basin_abundance_total(
@@ -2225,7 +2238,7 @@ def plot_haplotypes_by_species_maps(
 
     # Filter to confident species assignments
     confident = species_assignments[
-        (~species_assignments['is_ambiguous']) &
+        (~_as_bool_flag(species_assignments['is_ambiguous'])) &
         (species_assignments[species_column].notna())
     ].copy()
 
@@ -2329,7 +2342,7 @@ def plot_haplotypes_by_species_basin_bars(
 
     # Filter to confident species assignments
     confident = species_assignments[
-        (~species_assignments['is_ambiguous']) &
+        (~_as_bool_flag(species_assignments['is_ambiguous'])) &
         (species_assignments[species_column].notna())
     ].copy()
 

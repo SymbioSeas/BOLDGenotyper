@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(shutil.which("mafft") is None, reason="MAFFT not
 ORGANISM = "Synth"
 
 
-def run_synthetic(workdir, **cfg_updates):
+def run_synthetic(workdir, skip_geo=True, **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv")
@@ -29,7 +29,7 @@ def run_synthetic(workdir, **cfg_updates):
     cfg = config.get_default_config().update(**settings)
     ok = cli.run_pipeline(
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
-        no_report=True, skip_geo=True, export_plot_data=False,
+        no_report=True, skip_geo=skip_geo, export_plot_data=False,
         export_popgen_formats=None, metadata_summary_enabled=False,
     )
     return ok, out
@@ -181,3 +181,38 @@ def test_ids_are_count_free_and_consistent(synthetic_run):
         check_names=False, check_dtype=False)
     readme = (synthetic_run / "divergence_analysis" / "README.md").read_text()
     assert "_n{" not in readme and "h1_n" not in readme
+
+
+def test_one_missing_code_and_latlon_kept(synthetic_run):
+    """P0-4: no 'Unknown' region code; centroid records keep lat/lon; exclusion logged."""
+    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    assert "Unknown" not in set(ann["ocean_basin"].dropna())
+    cent = ann["coord_status"] == "centroid"
+    assert cent.any()
+    assert ann.loc[cent, ["lat", "lon"]].notna().all(axis=None)
+    assert not ann.loc[ann["coord_status"] == "missing", "is_geographic_quality"].any()
+    log = (synthetic_run / f"{ORGANISM}_pipeline.log").read_text()
+    assert "centroid coordinates; they keep lat/lon" in log
+
+
+needs_goas = pytest.mark.skipif(
+    not config.get_default_config().geographic.goas_shapefile_path.exists(),
+    reason="GOaS shapefile not installed")
+
+
+@needs_goas
+def test_goas_regions_only_for_geographic_quality(tmp_path):
+    """P0-4: regions only for geographic-quality records; no region is NaN, not 'Unknown'."""
+    ok, out = run_synthetic(tmp_path, skip_geo=False)
+    assert ok
+    ann = pd.read_csv(out / f"{ORGANISM}_annotated.csv")
+    assert "Unknown" not in set(ann["ocean_basin"].dropna())
+    good = ann["is_geographic_quality"].astype(bool)
+    assert ann.loc[~good, "ocean_basin"].isna().all()
+    assert ann.loc[ann["coord"] == "[12.5, -45.25]", "ocean_basin"].notna().all()
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert set(d["data_notes"]["coord_status"]) <= {"ok", "missing", "centroid", "zero"}
+    # P0-6: every map and plot, including species-level ones, is written
+    assert d["warnings"] == []
+    assert (out / "visualization" / "pdf" / f"{ORGANISM}_distribution_map.pdf").exists()
+    assert (out / "visualization" / "pdf" / f"{ORGANISM}_species_distribution_map.pdf").exists()

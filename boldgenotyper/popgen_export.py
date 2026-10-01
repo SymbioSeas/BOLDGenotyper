@@ -105,7 +105,7 @@ def export_arlequin(
         return arp_file
 
     # Keep samples with BOTH a haplotype assignment and a real population label
-    # (excluding sentinels like "Unknown" used for samples that couldn't be assigned).
+    # (missing regions are NaN in v2; sentinels like "Unknown" from v1 files also count as missing).
     pop_mask = df[pop_column].map(_has_population)
     df_eligible = df[df[haplotype_column].notna() & pop_mask].copy()
 
@@ -548,7 +548,8 @@ def create_export_readme(
     output_dir: Path,
     organism: str,
     exported_formats: List[str],
-    files: Dict[str, Any]
+    files: Dict[str, Any],
+    population_note: Optional[str] = None,
 ) -> Path:
     """
     Create README.md explaining exported formats.
@@ -563,6 +564,8 @@ def create_export_readme(
         List of format names that were exported
     files : dict
         Dictionary of exported file paths
+    population_note : str, optional
+        Markdown paragraph on samples dropped for a missing population label
 
     Returns
     -------
@@ -646,6 +649,13 @@ BOLDGenotyper on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.
 These files can be imported into any software that accepts standard formats:
 - FASTA alignments: MEGA, Geneious, PhyloSuite, etc.
 - CSV tables: R, Python, Excel, etc.
+
+"""
+
+    if population_note:
+        content += f"""## Samples Without a Population
+
+{population_note}
 
 """
 
@@ -787,7 +797,26 @@ def export_population_genetics_formats(
             pop_column=pop_column, haplotype_column=haplotype_column,
         )
 
-    readme_path = create_export_readme(exports_dir, organism, formats, results['files'])
+    # Samples that Arlequin and DnaSP drop because they have no population label
+    # (no region: missing, unparseable, centroid, zero or out-of-range
+    # coordinates, or outside every region polygon).
+    assigned = df[haplotype_column].notna() if haplotype_column in df.columns else pd.Series(False, index=df.index)
+    has_pop = (df[pop_column].map(_has_population) if pop_column in df.columns
+               else pd.Series(False, index=df.index))
+    n_assigned = int(assigned.sum())
+    n_no_pop = int((assigned & ~has_pop).sum())
+    results['n_samples_without_population'] = n_no_pop
+    population_note = (
+        f"{n_no_pop} of {n_assigned} haplotype-assigned samples have no `{pop_column}` "
+        f"and are excluded from the Arlequin and DnaSP files, which require a "
+        f"population for every sample. A sample has no `{pop_column}` when its "
+        f"coordinates are missing, unparseable, a country or province centroid, "
+        f"[0, 0] or out of range, or fall outside every region."
+    )
+    logger.info(f"  {population_note}")
+
+    readme_path = create_export_readme(exports_dir, organism, formats, results['files'],
+                                       population_note=population_note)
     results['files']['readme'] = readme_path
 
     logger.info(f"✓ Population genetics exports complete: {exports_dir}")

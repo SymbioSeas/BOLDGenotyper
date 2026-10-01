@@ -251,7 +251,7 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
 
         # Create GeoDataFrame - should log warning and set invalid to None
         with self.assertLogs('boldgenotyper.geographic', level='WARNING') as log_context:
-            gdf = geographic.create_geodataframe(df)
+            gdf = geographic.create_points_geodataframe(df)
 
         # Should have warning about latitude
         log_output = ' '.join(log_context.output)
@@ -264,6 +264,11 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
         # Second row should have valid geometry
         self.assertIsNotNone(gdf.iloc[1]['geometry'])
 
+        # coord_status names the problem; the record is not geographic-quality
+        marked = metadata.mark_coordinate_quality(df)
+        self.assertEqual(list(marked['coord_status']), ['out_of_range', 'ok'])
+        self.assertEqual(list(marked['is_geographic_quality']), [False, True])
+
     def test_latitude_out_of_range_low(self):
         """Test that latitude < -90 is handled (set to null)."""
         test_data = {
@@ -274,7 +279,7 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
         df = pd.DataFrame(test_data)
 
         with self.assertLogs('boldgenotyper.geographic', level='WARNING') as log_context:
-            gdf = geographic.create_geodataframe(df)
+            gdf = geographic.create_points_geodataframe(df)
 
         log_output = ' '.join(log_context.output)
         self.assertIn('latitude', log_output.lower())
@@ -293,7 +298,7 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
         df = pd.DataFrame(test_data)
 
         with self.assertLogs('boldgenotyper.geographic', level='WARNING') as log_context:
-            gdf = geographic.create_geodataframe(df)
+            gdf = geographic.create_points_geodataframe(df)
 
         log_output = ' '.join(log_context.output)
         self.assertIn('longitude', log_output.lower())
@@ -312,7 +317,7 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
         df = pd.DataFrame(test_data)
 
         with self.assertLogs('boldgenotyper.geographic', level='WARNING') as log_context:
-            gdf = geographic.create_geodataframe(df)
+            gdf = geographic.create_points_geodataframe(df)
 
         log_output = ' '.join(log_context.output)
         self.assertIn('longitude', log_output.lower())
@@ -331,7 +336,7 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
         df = pd.DataFrame(test_data)
 
         with self.assertLogs('boldgenotyper.geographic', level='WARNING') as log_context:
-            gdf = geographic.create_geodataframe(df)
+            gdf = geographic.create_points_geodataframe(df)
 
         log_output = ' '.join(log_context.output)
         # Should have warnings about both
@@ -341,26 +346,21 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
         self.assertTrue(gdf.iloc[0]['geometry'] is None or pd.isna(gdf.iloc[0]['geometry']))
 
     def test_centroid_coordinates_filtered(self):
-        """Test that centroid coordinates (0, 0) are filtered."""
+        """[0, 0] and centroid coordinates are kept but marked, not geographic-quality."""
         test_data = {
-            'processid': ['SAMPLE001', 'SAMPLE002', 'SAMPLE003'],
-            'lat': [0.0, 0.001, 25.0],  # First is centroid
-            'lon': [0.0, 0.001, 130.0],
+            'processid': ['SAMPLE001', 'SAMPLE002', 'SAMPLE003', 'SAMPLE004'],
+            'lat': [0.0, 0.001, 25.0, -20.1],
+            'lon': [0.0, 0.001, 130.0, 134.2],
+            'coord_source': ['', '', 'GPS', 'Coordinates from country centroid'],
         }
         df = pd.DataFrame(test_data)
 
-        # Filter centroids using metadata function
-        with self.assertLogs('boldgenotyper.metadata', level='DEBUG') as log_context:
-            df_filtered = metadata.filter_centroids(df)
+        marked = metadata.mark_coordinate_quality(df)
 
-        # First row (0, 0) should be filtered out
-        # Second row (0.001, 0.001) is close but not exactly centroid, may be kept
-        # Third row should definitely be kept
-        self.assertGreater(len(df_filtered), 0)
-
-        # Check that exact (0, 0) is not present
-        exact_zeros = df_filtered[(df_filtered['lat'] == 0.0) & (df_filtered['lon'] == 0.0)]
-        self.assertEqual(len(exact_zeros), 0)
+        # No record is removed; [0, 0] and centroids are flagged
+        self.assertEqual(len(marked), 4)
+        self.assertEqual(list(marked['coord_status']), ['zero', 'ok', 'ok', 'centroid'])
+        self.assertEqual(list(marked['is_geographic_quality']), [False, True, True, False])
 
     def test_missing_coordinate_columns_handled(self):
         """Test that missing lat/lon columns doesn't crash."""
@@ -372,7 +372,7 @@ class TestErroneousGeographicCoordinates(unittest.TestCase):
 
         # Should not crash - returns empty GeoDataFrame or handles gracefully
         try:
-            gdf = geographic.create_geodataframe(df)
+            gdf = geographic.create_points_geodataframe(df)
             # If it succeeds, all geometries should be None/null
             self.assertTrue(all(pd.isna(gdf['geometry'])))
         except (KeyError, ValueError):
@@ -567,8 +567,10 @@ class TestIntegratedErrorScenarios(unittest.TestCase):
                 'ACGTXYZ' * 20,  # Invalid characters
                 'ACGT' * 50,  # Valid
             ],
-            'lat': [25.0, 95.0, 30.0, 35.0],  # Second is out of range
-            'lon': [130.0, 185.0, 135.0, 140.0],  # Second is out of range
+            # SAMPLE002 is out of range (the duplicate SAMPLE001 row is dropped
+            # before coordinates are used, so it cannot carry the bad value)
+            'lat': [25.0, 25.0, 95.0, 35.0],
+            'lon': [130.0, 130.0, 185.0, 140.0],
             'species': ['Test sp1', 'Test sp2', 'Test sp3', 'Test sp4'],
         }
         df = pd.DataFrame(test_data)
@@ -586,7 +588,7 @@ class TestIntegratedErrorScenarios(unittest.TestCase):
 
         # Create GeoDataFrame - should handle invalid coordinates
         with self.assertLogs('boldgenotyper.geographic', level='WARNING') as log_context:
-            gdf = geographic.create_geodataframe(df_parsed)
+            gdf = geographic.create_points_geodataframe(metadata.parse_coord_column(df_parsed))
 
         log_output = ' '.join(log_context.output)
         # Should have warnings about coordinates
@@ -623,7 +625,7 @@ class TestIntegratedErrorScenarios(unittest.TestCase):
 
         # Create GeoDataFrame - one will have null geometry
         with self.assertLogs('boldgenotyper.geographic', level='WARNING'):
-            gdf = geographic.create_geodataframe(df_parsed)
+            gdf = geographic.create_points_geodataframe(metadata.parse_coord_column(df_parsed))
 
         # Should have 3 valid geometries, 1 null
         valid_geoms = sum(1 for geom in gdf['geometry'] if geom is not None and not pd.isna(geom))
