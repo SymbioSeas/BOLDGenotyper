@@ -341,6 +341,9 @@ def run_pipeline(
     logger.info(f"Output directory: {output_dir}")
     logger.info("")
 
+    # Look for an earlier run before this run creates any folders
+    previous_run = provenance.find_previous_run(output_dir)
+
     # Setup directory structure
     dirs = setup_directories(output_dir)
 
@@ -365,6 +368,12 @@ def run_pipeline(
     )
     step_warnings = prov.warnings.attach()
     prov_path = output_dir / "run_provenance.json"
+    if previous_run:
+        step_warnings.record(
+            "0 output folder",
+            f"Output folder already holds a previous run ({', '.join(previous_run)}). "
+            "Files from that run that this run does not overwrite remain and may be stale; "
+            "use a new --output folder for a clean run.")
     prov.write(prov_path)
     logger.info(f"Saved run provenance to {prov_path}")
 

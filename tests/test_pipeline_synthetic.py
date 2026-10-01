@@ -121,3 +121,20 @@ def test_run_provenance_written_and_complete(synthetic_run):
     assert d["input"]["n_rows"] == EXPECTED["n_input"]
     assert d["data_notes"]["n_duplicate_processids"] == 1
     assert not (synthetic_run / f"{ORGANISM}_pipeline_parameters.json").exists()
+
+
+def test_fresh_run_has_no_previous_run_warning(synthetic_run):
+    d = json.loads((synthetic_run / "run_provenance.json").read_text())
+    assert not [w for w in d["warnings"] if w["step"] == "0 output folder"]
+
+
+def test_reused_output_folder_warns(tmp_path):
+    ok, _ = run_synthetic(tmp_path)
+    assert ok
+    ok, out = run_synthetic(tmp_path)
+    assert ok
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert "0 output folder" in [w["step"] for w in d["warnings"]]
+    assert d["status"] == "completed_with_warnings"
+    last = (out / f"{ORGANISM}_pipeline.log").read_text().strip().splitlines()[-1]
+    assert "Pipeline completed with" in last

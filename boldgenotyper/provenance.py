@@ -226,3 +226,25 @@ class RunProvenance:
         path = Path(path)
         path.write_text(json.dumps(self.to_dict(), indent=2, default=str))
         return path
+
+
+_PREVIOUS_RUN_FILES = ("run_provenance.json", "records.csv", "haplotypes.fasta")
+_PREVIOUS_RUN_GLOBS = ("*_pipeline_parameters.json", "*_annotated.csv")
+
+
+def find_previous_run(output_dir) -> List[str]:
+    """Names of files or folders in output_dir that show an earlier run.
+
+    The current run's own log is not a marker, and neither is an empty folder
+    (a run that failed early can leave empty folders behind).
+    """
+    out = Path(output_dir)
+    if not out.is_dir():
+        return []
+    found = [name for name in _PREVIOUS_RUN_FILES if (out / name).exists()]
+    for pattern in _PREVIOUS_RUN_GLOBS:
+        found.extend(p.name for p in out.glob(pattern))
+    hap = out / "haplotypes"
+    if hap.is_dir() and any(hap.iterdir()):
+        found.append("haplotypes/")
+    return sorted(set(found))

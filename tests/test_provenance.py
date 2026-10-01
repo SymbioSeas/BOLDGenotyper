@@ -84,3 +84,19 @@ def test_run_provenance_serializes_full_config(tmp_path):
     assert d["warnings"] == [{"step": "10.1 distribution map", "message": "failed"}]
     assert d["status"] == "completed_with_warnings"
     assert d["boldgenotyper_version"]
+
+
+# --- Reused output folders (Phase 0 review) ---------------------------------
+
+def test_find_previous_run_markers(tmp_path):
+    assert provenance.find_previous_run(tmp_path) == []
+    (tmp_path / "Synth_pipeline.log").write_text("x")
+    (tmp_path / "haplotypes").mkdir()
+    assert provenance.find_previous_run(tmp_path) == []   # own log and empty folder
+    (tmp_path / "Old_pipeline_parameters.json").write_text("{}")
+    (tmp_path / "haplotypes" / "Old_haplotypes.fasta").write_text(">h1_n2\nACGT\n")
+    assert provenance.find_previous_run(tmp_path) == ["Old_pipeline_parameters.json", "haplotypes/"]
+
+
+def test_find_previous_run_missing_folder(tmp_path):
+    assert provenance.find_previous_run(tmp_path / "does_not_exist") == []
