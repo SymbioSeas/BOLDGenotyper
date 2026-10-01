@@ -280,6 +280,13 @@ def test_default_metadata_output_is_coverage_only(synthetic_run):
     """P1-3, P1-4, P1-5: cross-tabs, temporal and first-sampled outputs only with --extended."""
     files = {p.name for p in (synthetic_run / "metadata_summary").iterdir()}
     assert files == {f"{ORGANISM}_metadata_coverage.json", f"{ORGANISM}_metadata_summary.csv", "README.md"}
+    summary = pd.read_csv(synthetic_run / "metadata_summary" / f"{ORGANISM}_metadata_summary.csv",
+                          keep_default_na=False).set_index("field")
+    # blank, whitespace-only and "U" sex values are missing, not a ": N" category
+    assert summary.loc["sex", "n_with_value"] == 10
+    assert summary.loc["sex", "top_values"] == "Male: 5; Female: 5"
+    for values in summary["top_values"]:
+        assert not any(v.strip().startswith(":") for v in values.split(";"))
 
 
 def test_extended_metadata_outputs(extended_run):
