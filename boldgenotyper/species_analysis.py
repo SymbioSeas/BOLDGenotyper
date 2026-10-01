@@ -23,6 +23,8 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict
 
+from .taxon_labels import haplotype_species_map
+
 logger = logging.getLogger(__name__)
 
 
@@ -449,10 +451,8 @@ def generate_within_species_divergence_matrices(
     haplotype_taxonomy = pd.read_csv(haplotype_taxonomy_csv)
 
     # Create haplotype-to-species mapping
-    haplotype_to_species = dict(zip(
-        haplotype_taxonomy['haplotype_id'],
-        haplotype_taxonomy['assigned_sp']
-    ))
+    # The divergence matrix is indexed by display labels (haplotype_sp)
+    haplotype_to_species = haplotype_species_map(haplotype_taxonomy)
 
     for _, row in species_summary.iterrows():
         species = row['species']

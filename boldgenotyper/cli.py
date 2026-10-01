@@ -1266,7 +1266,7 @@ def run_pipeline(
                             output_dir=dirs['species_analysis'],
                             min_haplotypes=2
                         )
-                        n_species_with_div = len(species_faceted_div_results)
+                        n_species_with_div = len(species_faceted_div_results['matrices'])
                         logger.info(f"  ✓ Generated within-species divergence matrices for {n_species_with_div} species")
                     except Exception as e:
                         step_warnings.record("9.3 within-species divergence", e)

@@ -77,6 +77,14 @@ def species_count_summary(input_labels: Iterable, qc_passed_labels: Iterable,
     }
 
 
+def haplotype_species_map(haplotype_taxonomy: pd.DataFrame) -> Dict[str, str]:
+    """Map each haplotype_id and display label (haplotype_sp) to its assigned_sp."""
+    mapping = dict(zip(haplotype_taxonomy["haplotype_id"], haplotype_taxonomy["assigned_sp"]))
+    if "haplotype_sp" in haplotype_taxonomy.columns:
+        mapping.update(zip(haplotype_taxonomy["haplotype_sp"], haplotype_taxonomy["assigned_sp"]))
+    return mapping
+
+
 MISSING_LABEL_TEXT = "(no species label)"
 
 

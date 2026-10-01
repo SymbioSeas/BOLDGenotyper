@@ -30,6 +30,8 @@ from Bio.Align import MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+from .taxon_labels import haplotype_species_map
+
 logger = logging.getLogger(__name__)
 
 
@@ -963,10 +965,8 @@ def generate_species_divergence_analysis(
     haplotype_taxonomy = pd.read_csv(haplotype_taxonomy_csv)
 
     # Create a mapping from haplotype_id to species
-    haplotype_to_species = dict(zip(
-        haplotype_taxonomy['haplotype_id'],
-        haplotype_taxonomy['assigned_sp']
-    ))
+    # The divergence matrix is indexed by display labels (haplotype_sp)
+    haplotype_to_species = haplotype_species_map(haplotype_taxonomy)
 
     # Filter divergence matrix to only include haplotypes with species assignments
     valid_haplotypes = [h for h in divergence_matrix.index if h in haplotype_to_species]
