@@ -888,7 +888,7 @@ boldgenotyper data/MySpecies.tsv --singleton-distance 0.015 --build-tree
 
 **What it controls**: The NCBI genetic code table used for ORF validation during quality control. Sequences are translated in all six reading frames and the result is used to confirm they are valid COI amplicons and to select the correct orientation.
 
-**When to change**: The default (code 2, vertebrate mitochondrial) is correct for fish, sharks, mammals, birds, and reptiles. **Most invertebrates require code 5** (invertebrate mitochondrial). Using the wrong code causes 100% of sequences to fail ORF validation.
+**When to change**: The default (code 2, vertebrate mitochondrial) is correct for fish, sharks, mammals, birds, and reptiles. **Most invertebrates require code 5** (invertebrate mitochondrial). With the wrong code, codons such as AGA/AGG translate as stops, so many (sometimes all) sequences can fail ORF validation, and those that pass were checked against the wrong code.
 
 | Code | Name | Example taxa |
 |------|------|-------------|
@@ -1465,9 +1465,9 @@ head -1 data/my_species.tsv
 # Option 2: Use sed/awk to rename headers
 ```
 
-**Problem**: All sequences fail ORF validation (100% of sequences excluded by QC)
+**Problem**: Many or all sequences fail ORF validation
 
-This is the most common issue when running BOLDGenotyper on invertebrates. The pipeline defaults to genetic code 2 (vertebrate mitochondrial), which produces incorrect translations for invertebrate COI and causes every sequence to fail ORF validation.
+This is the most common issue when running BOLDGenotyper on invertebrates. The pipeline defaults to genetic code 2 (vertebrate mitochondrial), which mistranslates invertebrate COI (e.g. AGA/AGG read as stops) and can make many or all sequences fail ORF validation.
 
 ```bash
 # Count the QC failure reasons
