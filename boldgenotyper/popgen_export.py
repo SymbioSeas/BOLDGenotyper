@@ -653,9 +653,9 @@ These files can be imported into any software that accepts standard formats:
 
 ### Genotype Naming
 
-Genotypes are named using the pattern: `c{cluster_id}_n{sample_count}`
-
-Example: `c15_n386` = cluster 15, containing 386 samples
+Haplotypes are named by their run ID (`H0001`, `H0002`, ...), numbered by
+member count (largest first). IDs carry no counts; member counts are in the
+haplotype table (`n_members`), and `seq_md5` is the stable key across runs.
 
 ### Metadata Fields
 

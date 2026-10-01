@@ -164,3 +164,20 @@ def test_tree_min_members_excludes_and_explains(tmp_path):
     assert ok
     excluded = (out / "phylogenetic" / f"{ORGANISM}_excluded_tips.txt").read_text().splitlines()
     assert excluded == ["haplotype_id\treason", "H0004\tn_members 1 < 2"]
+
+
+def test_ids_are_count_free_and_consistent(synthetic_run):
+    """P0-8: H IDs carry no counts, and n_members agrees across files."""
+    fasta = (synthetic_run / "haplotypes" / f"{ORGANISM}_haplotypes.fasta").read_text()
+    headers = [line for line in fasta.splitlines() if line.startswith(">")]
+    assert headers[0].startswith(">H0001 seq_md5=")
+    assert headers[0].endswith(f"n_members={EXPECTED['members']['A']}")
+    assert not any("_n" in h.split()[0] for h in headers)
+    stats = pd.read_csv(synthetic_run / "haplotypes" / f"{ORGANISM}_haplotype_stats.csv")
+    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    per_hap = ann.dropna(subset=["haplotype_id"]).groupby("haplotype_id").size()
+    pd.testing.assert_series_equal(
+        stats.set_index("haplotype_id")["n_members"].sort_index(), per_hap.sort_index(),
+        check_names=False, check_dtype=False)
+    readme = (synthetic_run / "divergence_analysis" / "README.md").read_text()
+    assert "_n{" not in readme and "h1_n" not in readme

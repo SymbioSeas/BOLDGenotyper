@@ -167,7 +167,7 @@ def calculate_pairwise_divergence_matrix(
         seq_id = record.id
         sequences[seq_id] = str(record.seq)
 
-    # Build label map: haplotype_id -> haplotype_sp (e.g. "h1_n5" -> "Salmo salar h1_n5")
+    # Build label map: haplotype_id -> haplotype_sp (e.g. "H0001" -> "Salmo salar H0001")
     id_to_sp = {}
     if 'haplotype_id' in taxonomy_df.columns and 'haplotype_sp' in taxonomy_df.columns:
         id_to_sp = dict(zip(taxonomy_df['haplotype_id'], taxonomy_df['haplotype_sp']))
@@ -774,9 +774,11 @@ This directory contains pairwise divergence analysis results for haplotype seque
 
 ## Haplotype Label Format
 
-Haplotype labels follow the format `h{{number}}_n{{count}}`:
-- `h1_n45` = Haplotype 1 with 45 member sequences
-- `h2_n12` = Haplotype 2 with 12 member sequences
+Haplotype IDs (`H0001`, `H0002`, ...) carry no counts. They are numbered by
+member count (largest first), then by `seq_md5`. Member counts are in the
+`n_members` column of the haplotype table; `seq_md5` (the md5 of the
+uppercase, ungapped core sequence) is the stable key for comparing haplotypes
+across runs.
 
 ## Interpretation
 

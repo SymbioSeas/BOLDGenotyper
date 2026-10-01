@@ -31,7 +31,7 @@ Key Concepts:
 
 Terminology:
 - **Haplotype**: Unique sequence variant (ESV) identified from core region
-- **Haplotype ID**: Format hX_nY where X = haplotype number, Y = member count (e.g., h1_n85)
+- **Haplotype ID**: Format H0001, numbered by member count; counts are not part of the ID
 
 Dependencies:
 - edlib (optional): Fast C-based edit distance calculation
@@ -635,10 +635,10 @@ def find_best_haplotype_match(
 
     Examples
     --------
-    >>> haplotypes = [("h1_n10", "ACGTACGT"), ("h2_n5", "TGCATGCA")]
+    >>> haplotypes = [("H0001", "ACGTACGT"), ("H0002", "TGCATGCA")]
     >>> result = find_best_haplotype_match("ACGTACGT", haplotypes)
     >>> result['best_haplotype']
-    'h1_n10'
+    'H0001'
     >>> result['best_identity']
     1.0
     """
@@ -1051,7 +1051,7 @@ def assign_haplotypes(
     haplotype_records = read_fasta_simple(str(consensus_path))
     haplotype_groups = []
     for header, seq in haplotype_records:
-        # Extract haplotype ID (e.g., "haplotype_h7_n381")
+        # Extract haplotype ID (e.g., "H0007" from ">H0007 seq_md5=... n_members=381")
         haplotype_id_str = header.split()[0]  # Take first word
         haplotype_groups.append((haplotype_id_str, seq))
     logger.info(f"Loaded {len(haplotype_groups)} haplotypes")
@@ -1123,7 +1123,7 @@ def assign_haplotypes(
 
     # Add haplotype_id column to metadata
     # haplotype_id IDs come directly from the haplotype FASTA headers
-    # (e.g., "h1_n85") produced by identify_unique_haplotypes() in dereplication.
+    # (e.g., "H0001") assigned by identify_haplotypes() in dereplication.
     # These IDs must remain stable so downstream taxonomy (Phase 4) and
     # phylogenetic relabeling (Phase 5) can match them to tree tip labels.
     metadata_df['haplotype_id'] = metadata_df['processid'].map(processid_to_group)

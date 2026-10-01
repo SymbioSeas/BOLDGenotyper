@@ -836,8 +836,9 @@ was assigned to at each tested threshold.  The key derived columns are:
 - **mean / min / max_cluster_size** — size of the sample's haplotype across
   the sweep.
 
-> Haplotype *names* (e.g. `h1_n177`) are arbitrary and may differ between
-> runs.  What matters is which other samples share the same haplotype.
+> Haplotype *names* (e.g. `H0001`) are numbered within each run and differ
+> between thresholds; compare haplotypes across runs by `seq_md5`.  What
+> matters is which other samples share the same haplotype.
 
 ## Interpretation
 

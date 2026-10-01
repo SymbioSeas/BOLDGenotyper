@@ -340,7 +340,7 @@ def create_plot_config(
             # 'height_inches': 8,
             'layout': 'rectangular',
             # Outgroup for rerooting (optional, use consensus_group_sp format)
-            # Example: 'outgroup': 'Sphyrna corona c10_n5'
+            # Example: 'outgroup': 'Sphyrna corona H0010'
             'outgroup': None,
             'show_bootstrap': True,
             'bootstrap_threshold': 70,
@@ -744,9 +744,9 @@ plots/
 Edit `plot_config.yaml`:
 ```yaml
 colors:
-  c15_n386: "#E41A1C"  # Red
-  c18_n255: "#377EB8"  # Blue
-  c16_n86: "#4DAF4A"   # Green
+  H0001: "#E41A1C"  # Red
+  H0002: "#377EB8"  # Blue
+  H0003: "#4DAF4A"  # Green
 ```
 
 ### Adjust Figure Size

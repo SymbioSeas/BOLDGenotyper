@@ -939,7 +939,8 @@ def regenerate_phylogenetic_tree(
                         # Add full name mapping
                         label_map[full_name] = label
 
-                        # Also add short name mapping (e.g., "consensus_c14" from "consensus_c14_n11")
+                        # Also add short name mapping (e.g., "consensus_c14" from "consensus_c14_n11";
+                        # v1 consensus IDs only, v2 IDs such as H0001 have no suffix)
                         if '_n' in full_name:
                             short_name = full_name.split('_n')[0]
                             if short_name not in label_map:
@@ -1017,7 +1018,8 @@ def regenerate_phylogenetic_tree(
         else:
             # Try partial matching by cluster ID (e.g., "c18_n281" in "Sphyrna lewini c18_n281")
             for color_key, color_val in colors_cfg.items():
-                # Extract cluster from tip name (e.g., "c18_n281" from "Sphyrna lewini c18_n281")
+                # Extract cluster from tip name (e.g., "c18_n281" from "Sphyrna lewini c18_n281";
+                # v1 consensus IDs only, v2 tips match exactly above)
                 parts = tip_name.split()
                 if len(parts) >= 2 and parts[-1].startswith('c') and '_n' in parts[-1]:
                     tip_cluster = parts[-1]  # e.g., "c18_n281"

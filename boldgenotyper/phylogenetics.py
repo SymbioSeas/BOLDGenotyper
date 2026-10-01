@@ -800,8 +800,8 @@ def relabel_tree_and_alignment(
     """
     Relabel phylogenetic tree and alignment with haplotype_sp labels.
 
-    This function replaces haplotype_id labels (e.g., "consensus_c34_n97")
-    with haplotype_sp labels (e.g., "Crassostrea hongkongensis c34_n97")
+    This function replaces haplotype_id labels (e.g., "H0034")
+    with haplotype_sp labels (e.g., "Crassostrea hongkongensis H0034")
     in both the tree and alignment files.
 
     Parameters
@@ -871,7 +871,8 @@ def relabel_tree_and_alignment(
     label_map = dict(zip(taxonomy_df[id_column], taxonomy_df[label_column]))
     logger.info(f"Loaded {len(label_map)} label mappings from taxonomy CSV")
 
-    # Create alternative mapping for base names
+    # Create alternative mapping for base names (v1 IDs only; v2 IDs such as
+    # H0001 match exactly through label_map).
     # This handles cases where tree tips have different suffix counts than taxonomy CSV
     # Tree tips: haplotype_h1_n218 (discovery count)
     # Taxonomy: haplotype_h1_n218_n239 (discovery count + assignment count)
@@ -1052,7 +1053,8 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
         logger.warning(f"No haplotypes matched outgroup taxon '{taxon_query}'")
         return None
 
-    # Normalize to base IDs for matching tree tips (strip trailing _n counts)
+    # Normalize to base IDs for matching tree tips (strip trailing _n counts;
+    # v1 IDs only, v2 IDs such as H0001 are returned unchanged)
     import re
     def _to_base(name: str) -> str:
         m = re.match(r'((?:haplotype_h|consensus_c)\\d+)(?:_n\\d+)*$', name)

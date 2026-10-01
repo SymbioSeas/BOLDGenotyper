@@ -745,11 +745,11 @@ def merge_zero_divergence_haplotypes(
     **Example:**
 
     Before merging:
-    - haplotype_h1_n100: 100 samples, 591 bp
-    - haplotype_h5_n10: 10 samples, 587 bp (identical in 587 bp overlap)
+    - haplotype A: 100 samples, 591 bp
+    - haplotype B: 10 samples, 587 bp (identical in 587 bp overlap)
 
     After merging:
-    - haplotype_h1_n110: 110 samples (combined)
+    - haplotype A: 110 samples (combined; A's sequence is kept)
 
     **Rationale:**
 

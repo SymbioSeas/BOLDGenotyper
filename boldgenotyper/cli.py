@@ -2030,7 +2030,7 @@ Examples:
   boldgenotyper data/Carcharhinus.tsv --singleton-distance 0.015 --download-date 2026-09-30
 
   # Enable phylogeny and root on an in-tree outgroup label or taxon
-  boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-label "Eusphyra blochii haplotype_h10_n21_n19"
+  boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-label "Eusphyra blochii H0010"
   boldgenotyper data/Euprymna.tsv --build-tree --phylo-outgroup-taxon "Eusphyra blochii"
 
   # Include an external outgroup FASTA for rooting

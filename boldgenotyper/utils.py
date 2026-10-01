@@ -820,6 +820,7 @@ def assign_consensus_taxonomy(
     if all_groups is not None:
         observed = set(counts[group_col].unique())
         # Helper: consider variants with trailing _n\d+ as equivalent to base
+        # (v1 IDs only; v2 IDs such as H0001 match exactly)
         def _is_observed_variant(name: str) -> bool:
             if name in observed:
                 return True

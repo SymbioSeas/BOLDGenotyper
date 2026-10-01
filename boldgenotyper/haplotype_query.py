@@ -19,7 +19,7 @@ Use Case Example:
 After completing a BOLD analysis on Sphyrnidae, a user obtains a S. gilberti
 reference genome and wants to determine if the COX1 sequence matches any
 identified haplotypes. This module performs local alignment against all
-haplotypes and reports that it's a 100% match to haplotype_h15_n5 (containing
+haplotypes and reports that it's a 100% match to haplotype H0015 (containing
 5 S. lewini samples).
 
 Dependencies:
