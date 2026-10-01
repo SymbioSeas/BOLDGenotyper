@@ -1049,6 +1049,11 @@ class PipelineConfig:
 
     overwrite_existing : bool
         Overwrite existing output files (default: False)
+
+    extended : bool
+        Write interpretive and descriptive extras (--extended): metadata
+        cross-tabs, temporal and first-sampled summaries, the label-based
+        barcoding gap and diversity metrics (default: False)
     """
     coi_validation: COIValidationConfig = field(default_factory=COIValidationConfig)
     qc: QCConfig = field(default_factory=QCConfig)
@@ -1066,6 +1071,7 @@ class PipelineConfig:
     output_dir: Path = field(default_factory=lambda: Path("results"))
     keep_intermediates: bool = False
     overwrite_existing: bool = False
+    extended: bool = False
 
     def __post_init__(self):
         """Validate and normalize configuration."""

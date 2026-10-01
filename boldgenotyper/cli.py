@@ -2190,8 +2190,8 @@ Notes:
         '--no-metadata-analysis',
         dest='no_metadata_summary',
         action='store_true',
-        help='Disable metadata summarization (enabled by default). '
-             'The legacy alias --no-metadata-analysis is also accepted.'
+        help='With --extended, skip the metadata cross-tabs (metadata coverage is always '
+             'written). The legacy alias --no-metadata-analysis is also accepted.'
     )
 
     parser.add_argument(
@@ -2212,7 +2212,8 @@ Notes:
     parser.add_argument(
         '--no-temporal-analysis',
         action='store_true',
-        help='Disable temporal analysis of collection dates (enabled by default)'
+        help='With --extended, skip the temporal and first-sampled summaries of '
+             'collection dates.'
     )
 
     parser.add_argument(
@@ -2257,6 +2258,15 @@ Notes:
         help='NCBI genetic code table for ORF validation (default: 2 = vertebrate mitochondrial). '
              'Use 5 for most invertebrates (invertebrate mitochondrial). '
              'See https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi for full list.'
+    )
+
+    parser.add_argument(
+        '--extended',
+        action='store_true',
+        help='Also write interpretive and descriptive extras: metadata cross-tabs '
+             '(normalized vocabularies), temporal and first-sampled summaries, the '
+             'label-based barcoding gap, and species diversity. They depend on '
+             'sampling and labels; see the run README.'
     )
 
     parser.add_argument(
@@ -2372,6 +2382,7 @@ def main():
     cfg = cfg.update(
         haplotype__min_singleton_distance=args.singleton_distance,
         haplotype__assign_corrected=not args.no_assign_corrected,
+        extended=args.extended,
         n_threads=args.threads,
         output_dir=output_dir,
         log_level=args.log_level,
