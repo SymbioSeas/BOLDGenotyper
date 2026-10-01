@@ -1,19 +1,17 @@
 # BOLDGenotyper API Reference
 
-**Version**: 0.1.0
-**Last Updated**: 2025-11-25
-
-This document provides guidance for using BOLDGenotyper programmatically in Python scripts and custom workflows.
-
----
+Version 2.0.0. The command-line tools are the supported interface; this page describes
+the Python functions behind them for scripting and custom analyses. Every run folder's
+`README.md` defines the output files and columns; the
+[migration guide](MIGRATION_v1_to_v2.md) maps v1 outputs and functions to v2.
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Modules](#core-modules)
-- [Advanced Usage](#advanced-usage)
+- [Running the Pipeline](#running-the-pipeline)
+- [Reading a Run Folder](#reading-a-run-folder)
 - [Configuration](#configuration)
+- [Module Reference](#module-reference)
 - [Examples](#examples)
 
 ---
@@ -21,676 +19,264 @@ This document provides guidance for using BOLDGenotyper programmatically in Pyth
 ## Installation
 
 ```bash
-# Install BOLDGenotyper
-pip install boldgenotyper
+# conda (includes MAFFT, trimAl, FastTree and pymsaviz)
+conda env create -f environment.yml
+conda activate boldgenotyper
+pip install -e .
 
-# Or install from source with all dependencies
-git clone https://github.com/SymbioSeas/BOLDGenotyper.git
-cd BOLDGenotyper
-pip install -e ".[all]"
+# pip only (install MAFFT, trimAl and FastTree separately)
+pip install -e ".[msa]"
 ```
-
----
-
-## Quick Start
-
-### Basic Programmatic Usage
 
 ```python
 import boldgenotyper
-from pathlib import Path
-
-# Import specific modules
-from boldgenotyper import metadata, dereplication, haplotype_assignment
-from boldgenotyper import geographic, visualization, phylogenetics
-
-# Check version
-print(f"BOLDGenotyper version: {boldgenotyper.__version__}")
-
-# List available modules
-print(f"Available modules: {', '.join(boldgenotyper.__all__)}")
+print(boldgenotyper.__version__)   # 2.0.0
 ```
 
-### Running Full Pipeline Programmatically
+---
 
-For most users, the CLI commands are recommended. However, you can call pipeline functions directly:
+## Running the Pipeline
+
+### From Python via the CLI (recommended)
 
 ```python
-from pathlib import Path
 import subprocess
 
-# Using subprocess to call CLI (recommended for full pipeline)
-result = subprocess.run([
-    'boldgenotyper',
-    'data/Sphyrna_lewini.tsv',
-    '--clustering-threshold', '0.02',
-    '--build-tree',
-    '--output', 'results/'
-], capture_output=True, text=True)
-
-print(result.stdout)
+subprocess.run([
+    "boldgenotyper", "data/Sphyrna_lewini.tsv",
+    "--output", "results/Sphyrna_lewini",
+    "--singleton-distance", "0.015",
+    "--build-tree", "--threads", "8",
+], check=True)
 ```
+
+### `cli.run_pipeline`
+
+```python
+from pathlib import Path
+from boldgenotyper import cli, config
+
+out = Path("results/Sphyrna_lewini")
+cfg = config.get_default_config().update(
+    output_dir=out,
+    n_threads=8,
+    extended=True,
+    haplotype__min_singleton_distance=0.015,
+    phylogenetic__build_tree=True,
+)
+ok = cli.run_pipeline(
+    tsv_path=Path("data/Sphyrna_lewini.tsv"),
+    organism="Sphyrna_lewini",
+    output_dir=out,
+    cfg=cfg,
+)
+```
+
+`run_pipeline(tsv_path, organism, output_dir, cfg, no_report=False, skip_geo=False,
+export_plot_data=False, export_popgen_formats=None, metadata_summary_enabled=False,
+metadata_fields=None, normalize_sex=True, temporal_analysis=False, ...)` returns `True`
+when the run finishes (`completed` or `completed_with_warnings` in
+`run_provenance.json`). `export_plot_data` is `--plot-kit`; `export_popgen_formats` is
+`--export-format`. Call `utils.setup_logging(log_file=...)` first to get the run log.
 
 ---
 
-## Core Modules
-
-### 1. metadata - Data Loading and Quality Control
-
-**Purpose**: Load BOLD TSV files, validate coordinates, assign ocean basins
-
-**Key Functions**:
+## Reading a Run Folder
 
 ```python
-from boldgenotyper import metadata
-
-# Parse BOLD TSV file
-df = metadata.parse_bold_tsv('data/samples.tsv')
-print(f"Loaded {len(df)} samples")
-
-# Filter by coordinate quality
-filtered_df = metadata.filter_coordinates(df, exclude_centroids=True)
-print(f"Retained {len(filtered_df)} samples with high-quality coordinates")
-
-# Extract sequences
-sequences = metadata.extract_sequences(df, min_length=400, max_n_content=0.10)
-print(f"Extracted {len(sequences)} valid sequences")
-```
-
-**Main Functions**:
-- `parse_bold_tsv(tsv_path)`: Load BOLD TSV file
-- `filter_coordinates(df, exclude_centroids=True)`: Filter low-quality coordinates
-- `extract_sequences(df, min_length=400, max_n_content=0.10)`: Extract and filter sequences
-- `validate_required_columns(df)`: Check for required columns
-
----
-
-### 2. dereplication - Sequence Clustering and Consensus Generation
-
-**Purpose**: Cluster sequences, generate consensus genotypes
-
-**Key Functions**:
-
-```python
-from boldgenotyper import dereplication
+import pandas as pd
 from pathlib import Path
 
-# Cluster sequences
-consensus_fasta, cluster_info = dereplication.dereplicate_sequences(
-    sequences=sequences,  # BioPython SeqRecord list
-    output_dir=Path('output/dereplication/'),
-    clustering_threshold=0.03,  # 97% identity
-    threads=8
-)
+run = Path("results/Sphyrna_lewini")
+summary = pd.read_csv(run / "summary.csv").iloc[0]
+records = pd.read_csv(run / "records.csv", low_memory=False)   # one row per record
+haps = pd.read_csv(run / "haplotypes.csv")                     # one row per haplotype
 
-print(f"Generated {len(cluster_info)} consensus genotypes")
-print(f"Consensus sequences: {consensus_fasta}")
+members = records[records["status"].isin(["assigned", "assigned_corrected"])]
+by_region = pd.read_csv(run / "geography" / "haplotype_by_region.csv")
+trends = pd.read_csv(run / "extended" / "metadata" / "temporal_trends.csv", comment="#")
 ```
-
-**Main Functions**:
-- `dereplicate_sequences(sequences, output_dir, clustering_threshold, threads)`: Main clustering function
-- `align_sequences(fasta_path, output_path, threads)`: MAFFT alignment
-- `trim_alignment(alignment_path, output_path)`: trimAl trimming
-- `calculate_distance_matrix(alignment_path)`: Pairwise distances
-- `hierarchical_clustering(distance_matrix, threshold)`: Cluster sequences
-- `generate_consensus(alignment, cluster_assignments)`: Create consensus sequences
-
----
-
-### 3. haplotype_assignment - Sample-to-Haplotype Matching
-
-**Purpose**: Assign samples to haplotype sequences using edit distance
-
-**Key Functions**:
-
-```python
-from boldgenotyper import haplotype_assignment
-
-# Assign samples to haplotypes
-stats = haplotype_assignment.assign_haplotypes(
-    metadata_path='data/samples.tsv',
-    fasta_path='output/sequences.fasta',
-    consensus_path='output/haplotypes.fasta',
-    output_path='output/samples_with_haplotypes.tsv',
-    min_identity=0.50,
-    tie_margin=0.003,
-    tie_min_identity=0.95,
-    n_processes=8
-)
-
-print(f"Assigned {stats['assigned']}/{stats['total']} samples")
-```
-
-**Main Functions**:
-- `assign_genotypes(sample_sequences, consensus_fasta, similarity_threshold, tie_margin, tie_threshold, threads)`: Assign all samples
-- `calculate_edit_distance(seq1, seq2)`: Compute edit distance between two sequences
-- `detect_ties(identities, tie_margin, tie_threshold)`: Flag ambiguous assignments
-- `generate_diagnostics(assignments)`: Create diagnostics table
-
----
-
-### 4. geographic - Ocean Basin Assignment
-
-**Purpose**: Assign samples to ocean basins using GOaS shapefile
-
-**Key Functions**:
-
-```python
-from boldgenotyper import geographic
-
-# Assign ocean basins
-df_with_basins = geographic.assign_ocean_basins(
-    df=df_with_coords,
-    goas_shapefile='shapefiles/GOaS_v1_20211214/goas_v01.shp'
-)
-
-print(f"Unique basins: {df_with_basins['ocean_basin'].unique()}")
-```
-
-**Main Functions**:
-- `assign_ocean_basins(df, goas_shapefile)`: Assign samples to basins
-- `load_goas_shapefile(shapefile_path)`: Load GOaS data
-- `point_to_basin(lat, lon, goas_gdf)`: Get basin for single coordinate
-- `filter_valid_coordinates(df)`: Remove invalid coordinates
-
----
-
-### 5. phylogenetics - Tree Construction
-
-**Purpose**: Build phylogenetic trees with FastTree
-
-**Key Functions**:
-
-```python
-from boldgenotyper import phylogenetics
-
-# Build tree
-tree_path = phylogenetics.build_tree(
-    consensus_fasta='output/consensus.fasta',
-    output_dir=Path('output/phylogenetic/'),
-    model='GTR+G',  # GTR+Gamma model
-    threads=8
-)
-
-print(f"Tree saved to: {tree_path}")
-
-# Visualize tree
-phylogenetics.plot_tree(
-    tree_path=tree_path,
-    output_path='output/tree_plot.pdf',
-    tip_labels=True
-)
-```
-
-**Main Functions**:
-- `build_tree(consensus_fasta, output_dir, model, threads)`: Construct ML tree with FastTree
-- `plot_tree(tree_path, output_path, tip_labels)`: Generate tree visualization
-- `relabel_tree(tree_path, label_mapping)`: Replace tip labels with readable names
-
----
-
-### 6. visualization - Geographic and Distribution Plots
-
-**Purpose**: Generate publication-ready visualizations
-
-**Key Functions**:
-
-```python
-from boldgenotyper import visualization
-
-# Geographic distribution map
-visualization.plot_distribution_map(
-    df=annotated_df,
-    output_path='output/distribution_map.pdf',
-    genotype_column='consensus_group',
-    basin_column='ocean_basin'
-)
-
-# Abundance bar chart by basin
-visualization.plot_distribution_bars(
-    df=annotated_df,
-    output_path='output/distribution_bars.pdf',
-    genotype_column='consensus_group',
-    basin_column='ocean_basin',
-    relative=True  # Relative abundance (normalized)
-)
-
-# Identity distribution histogram
-visualization.plot_identity_distribution(
-    df=annotated_df,
-    output_path='output/identity_dist.pdf',
-    identity_column='identity'
-)
-```
-
-**Main Functions**:
-- `plot_distribution_map(df, output_path, genotype_column, basin_column)`: Global map
-- `plot_distribution_bars(df, output_path, genotype_column, basin_column, relative)`: Bar charts
-- `plot_identity_distribution(df, output_path, identity_column)`: Identity histogram
-- `plot_faceted_maps(df, output_dir, facet_by)`: Multiple maps (one per species/genotype)
-
----
-
-### 7. compare_analyses.py - Multi-Level Comparison (Standalone Script)
-
-**Purpose**: Compare species vs. family analyses for quality control. This utility
-lives in `scripts/compare_analyses.py` and is run directly rather than imported.
-
-**Usage**:
-
-```bash
-python scripts/compare_analyses.py \
-    --species-level Sphyrna_lewini_output/ \
-    --family-level Sphyrnidae_output/ \
-    --output comparative_analysis/ \
-    --generate-reassignment-table \
-    --majority-threshold 0.70
-```
-
-**Main Functions** (importable for programmatic use):
-
-```python
-from scripts import compare_analyses  # or sys.path-based import
-
-results = compare_analyses.compare_analyses(
-    species_path=Path('Sphyrna_lewini_output/'),
-    family_path=Path('Sphyrnidae_output/'),
-    output_dir=Path('comparison/'),
-    generate_reassignment_table=True,
-    majority_threshold=0.70
-)
-# results keys: comparison_summary, genotype_crosswalk, sample_reassignments,
-#               methods_text, readme (all Path objects)
-```
-
-- `compare_analyses(species_path, family_path, output_dir, generate_reassignment_table, majority_threshold)`: Full comparison workflow
-- `load_analysis_results(analysis_path)`: Load annotated CSV from a completed run
-- `generate_comparison_summary(species_df, family_df, ...)`: High-level metric table
-- `generate_genotype_crosswalk(species_df, family_df, ...)`: Group-level mapping table
-- `generate_sample_reassignments(species_df, family_df, ...)`: Sample-level reassignment table
-- `generate_methods_text(species_meta, family_meta, summary_df, output_path, majority_threshold)`: Auto-generate methods text
-
----
-
-### 8. parameter_sweep - Threshold Optimization
-
-**Purpose**: Test multiple thresholds to find optimal value
-
-**Key Functions**:
-
-```python
-from boldgenotyper import parameter_sweep
-
-# Run sweep
-sweep_results = parameter_sweep.run_parameter_sweep(
-    tsv_path=Path('data/samples.tsv'),
-    thresholds=[0.01, 0.015, 0.02, 0.03, 0.05],
-    output_dir=Path('parameter_sweep/'),
-    threads=8,
-    keep_intermediates=False
-)
-
-print(f"Recommended threshold: {sweep_results['recommended_threshold']}")
-print(f"Elbow point: {sweep_results['elbow_point']}")
-```
-
-**Main Functions**:
-- `run_parameter_sweep(tsv_path, thresholds, output_dir, threads, keep_intermediates)`: Run full sweep
-- `calculate_sweep_metrics(threshold_results)`: Compile metrics across thresholds
-- `detect_elbow_point(metrics_df)`: Identify optimal threshold
-- `plot_stability(metrics_df, output_path)`: Generate stability plots
-
----
-
-### 9. popgen_export - Population Genetics Formats
-
-**Purpose**: Export genotypes to external software formats
-
-**Key Functions**:
-
-```python
-from boldgenotyper import popgen_export
-
-# Export to multiple formats
-export_results = popgen_export.export_population_genetics_formats(
-    df=annotated_df,
-    consensus_fasta_path=Path('output/consensus.fasta'),
-    output_dir=Path('exports/'),
-    organism='Sphyrna_lewini',
-    formats=['arlequin', 'popart', 'dnasp', 'generic']
-)
-
-print(f"Exported formats: {list(export_results.keys())}")
-```
-
-**Main Functions**:
-- `export_population_genetics_formats(df, consensus_fasta_path, output_dir, organism, formats)`: Export all formats
-- `export_arlequin(df, consensus_fasta, output_path)`: Arlequin .arp file
-- `export_popart(df, consensus_fasta, output_path)`: PopART NEXUS file
-- `export_dnasp(df, consensus_fasta, output_path)`: DnaSP FASTA file
-- `export_generic(df, consensus_fasta, output_dir)`: Generic CSV/FASTA files
 
 ---
 
 ## Configuration
 
-### Using Configuration Objects
-
 ```python
 from boldgenotyper import config
 
-# Load default configuration
 cfg = config.get_default_config()
+print(cfg.haplotype.min_singleton_distance)       # 0.005
+print(cfg.taxonomy.majority_species_threshold)    # 0.7
 
-# Access settings
-print(f"Default clustering threshold: {cfg.dereplication.clustering_threshold}")
-print(f"Default similarity threshold: {cfg.genotype_assignment.min_identity}")
-print(f"Default threads: {cfg.n_threads}")
-
-# Modify settings
-cfg_custom = cfg.update(
-    dereplication__clustering_threshold=0.02,
-    genotype_assignment__min_identity=0.85,
-    n_threads=16
-)
-
-print(f"Updated clustering threshold: {cfg_custom.dereplication.clustering_threshold}")
+# update() returns a new config; nested fields use section__field
+cfg = cfg.update(haplotype__min_singleton_distance=0.015,
+                 haplotype__assign_corrected=False,
+                 coi_validation__mitochondrial_code=5,
+                 extended=True)
 ```
 
-### Configuration Parameters
+Main sections and fields (all are recorded in `run_provenance.json`):
 
-**Dereplication**:
-- `clustering_threshold`: Maximum distance for clustering (default: 0.03)
-- `min_sequence_length`: Minimum sequence length (default: 400)
-- `max_n_content`: Maximum N content proportion (default: 0.10)
-- `consensus_frequency_cutoff`: Consensus base frequency (default: 0.70)
+| Section | Fields |
+|---|---|
+| `qc` | `min_raw_length_abs` (200), `min_raw_length_frac_of_median` (0.7), `max_raw_N_fraction` (0.05), `require_valid_orf` (True) |
+| `coi_validation` | `mitochondrial_code` (2), `orf_min_coverage` (0.5), `orf_max_internal_stops` (2) |
+| `core_region` | `core_min_coverage` (0.8), `min_sequence_coverage` (0.95), `core_min_length` (150), `mask_gap_threshold` (0.5) |
+| `haplotype` | `min_singleton_distance` (0.005; `--singleton-distance`), `max_singleton_distance` (0.05), `assign_corrected` (True) |
+| `taxonomy` | `majority_species_threshold` (0.7) |
+| `phylogenetic` | `build_tree` (False), `min_cluster_size` (1; `--tree-min-members`), `min_consensus_length` (150), `trim_alignment`, `trim_method`, outgroup options |
+| `msa` | `enabled`, `chunk_size`, `max_sequences`, `output_formats` (`["pdf"]`) |
+| top level | `n_threads`, `output_dir`, `keep_intermediates`, `extended` |
 
-**Genotype Assignment**:
-- `min_identity`: Minimum similarity for assignment (default: 0.50)
-- `tie_margin`: Identity difference to call tie (default: 0.003)
-- `tie_threshold`: Minimum identity for tie detection (default: 0.95)
+---
 
-**Geographic**:
-- `goas_shapefile_path`: Path to GOaS shapefile
-- `exclude_centroids`: Exclude country centroids (default: True)
+## Module Reference
 
-**General**:
-- `n_threads`: Number of parallel threads (default: 4)
+Signatures are abbreviated; see each function's docstring.
+
+### Input and coordinates — `metadata`
+
+- `parse_bold_tsv(tsv_path, required_columns=None)` → DataFrame; duplicate processids keep the first record
+- `parse_coord_column(df, coord_col="coord")` → adds float `lat`, `lon` for every parseable coordinate pair (BOLD portal `[lat, lon]` strings included)
+- `mark_coordinate_quality(df)` → adds `coord_status` (`ok`, `missing`, `unparseable`, `centroid`, `zero`, `out_of_range`) and `is_geographic_quality`; removes nothing
+
+### Quality control and labels — `quality_control`
+
+- `apply_orientation_normalization(sequences_dict, genetic_code=2, ...)`, `apply_dynamic_qc_filters(df, sequences_dict, ...)` → oriented sequences and QC flags (`qc_pass`, `qc_fail_reason`)
+- `add_label_columns(df, group_col="haplotype_id", notes_col="notes")` → `label`, `majority_label`, `n_majority`, `n_labeled`, `n_missing_label`, `majority_fraction`, `label_conflict`, `depositor_keyword_hits`
+- `summarize_haplotype_labels(df)` → one row per haplotype (labels with counts, majority, conflicts)
+- `build_label_conflicts(df, haplotype_sequences=None)` → the rows of `label_conflicts.csv`
+- `find_keyword_hits(note)` → keywords found as whole words
+- Deprecated: `add_contamination_columns`, `detect_depositor_uncertainty`
+
+### Haplotypes — `dereplication`, `haplotype_ids`, `record_status`
+
+- `dereplication.identify_haplotypes(tsv_path, fasta_path, output_dir, min_core_coverage=0.8, min_singleton_distance=0.005, max_singleton_distance=0.05, min_sequence_coverage=0.95, assign_corrected=True, return_details=False, ...)` → `(haplotype_records, mapping, stats, [details])`; IDs are `H0001`..., FASTA headers carry `seq_md5` and `n_members`; `details` has the core length, cutoffs, excluded records and error-singleton outcomes
+- `dereplication.flag_suspect_haplotypes(haplotype_records, mapping, max_singleton_distance=0.05)` → per-haplotype stats with `nearest_haplotype`, `nearest_neighbor_distance`, `is_suspect`, `suspect_reasons`
+- `haplotype_ids.seq_md5(seq)` → md5 of the uppercase, ungapped sequence
+- `haplotype_ids.assign_display_ids(counts)` → `{seq_md5: "H0001", ...}` by count, then md5
+- `record_status.build_record_status(unique_ids, sequence_ids, qc, exact_mapping, excluded_core, error_singletons, singleton_distance)` → one status per unique record; `record_status.STATUSES`
+
+### Taxonomy — `taxon_labels`, `utils`
+
+- `taxon_labels.label_level(label)` → `species`, `open`, `genus` or `missing`
+- `taxon_labels.pool_labels(labels)` → `PooledLabels` (`text`, `leading_species`, `support`, `n_leading`, `n_species_level`, `n_compatible`, `n_missing`)
+- `taxon_labels.species_count_summary(input_labels, qc_passed_labels, haplotype_taxonomy, majority_threshold)` → the `n_species_*` counts of `summary.csv`
+- `utils.assign_consensus_taxonomy(df, group_col, species_col="species", genus_col="genus", majority_threshold)` → `(assign_table, species_counts)`; `assigned_sp` is the majority species when `majority_fraction` (members without a species label left out) exceeds the threshold, otherwise the genus
+
+### Run folder — `layout`, `run_readme`, `provenance`
+
+- `layout.build_records_table(records, status, qc, taxonomy, region_col, region_confidence=None)` → `records.csv`
+- `layout.build_haplotypes_table(stats, taxonomy, records, region_col, tree_tips=None)` → `haplotypes.csv`
+- `layout.build_haplotype_by_region(records, region_col)` → `geography/haplotype_by_region.csv`
+- `layout.plan_moves(staging, organism, extended=False)`, `layout.apply_moves(moves, output_dir)`, `layout.FILE_MAP`, `layout.KEY_BOLD_FIELDS`
+- `run_readme.write_run_readme(output_dir, organism, region_col="ocean_basin")` → `(path, undocumented)`
+- `provenance.RunProvenance`, `provenance.find_previous_run(output_dir)`
+
+### Geography — `geographic`, `geographic_enhancement`
+
+- `geographic.load_goas_data(shapefile_path)` → GeoDataFrame of GOaS basins
+- `geographic.assign_ocean_basins(df, goas_data=None, coord_col=None, ...)` → adds `ocean_basin`
+- `geographic.assign_regions_from_shapefile(df, shapefile_path, shapefile_field=None, output_column="geographic_region", ...)`
+- `geographic_enhancement.enhance_geographic_analysis(df, output_dir, organism, ...)` → coverage counts and `basin_confidence`
+
+Pass only records with `coord_status == "ok"` to the region functions, as the pipeline does.
+
+### Phylogeny — `phylogenetics`
+
+- `select_tree_haplotypes(records, min_members, min_length, suspect)` → `(kept_records, [(haplotype_id, reason), ...])`
+- `build_phylogeny(consensus_fasta, output_prefix, threads=1, min_consensus_length=..., min_cluster_size=..., trim_alignment=True, trim_method="gappyout", outgroup_fasta=None)` → MAFFT, optional trimAl, FastTree (GTR+Gamma)
+
+### Divergence — `divergence_analysis`
+
+- `generate_divergence_analysis(consensus_fasta, taxonomy_csv, output_dir, organism, extended=False, records=None)` → aligned haplotypes and pairwise p-distances; with `extended`, the label-based gap
+- `compute_label_based_gap(distance_by_id, records)` → per-label `max_within`, `min_between`, `label_based_gap`
+
+### Metadata — `metadata_summary`
+
+- `normalize_vocabulary(df, fields, map_sex_codes=True)` → normalized values (blank → missing, codes expanded, GIS suffixes removed)
+- `run_metadata_summary(annotated_df, output_dir, organism, fields=None, normalize_sex=True, temporal_analysis=True, extended=False, cross_tabs=True, ...)` → coverage, and with `extended` the cross-tabs and collection-date summaries
+
+### Figures — `visualization`, `plot_export`, `plot_regeneration`
+
+- `visualization.plot_distribution_map(df, output_path, genotype_column, latitude_col, longitude_col, dpi=300)`; region bar charts and faceted maps (`plot_ocean_basin_abundance`, `plot_distribution_map_faceted`, ...)
+- `plot_export.export_plots_complete(df, output_dir, organism, color_map=None)` → the `plots/` kit
+- `plot_regeneration.regenerate_all_plots(base_dir)` → regenerate from a kit
+
+PNG output is capped at 150 dpi and 3000 px per side (`utils.save_capped_png`).
+
+### Query — `haplotype_query`, `query_assignment`
+
+- `haplotype_query.align_query_to_haplotype(query_seq, query_id, haplotype_seq, haplotype_id)` → `AlignmentResult` (`differences`, `n_mismatches`, `n_gaps`, `identity_pct`, `query_coverage`, `overlap_coverage`, ...)
+- `haplotype_query.query_against_haplotypes(query_fasta, haplotype_fasta, analysis_dir=None, top_n=10, min_identity=0.97, min_query_coverage=0.95, max_mismatch_delta=0, min_species_support=0.70)` → `(results, metadata, verdicts)`
+- `query_assignment.resolve_reference(haplotypes_arg, analysis_dir_arg)` → `(fasta_path, run_dir)` for a v2 or v1 run folder or a FASTA
+- `query_assignment.load_reference_run(path)` → the `reference_run` block of a v2 run folder
+
+### Sweep — `parameter_sweep`
+
+- `run_parameter_sweep(tsv_path, thresholds, output_dir, organism=None, threads=4, keep_intermediates=False)` → paths and the elbow threshold
+- `extract_run_metrics(output_dir, organism, threshold)`, `track_group_membership(run_outputs, organism, thresholds)`, `adjacent_change_rates(tracking_df, thresholds)`
+
+### Exports — `popgen_export`
+
+- `export_population_genetics_formats(df, consensus_fasta_path, output_dir, organism, formats=None, pop_column="ocean_basin", haplotype_column="haplotype_id")` → `exports/`; records without a population are left out of Arlequin and DnaSP
 
 ---
 
 ## Examples
 
-### Example 1: Custom Haplotype Pipeline
+### Example 1: Query new sequences against a run
 
 ```python
-from boldgenotyper import metadata, dereplication, haplotype_assignment
 from pathlib import Path
+from boldgenotyper import haplotype_query, query_assignment
 
-# 1. Load data
-df = metadata.parse_bold_tsv('data/samples.tsv')
+fasta, run = query_assignment.resolve_reference("results/Sphyrna_lewini", None)
+results, metadata, verdicts = haplotype_query.query_against_haplotypes(
+    query_fasta=Path("new_samples.fasta"), haplotype_fasta=fasta, analysis_dir=run)
+for v in verdicts:
+    print(v.query_id, v.call_level, v.equivalence_set, v.species_call, v.species_support)
+```
 
-# 2. Identify haplotypes using ESV approach
-haplotypes = dereplication.identify_haplotypes(
-    tsv_path='data/samples.tsv',
-    output_dir=Path('custom_output/'),
-    n_threads=16
-)
+### Example 2: Label summary of an existing run
 
-# 3. Assign samples to haplotypes
-stats = haplotype_assignment.assign_haplotypes(
-    metadata_path='data/samples.tsv',
-    fasta_path='custom_output/sequences.fasta',
-    consensus_path='custom_output/haplotypes.fasta',
-    output_path='custom_output/samples_with_haplotypes.tsv',
-    min_identity=0.80,
-    n_processes=16
-)
-
-# 4. Load results
+```python
 import pandas as pd
-final_df = pd.read_csv('custom_output/samples_with_haplotypes.tsv', sep='\t')
 
-# 5. Save results
-final_df.to_csv('custom_output/annotated.csv', index=False)
-print(f"Saved {len(final_df)} annotated samples")
+haps = pd.read_csv("results/Sphyrna_lewini/haplotypes.csv")
+mixed = haps[haps["n_species_labels"] > 1]
+print(mixed[["haplotype_id", "labels", "majority_label", "majority_fraction", "n_label_conflicts"]])
 ```
 
-### Example 2: Geographic Analysis with Custom Shapefile
+### Example 3: Batch processing
 
 ```python
-from boldgenotyper import metadata, geographic
-import geopandas as gpd
-from pathlib import Path
-
-# Load data
-df = metadata.parse_bold_tsv('data/Salmonidae.tsv')
-
-# Load custom shapefile (freshwater basins)
-basins_gdf = gpd.read_file('data/hydrobasins_lev04.shp')
-
-# Assign samples to basins
-def assign_to_basin(row, gdf):
-    try:
-        from shapely.geometry import Point
-        point = Point(row['lon'], row['lat'])
-        matches = gdf[gdf.contains(point)]
-        if len(matches) > 0:
-            return matches.iloc[0]['MAIN_BAS']
-        return 'Unknown'
-    except:
-        return 'Unknown'
-
-df['freshwater_basin'] = df.apply(lambda row: assign_to_basin(row, basins_gdf), axis=1)
-
-# Summarize by basin
-basin_summary = df.groupby('freshwater_basin').agg({
-    'processid': 'count',
-    'species': lambda x: x.nunique()
-}).rename(columns={'processid': 'n_samples', 'species': 'n_species'})
-
-print(basin_summary)
-```
-
-### Example 3: Batch Processing Multiple Datasets
-
-```python
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
-# List of datasets to process
-datasets = [
-    'data/Sphyrna_lewini.tsv',
-    'data/Sphyrna_tiburo.tsv',
-    'data/Sphyrna_zygaena.tsv'
-]
-
-# Process each dataset
-for dataset_path in datasets:
-    dataset = Path(dataset_path)
-    organism = dataset.stem
-    output_dir = Path(f'batch_results/{organism}/')
-
-    print(f"Processing {organism}...")
-
-    result = subprocess.run([
-        'boldgenotyper',
-        str(dataset),
-        '--clustering-threshold', '0.02',
-        '--build-tree',
-        '--export-format', 'all',
-        '--output', str(output_dir),
-        '--threads', '8'
-    ], capture_output=True, text=True)
-
-    if result.returncode == 0:
-        print(f"  ✓ {organism} complete")
-    else:
-        print(f"  ✗ {organism} failed: {result.stderr}")
+datasets = {"Sphyrnidae": 0.015, "Carcharhiniformes": 0.015}   # chosen with boldgenotyper-sweep
+for organism, sd in datasets.items():
+    subprocess.run(["boldgenotyper", f"data/{organism}.tsv", "--organism", organism,
+                    "--output", f"results/{organism}", "--singleton-distance", str(sd),
+                    "--build-tree", "--threads", "8"], check=True)
 ```
 
-### Example 4: Custom Visualization
+### Example 4: Regions from a custom column
 
 ```python
-from boldgenotyper import visualization
 import pandas as pd
-import matplotlib.pyplot as plt
-
-# Load annotated data
-df = pd.read_csv('output/annotated.csv')
-
-# Filter to assigned samples only
-df_assigned = df[df['assignment_status'] == 'assigned'].copy()
-
-# Create custom plot
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-# Identity distribution
-ax = axes[0, 0]
-df_assigned['identity'].hist(bins=50, ax=ax, edgecolor='black')
-ax.set_xlabel('Sequence Identity')
-ax.set_ylabel('Frequency')
-ax.set_title('Identity Distribution')
-
-# Genotypes by ocean basin
-ax = axes[0, 1]
-basin_counts = df_assigned.groupby(['ocean_basin', 'consensus_group']).size().unstack(fill_value=0)
-basin_counts.plot(kind='bar', stacked=True, ax=ax, legend=False)
-ax.set_xlabel('Ocean Basin')
-ax.set_ylabel('Sample Count')
-ax.set_title('Genotypes by Basin')
-
-# Sample counts by genotype
-ax = axes[1, 0]
-genotype_counts = df_assigned['consensus_group'].value_counts()
-genotype_counts.plot(kind='barh', ax=ax)
-ax.set_xlabel('Sample Count')
-ax.set_ylabel('Genotype')
-ax.set_title('Sample Distribution')
-
-# Geographic scatter
-ax = axes[1, 1]
-basins = df_assigned['ocean_basin'].unique()
-for basin in basins:
-    basin_df = df_assigned[df_assigned['ocean_basin'] == basin]
-    ax.scatter(basin_df['lon'], basin_df['lat'], label=basin, alpha=0.6)
-ax.set_xlabel('Longitude')
-ax.set_ylabel('Latitude')
-ax.set_title('Geographic Distribution')
-ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-plt.tight_layout()
-plt.savefig('custom_visualization.pdf', dpi=300, bbox_inches='tight')
-print("Custom visualization saved")
-```
-
-### Example 5: Integration with External Tools
-
-```python
 from boldgenotyper import popgen_export
-import pandas as pd
-import subprocess
 
-# 1. Run BOLDGenotyper pipeline
-subprocess.run([
-    'boldgenotyper',
-    'data/samples.tsv',
-    '--clustering-threshold', '0.02',
-    '--output', 'boldgen_output/'
-])
-
-# 2. Load results
-df = pd.read_csv('boldgen_output/annotated.csv')
-
-# 3. Export for PopART (haplotype network)
-export_results = popgen_export.export_population_genetics_formats(
-    df=df,
-    consensus_fasta_path='boldgen_output/consensus.fasta',
-    output_dir='popgen_exports/',
-    organism='samples',
-    formats=['popart']
-)
-
-print(f"PopART file: {export_results['popart']['nexus']}")
-
-# 4. (Optional) Open in PopART
-# Manual step: Open the .nexus file in PopART software
-
-# 5. Export for Arlequin (population statistics)
-export_results = popgen_export.export_population_genetics_formats(
-    df=df,
-    consensus_fasta_path='boldgen_output/consensus.fasta',
-    output_dir='popgen_exports/',
-    organism='samples',
-    formats=['arlequin']
-)
-
-print(f"Arlequin file: {export_results['arlequin']['arp']}")
+run = "results/Sphyrna_lewini"
+records = pd.read_csv(f"{run}/records.csv")
+assigned = records[records["status"].isin(["assigned", "assigned_corrected"])]
+popgen_export.export_population_genetics_formats(
+    df=assigned, consensus_fasta_path=f"{run}/haplotypes.fasta",
+    output_dir="by_country", organism="Sphyrna_lewini",
+    formats=["arlequin"], pop_column="country/ocean")
 ```
 
----
+### Standalone comparison script
 
-## Error Handling
-
-### Common Errors and Solutions
-
-```python
-from boldgenotyper import metadata
-
-try:
-    df = metadata.parse_bold_tsv('data/samples.tsv')
-except FileNotFoundError:
-    print("Error: TSV file not found. Check the path.")
-except ValueError as e:
-    print(f"Error parsing TSV: {e}")
-    print("Check that required columns are present: processid, nucleotides, species")
-
-try:
-    sequences = metadata.extract_sequences(df)
-except KeyError as e:
-    print(f"Missing required column: {e}")
-except Exception as e:
-    print(f"Error extracting sequences: {e}")
-```
-
-### Logging
-
-```python
-import logging
-
-# Enable debug logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('boldgenotyper')
-
-# Now BOLDGenotyper will output detailed progress
-from boldgenotyper import dereplication
-# ... dereplication functions will log progress
-```
-
----
-
-## Additional Resources
-
-### Full Documentation
-
-- **README.md**: Main documentation and CLI usage
-- **CUSTOM_SHAPEFILES_GUIDE.md**: Custom geographic analysis
-- **PARAMETER_SWEEP_GUIDE.md**: Threshold optimization
-- **COMPARATIVE_ANALYSIS_GUIDE.md**: Quality control workflow
-- **POPGEN_EXPORT_GUIDE.md**: Population genetics exports
-
-### Source Code
-
-Explore module source code for advanced usage:
-- GitHub: https://github.com/SymbioSeas/BOLDGenotyper
-- Module source: `boldgenotyper/` directory
-
-### Support
-
-- **Issues**: https://github.com/SymbioSeas/BOLDGenotyper/issues
-- **Email**: symbioseas@outlook.com
-
----
-
-**Last Updated**: 2025-11-25
-**BOLDGenotyper Version**: 0.1.0
+`scripts/compare_analyses.py` (not part of the package) compares a species-level and a
+family-level run; see the README's Advanced Workflows section.

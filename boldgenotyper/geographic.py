@@ -156,7 +156,7 @@ def check_cartopy_available() -> None:
 
 def load_goas_data(shapefile_path: Union[str, Path]) -> "gpd.GeoDataFrame":
     """
-    Load GOaS (General Oceanographic Areas System) shapefile data.
+    Load GOaS (Global Oceans and Seas) shapefile data.
 
     Parameters
     ----------
@@ -187,7 +187,7 @@ def load_goas_data(shapefile_path: Union[str, Path]) -> "gpd.GeoDataFrame":
 
     GOaS Data Sources:
     - FAO GeoNetwork: https://www.fao.org/geonetwork/srv/en/main.home
-    - Search for "General Oceanographic Areas System"
+    - Search for "Global Oceans and Seas"
 
     Examples
     --------
