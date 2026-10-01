@@ -601,8 +601,14 @@ def flag_suspect_haplotypes(
 
         if len(distances_to_others) > 0:
             nearest_neighbor_dist = min(distances_to_others)
+            # Every haplotype at the minimum distance, ';'-joined (ties are common
+            # at one or two differences)
+            nearest_neighbor = ';'.join(sorted(
+                haplotype_records[j].id for j, d in enumerate(distances)
+                if j != i and d == nearest_neighbor_dist))
         else:
             nearest_neighbor_dist = np.nan
+            nearest_neighbor = ''
 
         # Member count comes from the mapping, never from the ID
         hap_id = record.id
@@ -613,6 +619,7 @@ def flag_suspect_haplotypes(
             'haplotype_id': hap_id,
             'n_members': n_members,
             'is_singleton': is_singleton,
+            'nearest_haplotype': nearest_neighbor,
             'nearest_neighbor_distance': nearest_neighbor_dist
         })
 
@@ -1209,6 +1216,8 @@ def identify_haplotypes(
     haplotype_stats = haplotype_stats.copy()
     haplotype_stats['seq_md5'] = haplotype_stats['haplotype_id']
     haplotype_stats['haplotype_id'] = haplotype_stats['seq_md5'].map(display)
+    haplotype_stats['nearest_haplotype'] = haplotype_stats['nearest_haplotype'].map(
+        lambda keys: ';'.join(sorted(display[k] for k in keys.split(';'))) if keys else '')
     core_length = {r.id: len(str(r.seq).replace('-', '')) for r in haplotype_records}
     haplotype_stats['core_length'] = haplotype_stats['seq_md5'].map(core_length)
     haplotype_stats['n_exact'] = haplotype_stats['seq_md5'].map(n_exact).fillna(0).astype(int)

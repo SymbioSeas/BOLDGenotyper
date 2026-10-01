@@ -3,6 +3,7 @@ per-sequence core cutoff (P0-8, P0-2, P0-1)."""
 
 import shutil
 
+import pandas as pd
 import pytest
 
 from boldgenotyper import dereplication, haplotype_ids, utils
@@ -87,6 +88,25 @@ def test_identify_haplotypes_ids_counts_and_corrections(tmp_path):
 
     fasta_out = (tmp_path / "out" / "Synth_haplotypes.fasta").read_text()
     assert fasta_out.startswith(f">H0001 seq_md5={haplotype_ids.seq_md5(A)} n_members=13\n")
+
+    # P2: the nearest haplotype's display ID is kept next to its distance
+    ids = {name: by_md5.loc[haplotype_ids.seq_md5(s), "haplotype_id"]
+           for name, s in (("A", A), ("B", B), ("C", C), ("D", D))}
+    nearest = stats.set_index("haplotype_id")["nearest_haplotype"]
+    assert nearest[ids["A"]] == ids["B"] and nearest[ids["B"]] == ids["A"]
+    assert nearest[ids["C"]] == ids["A"] and nearest[ids["D"]] == ids["A"]
+
+
+def test_nearest_haplotype_lists_ties():
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+    x = "ACGTACGTAC"
+    recs = [SeqRecord(Seq(x), id="kx"), SeqRecord(Seq("T" + x[1:]), id="ky"),
+            SeqRecord(Seq(x[:-1] + "A"), id="kz")]
+    mapping = pd.DataFrame({"processid": ["p1", "p2", "p3"], "haplotype_id": ["kx", "ky", "kz"]})
+    stats = dereplication.flag_suspect_haplotypes(recs, mapping).set_index("haplotype_id")
+    assert stats.loc["kx", "nearest_haplotype"] == "ky;kz"
+    assert stats.loc["ky", "nearest_haplotype"] == "kx"
 
 
 @needs_mafft
