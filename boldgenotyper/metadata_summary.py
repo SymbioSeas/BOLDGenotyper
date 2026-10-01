@@ -310,14 +310,19 @@ VOCABULARY_CODES = {
     "reproduction": {"s": "Sexual", "a": "Asexual", "u": None},
 }
 _GIS_SUFFIX = re.compile(r"_simplify-[\d.]+_buffered-[\d.]+")
+_WHOLE_NUMBER = re.compile(r"^-?\d+\.0$")
 
 
 def _normalize_term(field: str, value):
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return np.nan
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
     text = str(value).strip()
     if not text:
         return np.nan
+    if _WHOLE_NUMBER.match(text):
+        text = text[:-2]            # integer codes written as float (BOLD geoid '266.0')
     codes = VOCABULARY_CODES.get(field, {})
     if text.lower() in codes:
         mapped = codes[text.lower()]
@@ -341,6 +346,7 @@ def normalize_vocabulary(df: pd.DataFrame, fields: List[str]) -> pd.DataFrame:
     - All-lowercase values are capitalized, so 'adult' and 'Adult' merge.
     - BOLD GIS suffixes (e.g. '_simplify-0.001_buffered-0.018') are removed and
       underscores become spaces, per comma-separated item.
+    - Integer codes written as float lose the decimal ('266.0' -> '266').
     """
     df = df.copy()
     for field in fields:

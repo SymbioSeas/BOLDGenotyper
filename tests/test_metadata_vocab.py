@@ -40,3 +40,9 @@ def test_tabulation_has_no_empty_category():
     df = ms.normalize_vocabulary(df, ["reproduction"])
     tab = ms.analyze_categorical_field(df, "reproduction", "haplotype_sp")
     assert set(tab["value"]) == {"Sexual"}
+
+
+def test_integer_codes_written_as_float_lose_the_decimal():
+    out = ms.normalize_vocabulary(pd.DataFrame({"geoid": [266.0, np.nan, "1758.0", "12.5"]}), ["geoid"])["geoid"]
+    assert out.tolist()[0] == "266" and pd.isna(out.tolist()[1])
+    assert out.tolist()[2:] == ["1758", "12.5"]

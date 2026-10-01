@@ -30,7 +30,7 @@ def test_coverage_has_percentages_and_no_grade():
 def test_console_and_readme_report_percentages_only(tmp_path, capsys):
     ge.enhance_geographic_analysis(_geo_records(), tmp_path, "Synth", group_col="haplotype_id")
     out = capsys.readouterr().out
-    assert "16.7%" in out and "50.0%" in out
+    assert "Records with an assigned ocean basin: 16.7%" in out and "50.0%" in out
     readme = (tmp_path / "README.md").read_text()
     for text in (out, readme):
         assert "representativeness" not in text.lower() and "poor" not in text.lower()

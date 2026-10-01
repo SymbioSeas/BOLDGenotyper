@@ -411,7 +411,7 @@ def print_geographic_warnings(
     print("GEOGRAPHIC DATA COVERAGE")
     print("=" * 70)
     print(f"Records with coordinates: {overall_pct_coords:.1f}%")
-    print(f"Records with a {geo_label} assignment: {overall_pct_basin:.1f}%")
+    print(f"Records with an assigned {geo_label}: {overall_pct_basin:.1f}%")
     print("Per-haplotype percentages: geographic_analysis/geographic_coverage.csv")
     print("=" * 70 + "\n")
 
