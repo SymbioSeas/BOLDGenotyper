@@ -7,12 +7,16 @@ new sequences (e.g., reference genomes, museum specimens, field samples) match
 any known haplotypes without re-running the full pipeline.
 
 Key Features:
-- Multi-FASTA support for batch processing
-- Local alignment to handle length differences
-- Multiple output formats (CSV, JSON, detailed text report)
-- Metadata enrichment from previous analysis
-- Match quality classification (perfect, high, good, moderate, low)
-- No identity threshold - reports all matches ranked by quality
+- Multi-FASTA support for batch processing; aligned input is cleaned (gaps removed)
+- Overlap alignment (global, free end gaps): every base where query and
+  haplotype overlap is compared, whatever their lengths
+- Numbers, not labels: differences (mismatches + gap columns), identity,
+  coverage, indel flags
+- Equivalence sets: the haplotypes a query cannot tell apart
+- Species support from the pooled labels of every member record of the set
+- The reference run is identified by the md5 of its run_provenance.json
+- Optional search of every QC-passed reference record (--search-records)
+- Multiple output formats (summary CSV, per-match CSV, JSON, detailed text report)
 
 Use Case Example:
 -----------------

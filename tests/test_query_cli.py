@@ -131,3 +131,16 @@ def test_search_records_finds_unassigned_records(tmp_path, run_dir):
     assert pd.isna(m.loc["SYN022", "haplotype_id"])
     assert m.loc["SYN021", "status"] == "assigned_corrected"
     assert set(m["match_type"]) == {"query_within_record"}
+
+
+def test_v1_style_run_folder_gives_haplotype_matching_only(tmp_path, run_dir):
+    v1 = tmp_path / "v1_run"
+    shutil.copytree(run_dir, v1)
+    (v1 / "run_provenance.json").unlink()
+    s, out = _query(tmp_path, v1, {"window": WINDOW})
+    row = s.loc["window"]
+    assert row["call_level"] == "haplotype_set" and row["equivalence_set"] == "H0001;H0002"
+    assert row["flags"] == "no_reference_labels" and row["species_call"] == ""
+    assert row["reference_run_id"] == ""
+    header = (out / "query_summary.csv").read_text()
+    assert "# reference_run: unknown (no run_provenance.json)" in header
