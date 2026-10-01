@@ -188,8 +188,6 @@ FILE_MAP = [
     ("phylogenetic/{org}_tree.svg", "phylogeny/tree.svg", "default"),
     ("visualization/pdf/{org}_distribution_map.pdf", "geography/distribution_map.pdf", "default"),
     ("visualization/svg/{org}_distribution_map.svg", "geography/distribution_map.svg", "default"),
-    ("divergence_analysis/README.md", "divergence/README.md", "default"),
-    ("metadata_summary/README.md", "extended/metadata/README.md", "extended"),
 
     ("metadata_summary/{org}_*_tabulation.csv", "extended/metadata/", "extended"),
     ("metadata_summary/{org}_haplotype_first_sampled.csv", "extended/metadata/", "extended"),
@@ -206,7 +204,6 @@ FILE_MAP = [
     ("species_analysis/species_diversity.csv", "extended/species/", "extended"),
     ("species_analysis/species_basin_distribution.csv", "extended/species/species_by_region.csv", "extended"),
     ("species_analysis/species_country_distribution.csv", "extended/species/species_by_country.csv", "extended"),
-    ("species_analysis/species_subsets/*.csv", "extended/species/per_species/", "extended"),
     ("visualization/pdf/{org}_*.pdf", "extended/geography/", "extended"),
     ("visualization/svg/{org}_*.svg", "extended/geography/", "extended"),
     ("visualization/pdf/species_haplotype_*/*.pdf", "extended/geography/per_species/", "extended"),
@@ -251,3 +248,21 @@ def apply_moves(moves: Dict[Path, Path], output_dir: Path) -> List[Path]:
         shutil.move(str(src), str(dst))
         placed.append(dst)
     return placed
+
+
+def write_per_species_records(records: pd.DataFrame, dest_dir: Path, min_haplotypes: int = 2) -> List[Path]:
+    """
+    records.csv rows of each assigned species with at least min_haplotypes
+    haplotypes, one file per species (extended/species/per_species/).
+    """
+    members = records[records["haplotype_id"].notna() & _has_text(records["assigned_sp"])]
+    written = []
+    for species, group in members.groupby("assigned_sp"):
+        if group["haplotype_id"].nunique() < min_haplotypes:
+            continue
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        safe = str(species).replace(" ", "_").replace("/", "_")
+        path = dest_dir / f"{safe}_records.csv"
+        group.to_csv(path, index=False)
+        written.append(path)
+    return written

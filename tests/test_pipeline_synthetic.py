@@ -49,7 +49,7 @@ DEFAULT_FILES = {
     f"{ORGANISM}_pipeline.log", "run_provenance.json", "summary.csv", "records.csv",
     "records_qc_passed.fasta", "haplotypes.fasta", "haplotypes.csv", "label_conflicts.csv",
     "metadata_coverage.csv", "divergence/haplotypes_aligned.fasta",
-    "divergence/pairwise_p_distance.csv", "divergence/README.md",
+    "divergence/pairwise_p_distance.csv", "README.md",
 }
 
 
@@ -216,7 +216,7 @@ def test_ids_are_count_free_and_consistent(synthetic_run):
     pd.testing.assert_series_equal(
         stats.set_index("haplotype_id")["n_members"].sort_index(), per_hap.sort_index(),
         check_names=False, check_dtype=False)
-    readme = (synthetic_run / "divergence" / "README.md").read_text()
+    readme = (synthetic_run / "README.md").read_text()
     assert "_n{" not in readme and "h1_n" not in readme
 
 
@@ -261,7 +261,7 @@ def test_goas_regions_only_for_geographic_quality(tmp_path):
 def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
     """P1-1: describe p-distance only; no taxonomic thresholds."""
     import re
-    readme = (synthetic_run / "divergence" / "README.md").read_text()
+    readme = (synthetic_run / "README.md").read_text()
     for phrase in ("cryptic", "hybridizing", "misidentification", "Typical interspecific",
                    "barcoding gap exists", "## Interpretation"):
         assert phrase.lower() not in readme.lower(), phrase
@@ -324,8 +324,8 @@ def test_extended_metadata_outputs(extended_run):
     assert "first_sampled" in first.columns and "first_collection_date" not in first.columns
     assert not any("emergence" in f for f in _files(extended_run))
     assert (md / "temporal_trends.csv").exists()
-    readme = (md / "README.md").read_text()
-    assert "sampling" in readme and "emergence" not in readme.lower()
+    readme = (extended_run / "README.md").read_text()
+    assert "reflect when and where specimens were sampled" in readme and "emergence" not in readme.lower()
 
 
 def test_species_diversity_only_with_extended(synthetic_run, extended_run):
@@ -371,3 +371,32 @@ def test_plot_kit_and_exports_without_duplicates(tmp_path):
     assert "exports/generic/haplotype_membership.csv" in exports
     assert "exports/generic/haplotype_consensus.fasta" not in exports
     assert not [f for f in files if f.endswith(".fasta") and f not in DEFAULT_FILES]
+
+
+def _undocumented(out):
+    from boldgenotyper import run_readme
+    return run_readme.write_run_readme(out, ORGANISM)[1]
+
+
+def test_run_readme_defines_every_file_and_column(synthetic_run, extended_run, tmp_path):
+    """P2: README.md lists every file and defines every CSV column."""
+    assert _undocumented(synthetic_run) == []
+    assert _undocumented(extended_run) == []
+    ok, full = run_synthetic(tmp_path, extended=True, plot_kit=True, export_formats=["all"],
+                             phylogenetic__build_tree=True)
+    assert ok and _undocumented(full) == []
+    readme = (full / "README.md").read_text()
+    for f in _files(full):
+        assert f"`{f}`" in readme or "more" in readme, f
+
+
+def test_run_readme_definitions(synthetic_run):
+    """P0-2, P0-9, P0-4 definitions in the README."""
+    readme = (synthetic_run / "README.md").read_text()
+    from boldgenotyper.record_status import STATUSES
+    for status in STATUSES:
+        assert f"- `{status}`:" in readme
+    for col in ("n_species_labels_input", "n_species_confident", "pct_assigned"):
+        assert f"| `{col}` |" in readme
+    assert "Country- and province-centroid coordinates are kept in lat/lon but are not assigned a region" in readme
+    assert "| `ocean_basin` |" in readme

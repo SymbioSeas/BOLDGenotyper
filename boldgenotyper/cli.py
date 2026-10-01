@@ -49,6 +49,7 @@ from . import (
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
+    run_readme,
 )
 from . import __version__
 
@@ -988,13 +989,7 @@ def run_pipeline(
                 output_dir=dirs['species_analysis']
             )
 
-            logger.info("6.5.4: Generating species-faceted haplotype subsets...")
-            species_subsets = species_analysis.generate_species_faceted_haplotype_subsets(
-                species_assignments=species_assignments,
-                output_dir=dirs['species_analysis'],
-                min_haplotypes=2
-            )
-            logger.info(f"  → Created {len(species_subsets)} species-specific haplotype subsets")
+            # Per-species record files are written from records.csv at the end (--extended)
 
             logger.info(f"  ✓ Species-level analysis complete: {dirs['species_analysis']}")
 
@@ -1830,10 +1825,14 @@ def run_pipeline(
         logger.info("")
         logger.info("HTML report generation skipped (--no-report)")
 
-    # Place staged files at their v2 paths
+    # Place staged files at their v2 paths; per-species records with --extended
     try:
         placed = layout.apply_moves(moves, output_dir)
         logger.info(f"  Placed {len(placed)} files in the run folder")
+        if cfg.extended and records_csv.exists():
+            layout.write_per_species_records(
+                pd.read_csv(records_csv, low_memory=False),
+                output_dir / "extended" / "species" / "per_species")
     except Exception as e:
         step_warnings.record("13 output layout", e)
 
@@ -1853,6 +1852,14 @@ def run_pipeline(
         remove_empty_directories(output_dir)
     except Exception as e:
         logger.debug(f"Directory cleanup encountered minor issues: {e}")
+
+    # Run README: every file and column (P2)
+    try:
+        _, undocumented = run_readme.write_run_readme(output_dir, organism, region_col=geo_category)
+        if undocumented:
+            logger.debug(f"README has no definition for: {', '.join(undocumented)}")
+    except Exception as e:
+        step_warnings.record("13 run README", e)
 
     # ========================================================================
     # Pipeline Complete

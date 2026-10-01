@@ -181,3 +181,12 @@ def test_apply_moves(tmp_path):
     placed = layout.apply_moves(layout.plan_moves(staging, "Synth"), tmp_path / "run")
     assert (tmp_path / "run" / "geography" / "distribution_map.pdf").exists()
     assert len(placed) == 4 and not (staging / "haplotypes" / "Synth_haplotypes.fasta").exists()
+
+
+def test_per_species_records(records, tmp_path):
+    recs = records.copy()
+    recs.loc[recs.processid == "P4", "assigned_sp"] = "Genus alpha"   # alpha now has H0001 and H0002
+    written = layout.write_per_species_records(recs, tmp_path / "per_species")
+    assert [p.name for p in written] == ["Genus_alpha_records.csv"]
+    out = pd.read_csv(written[0])
+    assert list(out.columns) == list(records.columns) and set(out.processid) == {"P1", "P2", "P3", "P4"}
