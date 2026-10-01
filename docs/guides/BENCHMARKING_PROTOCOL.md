@@ -19,6 +19,10 @@
 >   records that change haplotype between thresholds.
 > - "Contamination" reporting is replaced by label conflicts with evidence
 >   (`label_conflicts.csv`).
+> - `scripts/compare_analyses.py` is not distributed. Benchmark 4 compares the two runs by
+>   matching their `records.csv` files on `processid`
+>   ([COMPARATIVE_ANALYSIS_GUIDE.md](COMPARATIVE_ANALYSIS_GUIDE.md)); the
+>   `--clustering-threshold` flag in its commands is `--singleton-distance`.
 >
 > See [MIGRATION_v1_to_v2.md](MIGRATION_v1_to_v2.md) for every file and column.
 
@@ -1079,6 +1083,9 @@ df.to_csv("benchmarking/parameter_sweep/threshold_validation.csv", index=False)
 ---
 
 ## Benchmark 4: Comparative Analysis Validation
+
+> 2.0.0: run the comparison with the steps in
+> [COMPARATIVE_ANALYSIS_GUIDE.md](COMPARATIVE_ANALYSIS_GUIDE.md) (see the version note above).
 
 ### 4.1 Objectives
 

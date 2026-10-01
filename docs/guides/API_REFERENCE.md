@@ -276,7 +276,7 @@ popgen_export.export_population_genetics_formats(
     formats=["arlequin"], pop_column="country/ocean")
 ```
 
-### Standalone comparison script
+### Comparing runs
 
-`scripts/compare_analyses.py` (not part of the package) compares a species-level and a
-family-level run; see the README's Advanced Workflows section.
+To compare a species-level and a family-level run, match their `records.csv` files by
+`processid` with pandas; see [COMPARATIVE_ANALYSIS_GUIDE.md](COMPARATIVE_ANALYSIS_GUIDE.md).

@@ -72,7 +72,6 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 ### Layer 4: Analysis
 - **divergence_analysis.py**: Pairwise p-distance matrices, label-based barcoding gap, species-level divergence
 - **species_analysis.py**: Species-level aggregation, diversity metrics, geographic summaries
-- **scripts/compare_analyses.py**: Standalone utility — compares species- and family-level runs (haplotype crosswalk)
 - **parameter_sweep.py**: Tests multiple singleton thresholds, tracks group membership stability
 
 ### Layer 5: Geographic & Phylogenetic
@@ -457,16 +456,12 @@ boldgenotyper data/Sphyrna_lewini.tsv \
 
 **Compare a species-level and a family-level run** (labels and haplotypes):
 ```bash
-# First run both analyses
-boldgenotyper data/Sphyrna_lewini.tsv --output Sphyrna_lewini_output/
-boldgenotyper data/Sphyrnidae.tsv --output Sphyrnidae_output/
-
-# Then compare
-python scripts/compare_analyses.py \
-  --species-level Sphyrna_lewini_output/ \
-  --family-level Sphyrnidae_output/ \
-  --output comparative_analysis/
+# Run both analyses with the same --singleton-distance
+boldgenotyper data/Sphyrna_lewini.tsv --singleton-distance 0.015 --output Sphyrna_lewini_output/
+boldgenotyper data/Sphyrnidae.tsv --singleton-distance 0.015 --output Sphyrnidae_output/
 ```
+Then match records between the two `records.csv` files by `processid`
+(see [Comparing Species- and Family-Level Runs](#comparing-species--and-family-level-runs)).
 
 ---
 
@@ -622,7 +617,7 @@ The run folder's `README.md` defines every output; this section describes the st
 
 ### Advanced Workflows
 
-Beyond the main pipeline, BOLDGenotyper provides three additional commands for specialized analyses:
+Beyond the main pipeline:
 
 #### Parameter Sweep (`boldgenotyper-sweep`)
 
@@ -639,23 +634,17 @@ Runs the pipeline at several `--singleton-distance` thresholds and reports:
 
 See `parameter_sweep/README.md` for interpretation guide.
 
-#### Comparative Analysis (`scripts/compare_analyses.py`)
+#### Comparing Species- and Family-Level Runs
 
-Compares a species-level and a family-level run: which records of the species fall in haplotypes shared with other labels at the family level. This is a standalone utility script, not a package subcommand.
+A family-level run already reports label conflicts within its haplotypes
+(`label_conflicts.csv`). To see which records of one species fall in family-level
+haplotypes dominated by another species' label, run the species and its family with the
+same settings and match the two `records.csv` files by `processid` (haplotype IDs and
+core regions differ between runs on different datasets, so match records, not IDs). No
+separate command is needed: [`docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md`](docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md)
+gives the pandas code and how to read the evidence, and Tutorial 3 runs it.
 
 **When to use**: Checking labels in multi-species datasets
-
-**Usage**:
-```bash
-python scripts/compare_analyses.py \
-  --species-level Sphyrna_lewini_output/ \
-  --family-level Sphyrnidae_output/ \
-  --generate-reassignment-table
-```
-
-**Output**: Comparison metrics, genotype crosswalk table, sample reassignment recommendations, publication-ready methods text
-
-See [`docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md`](docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md) for detailed interpretation.
 
 ---
 
@@ -959,26 +948,6 @@ boldgenotyper-sweep data/samples.tsv \
   --output sweep_results/
 ```
 
-#### `scripts/compare_analyses.py` Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `--species-level` | Path | Required | Path to species-level analysis directory or annotated CSV |
-| `--family-level` | Path | Required | Path to family-level analysis directory or annotated CSV |
-| `--output` | Path | comparative_analysis/ | Output directory |
-| `--generate-reassignment-table` | Flag | False | Generate detailed sample-level reassignment table |
-| `--majority-threshold` | Float | 0.7 | Threshold for majority species assignment |
-| `--log-level` | String | INFO | Logging verbosity |
-
-**Example**:
-```bash
-python scripts/compare_analyses.py \
-  --species-level Sphyrna_lewini_output/ \
-  --family-level Sphyrnidae_output/ \
-  --generate-reassignment-table \
-  --output comparison_results/
-```
-
 ---
 
 ## Output Files
@@ -1215,20 +1184,6 @@ parameter_sweep/
   (its `seq_md5`) per record, plus how often its co-members change
 - `recommendations.txt`: the elbow of the haplotype-count curve and, for each pair of
   adjacent thresholds, the share of records whose haplotype changes
-
-#### Comparative Analysis Output (`comparative_analysis/`)
-
-```
-comparative_analysis/
-├── comparison_summary.csv         # high-level comparison metrics
-├── genotype_crosswalk.csv         # species-level haplotypes mapped to family-level haplotypes
-├── sample_reassignments.csv       # record-level comparison (--generate-reassignment-table)
-├── methods_text.md
-└── README.md
-```
-
-Records of the species that share a family-level haplotype with other labels are worth
-checking: they may be mislabeled or reflect shared haplotypes between species.
 
 #### Population Genetics Exports (`exports/`)
 
@@ -1655,18 +1610,16 @@ head -20 parameter_sweep/group_membership_tracking.csv
 # Consider excluding or manually reviewing these samples
 ```
 
-**Problem**: `compare_analyses.py` - No label differences found but I expected some
+**Problem**: Comparing a species-level and a family-level run finds no shared records, or no label differences I expected
 
 ```bash
-# Check that you're comparing the right datasets:
-# 1. Species-level should be a subset of family-level
-# 2. Both analyses should use same or similar parameters
-
-# Review the comparison summary:
-cat comparative_analysis/comparison_summary.csv
-
-# Check whether the majority threshold is too permissive
+# 1. Both downloads should hold the same records: the species-level records
+#    should be a subset of the family-level download (same download date)
+# 2. Match records by processid, not haplotype IDs (IDs differ between runs)
+# 3. A record can pass QC in one run and fail core coverage in the other;
+#    compare status and status_note in both records.csv files
 ```
+See [`docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md`](docs/guides/COMPARATIVE_ANALYSIS_GUIDE.md#troubleshooting).
 
 **Problem**: Custom shapefile not working
 
