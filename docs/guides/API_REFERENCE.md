@@ -214,7 +214,7 @@ PNG output is capped at 150 dpi and 3000 px per side (`utils.save_capped_png`).
 
 ### Sweep — `parameter_sweep`
 
-- `run_parameter_sweep(tsv_path, thresholds, output_dir, organism=None, threads=4, keep_intermediates=False)` → paths and the elbow threshold
+- `run_parameter_sweep(tsv_path, thresholds, output_dir, organism=None, threads=4, keep_intermediates=False, genetic_code=2)` → paths and the elbow threshold
 - `extract_run_metrics(output_dir, organism, threshold)`, `track_group_membership(run_outputs, organism, thresholds)`, `adjacent_change_rates(tracking_df, thresholds)`
 
 ### Exports — `popgen_export`

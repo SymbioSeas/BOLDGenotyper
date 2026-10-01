@@ -504,6 +504,9 @@ record's haplotype). `recommendations.txt` gives the haplotype-count table with
 the elbow marked and, for each pair of adjacent thresholds, the share of
 records whose haplotype changes; the v1 "acceptable range" is gone.
 
+New option: `--genetic-code` (default 2). v1 sweeps always used code 2; pass the code
+of the final run.
+
 ---
 
 ## 9. Python API

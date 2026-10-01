@@ -948,6 +948,7 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 | `--output` | Path | parameter_sweep/ | Output directory |
 | `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
 | `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |
+| `--genetic-code` | Integer | 2 | NCBI genetic code for reading-frame QC; use the code of the final run (5 for most invertebrates) |
 | `--log-level` | String | INFO | Logging verbosity |
 
 **Example**:

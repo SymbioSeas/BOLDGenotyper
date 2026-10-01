@@ -43,3 +43,33 @@ def test_recommendations_report_elbow_and_stability(tmp_path):
     assert "elbow" in text.lower()
     assert "0.005 -> 0.010" in text and "25.0%" in text
     assert "boldgenotyper your_data.tsv" in text and "--input" not in text
+
+
+def test_sweep_runs_use_the_given_genetic_code(tmp_path, monkeypatch):
+    from boldgenotyper import cli
+    seen = {}
+
+    def fake_pipeline(**kwargs):
+        seen["code"] = kwargs["cfg"].coi_validation.mitochondrial_code
+        return False
+
+    monkeypatch.setattr(cli, "run_pipeline", fake_pipeline)
+    ps.run_single_threshold(tmp_path / "in.tsv", "Synth", 0.01, tmp_path / "run", genetic_code=5)
+    assert seen["code"] == 5
+
+
+def test_sweep_cli_passes_genetic_code(tmp_path, monkeypatch):
+    from boldgenotyper import cli
+    tsv = tmp_path / "in.tsv"
+    tsv.write_text("processid\n")
+    seen = {}
+
+    def fake_sweep(**kwargs):
+        seen.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(ps, "run_parameter_sweep", fake_sweep)
+    assert cli.main_sweep([str(tsv), "--genetic-code", "5", "--output", str(tmp_path / "s")]) == 0
+    assert seen["genetic_code"] == 5
+    assert cli.main_sweep([str(tsv), "--output", str(tmp_path / "s")]) == 0
+    assert seen["genetic_code"] == 2

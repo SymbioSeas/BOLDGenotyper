@@ -1896,6 +1896,9 @@ Examples:
   # Run in parallel with 8 threads
   boldgenotyper-sweep data/samples.tsv --threads 8
 
+  # Invertebrates: use the genetic code of the final run
+  boldgenotyper-sweep data/samples.tsv --genetic-code 5
+
 For more information: https://github.com/SymbioSeas/BOLDGenotyper
         """
     )
@@ -1934,6 +1937,15 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
     )
 
     parser.add_argument(
+        '--genetic-code',
+        type=int,
+        default=2,
+        dest='genetic_code',
+        help='NCBI genetic code table for ORF validation (default: 2 = vertebrate mitochondrial). '
+             'Use the code of the final run (5 for most invertebrates).'
+    )
+
+    parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         default='INFO',
@@ -1966,7 +1978,8 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
             output_dir=args.output,
             organism=None,  # Will be inferred
             threads=args.threads,
-            keep_intermediates=args.keep_intermediates
+            keep_intermediates=args.keep_intermediates,
+            genetic_code=args.genetic_code,
         )
 
         print("\n✓ Parameter sweep complete!")

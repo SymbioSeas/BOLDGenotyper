@@ -28,6 +28,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - `--plot-kit` to write the plot regeneration kit (P2).
 - `boldgenotyper-query`: overlap alignment over the whole query, `differences`, `n_mismatches`, `n_gaps`; equivalence sets with `--max-mismatch-delta`; species support from pooled member labels with `--min-species-support`; `--min-query-coverage`; the reference run's provenance md5 in every output; `--search-records` over `records_qc_passed.fasta` (Q1-Q10).
 - `boldgenotyper-sweep`: per-pair share of records whose haplotype changes between adjacent thresholds; `md5_<threshold>` columns in `group_membership_tracking.csv` (P3).
+- `boldgenotyper-sweep --genetic-code`, so a sweep checks reading frames with the same code as the final run (v1 sweeps always used code 2).
 - `docs/guides/MIGRATION_v1_to_v2.md`.
 
 ### Changed

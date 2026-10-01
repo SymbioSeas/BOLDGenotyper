@@ -11,20 +11,20 @@ stability table before a final run (see `PARAMETER_SWEEP_GUIDE.md`). Pass
 `--download-date` with the date of the BOLD download so it is recorded in
 `run_provenance.json`, and use a new `--output` folder for each run.
 
-The benchmark runs used the default genetic code (2, vertebrate mitochondrial) for all
-five datasets. Panulirus (crustaceans) and Pieridae (insects) are invertebrates, for which
-`--genetic-code 5` (invertebrate mitochondrial) is the matching code; decide which code the
-final runs use and record it in the methods.
+Panulirus (crustaceans) and Pieridae (insects) are invertebrates: their commands pass
+`--genetic-code 5` (invertebrate mitochondrial), to `boldgenotyper-sweep` as well, so the
+sweep checks the same records as the final run. The other datasets use the default code 2
+(vertebrate mitochondrial). The benchmark runs used code 2 for all five datasets.
 
 ## Overview of Datasets and Shapefiles
 
-| Dataset | Habitat | Shapefile | Field Name | Geographic Category | `--singleton-distance` |
-|---------|---------|-----------|------------|---------------------|------------------------|
-| Sphyrnidae | Marine | GOaS (default) | name | ocean_basin | 0.015 |
-| Carcharhiniformes | Marine | GOaS (default) | name | ocean_basin | 0.015 |
-| Panulirus | Marine | GOaS (default) | name | ocean_basin | 0.015 |
-| Salmonidae | Freshwater | HydroBASINS level 7 | HYBAS_ID | freshwater_basin | 0.015 |
-| Pieridae | Terrestrial | Ecoregions2017 | ECO_NAME | ecoregion | 0.085 |
+| Dataset | Habitat | Shapefile | Field Name | Geographic Category | `--singleton-distance` | `--genetic-code` |
+|---------|---------|-----------|------------|---------------------|------------------------|------------------|
+| Sphyrnidae | Marine | GOaS (default) | name | ocean_basin | 0.015 | 2 (default) |
+| Carcharhiniformes | Marine | GOaS (default) | name | ocean_basin | 0.015 | 2 (default) |
+| Panulirus | Marine | GOaS (default) | name | ocean_basin | 0.015 | 5 |
+| Salmonidae | Freshwater | HydroBASINS level 7 | HYBAS_ID | freshwater_basin | 0.015 | 2 (default) |
+| Pieridae | Terrestrial | Ecoregions2017 | ECO_NAME | ecoregion | 0.085 | 5 |
 
 ## Commands
 
@@ -67,12 +67,14 @@ boldgenotyper data/Panulirus.tsv \
   --output output/Panulirus_full \
   --organism Panulirus \
   --singleton-distance 0.015 \
+  --genetic-code 5 \
   --build-tree \
   --threads 8
 ```
 
 **Notes:**
 - Uses default GOaS shapefile for ocean basin assignment
+- Genetic code 5 (invertebrate mitochondrial)
 - Output: `output/Panulirus_full/`
 - ~2.3M input file
 
@@ -103,6 +105,7 @@ boldgenotyper data/Pieridae.tsv \
   --output output/Pieridae_full \
   --organism Pieridae \
   --singleton-distance 0.085 \
+  --genetic-code 5 \
   --build-tree \
   --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
   --shp-field ECO_NAME \
@@ -112,6 +115,7 @@ boldgenotyper data/Pieridae.tsv \
 
 **Notes:**
 - Uses Ecoregions2017 for terrestrial ecoregion assignment
+- Genetic code 5 (invertebrate mitochondrial)
 - ECO_NAME provides human-readable ecoregion names (e.g., "Tropical and subtropical moist broadleaf forests")
 - Output: `output/Pieridae_full/`
 - ~31M input file, largest file size (most metadata)
@@ -127,13 +131,13 @@ mkdir -p output
 # Marine datasets (GOaS default)
 boldgenotyper data/Sphyrnidae.tsv --output output/Sphyrnidae_full --organism Sphyrnidae --singleton-distance 0.015 --build-tree --threads 8
 boldgenotyper data/Carcharhiniformes.tsv --output output/Carcharhiniformes_full --organism Carcharhiniformes --singleton-distance 0.015 --build-tree --threads 8
-boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panulirus --singleton-distance 0.015 --build-tree --threads 8
+boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panulirus --singleton-distance 0.015 --genetic-code 5 --build-tree --threads 8
 
 # Freshwater dataset (HydroBASINS)
 boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --singleton-distance 0.015 --build-tree --custom-shp shapefiles/hybas_na_lev01-12_v1c/hybas_na_lev01-12_v1c.shp --shp-field HYBAS_ID --geo-category freshwater_basin --threads 8
 
 # Terrestrial dataset (Ecoregions2017)
-boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
+boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --genetic-code 5 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field ECO_NAME --geo-category ecoregion --threads 8
 ```
 
 ## Expected Outputs
@@ -162,6 +166,7 @@ per-species matrices, alignment plots), `extended/metadata/`, and extra maps and
 - `--organism`: Organism name for file labeling (extracted from filename if omitted)
 - `--build-tree`: Build phylogenetic tree using MAFFT + FastTree (required for manuscript)
 - `--singleton-distance`: error-filter threshold, chosen with `boldgenotyper-sweep`
+- `--genetic-code`: NCBI genetic code for reading-frame QC (2 vertebrate mitochondrial, the default; 5 invertebrate mitochondrial); pass the same code to `boldgenotyper-sweep`
 - `--custom-shp`: Path to custom shapefile (overrides default GOaS); `--shp` takes the name of a shapefile registered in `shapefiles.yaml`
 - `--shp-field`: Shapefile attribute field containing region names
 - `--geo-category`: Label for geographic category in outputs

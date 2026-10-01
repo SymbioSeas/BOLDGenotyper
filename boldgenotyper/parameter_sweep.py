@@ -45,7 +45,8 @@ def run_single_threshold(
     threshold: float,
     output_dir: Path,
     threads: int = 4,
-    keep_intermediates: bool = False
+    keep_intermediates: bool = False,
+    genetic_code: int = 2,
 ) -> Dict[str, Any]:
     """
     Run BOLDGenotyper pipeline with a single min_singleton_distance value.
@@ -65,6 +66,8 @@ def run_single_threshold(
         Number of threads
     keep_intermediates : bool
         Whether to keep full output
+    genetic_code : int
+        NCBI genetic code for ORF validation (as --genetic-code; default 2)
 
     Returns
     -------
@@ -87,6 +90,7 @@ def run_single_threshold(
         haplotype__min_singleton_distance=threshold,
         haplotype__max_singleton_distance=max_singleton_dist,
         genotype_assignment__min_identity=0.5,
+        coi_validation__mitochondrial_code=genetic_code,
         n_threads=threads,
         output_dir=output_dir,
         log_level='WARNING',  # Reduce verbosity
@@ -688,7 +692,8 @@ def run_parameter_sweep(
     output_dir: Path,
     organism: Optional[str] = None,
     threads: int = 4,
-    keep_intermediates: bool = False
+    keep_intermediates: bool = False,
+    genetic_code: int = 2,
 ) -> Dict[str, Any]:
     """
     Complete parameter sweep workflow.
@@ -711,6 +716,8 @@ def run_parameter_sweep(
         Number of threads
     keep_intermediates : bool
         Keep full per-threshold output
+    genetic_code : int
+        NCBI genetic code for ORF validation; use the code of the final run
 
     Returns
     -------
@@ -729,6 +736,7 @@ def run_parameter_sweep(
     logger.info(f"BOLDGenotyper Parameter Sweep: {organism}")
     logger.info("="*70)
     logger.info(f"Sweeping min_singleton_distance across {len(thresholds)} values: {thresholds}")
+    logger.info(f"Genetic code: {genetic_code}")
     logger.info(f"Output: {output_dir}")
     logger.info("="*70)
 
@@ -751,7 +759,8 @@ def run_parameter_sweep(
             threshold=threshold,
             output_dir=threshold_dir,
             threads=threads,
-            keep_intermediates=keep_intermediates
+            keep_intermediates=keep_intermediates,
+            genetic_code=genetic_code,
         )
 
         if metrics:

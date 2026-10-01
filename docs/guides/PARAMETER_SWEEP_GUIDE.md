@@ -86,6 +86,13 @@ boldgenotyper-sweep data/Sphyrna_lewini.tsv \
   --output sweep_results/
 ```
 
+Pass the `--genetic-code` of the final run (default 2, vertebrate mitochondrial; 5 for most
+invertebrates), so the sweep checks the same records:
+
+```bash
+boldgenotyper-sweep data/Panulirus.tsv --genetic-code 5 --output sweep_panulirus/
+```
+
 ### Step 2: Review the Results
 
 ```bash
