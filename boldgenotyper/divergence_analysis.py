@@ -272,22 +272,6 @@ def generate_divergence_summary(
                 comparison_type = 'between_species'
                 species_pair = f"{sp1} vs {sp2}" if sp1 and sp2 else "unknown"
 
-            # Categorize divergence
-            if comparison_type == 'within_species':
-                if divergence < 0.01:
-                    interpretation = 'low_divergence_within_species'
-                elif divergence < 0.02:
-                    interpretation = 'moderate_divergence_within_species'
-                else:
-                    interpretation = 'high_divergence_within_species'
-            else:
-                if divergence < 0.03:
-                    interpretation = 'low_interspecific'
-                elif divergence < 0.05:
-                    interpretation = 'typical_interspecific'
-                else:
-                    interpretation = 'high_interspecific'
-
             results.append({
                 'comparison_type': comparison_type,
                 'group1': group1,
@@ -296,7 +280,6 @@ def generate_divergence_summary(
                 'species2': sp2,
                 'species_pair': species_pair,
                 'divergence': divergence,
-                'interpretation': interpretation
             })
 
     summary_df = pd.DataFrame(results)
@@ -780,40 +763,23 @@ member count (largest first), then by `seq_md5`. Member counts are in the
 uppercase, ungapped core sequence) is the stable key for comparing haplotypes
 across runs.
 
-## Interpretation
-
-### Divergence Categories
-
-**Within-Species:**
-- Low (<1%): Typical for most COI barcodes
-- Moderate (1-2%): Structured populations or recent divergence
-- High (>2%): Potential cryptic species or misidentification
-
-**Between-Species:**
-- Low (<3%): Recently diverged or hybridizing species
-- Typical (3-5%): Typical interspecific divergence for COI
-- High (>5%): Deeply divergent lineages
-
-### Barcoding Gap
-
-A "barcoding gap" exists when the minimum between-species divergence exceeds
-the maximum within-species divergence. This indicates clear species boundaries
-and supports species delimitation.
-
 ## FASTA Files
 
-The pipeline produces two FASTA files with different purposes:
-- **haplotypes.fasta** (in haplotypes/): Ungapped sequences for downstream use
-- **consensus_aligned.fasta** (in intermediate/): Aligned sequences used for divergence calculation
+- **haplotypes.fasta** (in haplotypes/): ungapped haplotype sequences for downstream use
+- **{organism}_consensus_aligned.fasta** (this folder): the aligned sequences used for the
+  divergence calculation
 
 ## Methodology
 
-Divergences calculated as uncorrected p-distance:
+Divergences are uncorrected p-distances between haplotype sequences:
 ```
 distance = 1 - (matches / informative_positions)
 ```
 
-Gaps and ambiguous bases (N) are excluded from calculations.
+Gaps and ambiguous bases (N) are excluded from calculations. Species groupings
+come from each haplotype's majority label; the distances are reported without
+taxonomic thresholds, because within- and between-species COI divergence varies
+across taxa.
 """
 
     with open(readme_path, 'w') as f:

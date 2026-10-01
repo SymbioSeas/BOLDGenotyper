@@ -223,3 +223,14 @@ def test_goas_regions_only_for_geographic_quality(tmp_path):
     # P0-5: country counts come from country/ocean
     coverage = pd.read_csv(next((out / "geographic_analysis").glob("*geographic_coverage.csv")))
     assert coverage["with_country"].sum() > 0
+
+
+def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
+    """P1-1: describe p-distance only; no taxonomic thresholds."""
+    import re
+    readme = (synthetic_run / "divergence_analysis" / "README.md").read_text()
+    for phrase in ("cryptic", "hybridizing", "misidentification", "Typical interspecific",
+                   "barcoding gap exists", "## Interpretation"):
+        assert phrase.lower() not in readme.lower(), phrase
+    assert not re.search(r"[<>]\s*\d+(\.\d+)?%", readme)
+    assert "uncorrected p-distance" in readme
