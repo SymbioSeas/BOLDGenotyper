@@ -343,6 +343,18 @@ def load_haplotype_metadata(analysis_dir: Path) -> Optional[pd.DataFrame]:
     """
     analysis_path = Path(analysis_dir)
 
+    # v2 layout: one haplotype table (haplotype_label is v1's haplotype_sp)
+    v2_table = analysis_path / "haplotypes.csv"
+    if v2_table.exists():
+        try:
+            metadata = pd.read_csv(v2_table)
+            metadata['haplotype_sp'] = metadata.get('haplotype_label')
+            logger.info(f"Loaded haplotype table from {v2_table}")
+            return metadata
+        except Exception as e:
+            logger.error(f"Error loading {v2_table}: {e}")
+            return None
+
     stats_file = None
     taxonomy_file = None
 

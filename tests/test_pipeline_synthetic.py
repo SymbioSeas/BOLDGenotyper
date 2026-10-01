@@ -3,6 +3,7 @@
 The planted cases are described in tests/synthetic_data.py.
 """
 
+import re
 import shutil
 from pathlib import Path
 from unittest import mock
@@ -18,7 +19,8 @@ pytestmark = pytest.mark.skipif(shutil.which("mafft") is None, reason="MAFFT not
 ORGANISM = "Synth"
 
 
-def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, **cfg_updates):
+def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_kit=False,
+                  export_formats=None, **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv")
@@ -29,8 +31,8 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, **cfg_u
     cfg = config.get_default_config().update(**settings)
     ok = cli.run_pipeline(
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
-        no_report=True, skip_geo=skip_geo, export_plot_data=False,
-        export_popgen_formats=None, metadata_summary_enabled=metadata_summary_enabled,
+        no_report=True, skip_geo=skip_geo, export_plot_data=plot_kit,
+        export_popgen_formats=export_formats, metadata_summary_enabled=metadata_summary_enabled,
         temporal_analysis=True,
     )
     return ok, out
@@ -43,8 +45,25 @@ def synthetic_run(tmp_path_factory):
     return out
 
 
+DEFAULT_FILES = {
+    f"{ORGANISM}_pipeline.log", "run_provenance.json", "summary.csv", "records.csv",
+    "records_qc_passed.fasta", "haplotypes.fasta", "haplotypes.csv", "label_conflicts.csv",
+    "metadata_coverage.csv", "divergence/haplotypes_aligned.fasta",
+    "divergence/pairwise_p_distance.csv", "divergence/README.md",
+}
+
+
+def _files(out):
+    return {str(p.relative_to(out)) for p in out.rglob("*") if p.is_file()}
+
+
 def test_synthetic_run_completes(synthetic_run):
-    assert (synthetic_run / f"{ORGANISM}_annotated.csv").exists()
+    """P2: the default run folder holds exactly the v2 default files."""
+    assert _files(synthetic_run) == DEFAULT_FILES
+
+
+def _records(out):
+    return pd.read_csv(out / "records.csv")
 
 
 def test_input_parsed_once(tmp_path):
@@ -62,13 +81,9 @@ def test_log_ends_with_run_status(synthetic_run):
         "Pipeline completed with" in last
 
 
-def _diagnostics(out):
-    return pd.read_csv(out / "haplotype_assignments" / f"{ORGANISM}_diagnostics.csv")
-
-
 def test_statuses_match_planted_cases(synthetic_run):
     """P0-2: every unique record has its specific status."""
-    diag = _diagnostics(synthetic_run).set_index("processid")
+    diag = _records(synthetic_run).set_index("processid")
     assert len(diag) == EXPECTED["n_unique"]
     for pid, status in EXPECTED["status"].items():
         assert diag.loc[pid, "status"] == status, pid
@@ -76,13 +91,14 @@ def test_statuses_match_planted_cases(synthetic_run):
 
 def test_processid_is_bare_everywhere(synthetic_run):
     """P0-10: one processid format in every table."""
-    mapping = pd.read_csv(synthetic_run / "haplotypes" / f"{ORGANISM}_haplotype_mapping.csv")
-    assert mapping["processid"].str.match(r"^SYN\d{3}$").all()
+    assert _records(synthetic_run)["processid"].str.match(r"^SYN\d{3}$").all()
+    fasta = (synthetic_run / "records_qc_passed.fasta").read_text()
+    assert all(re.match(r"^>SYN\d{3}$", l) for l in fasta.splitlines() if l.startswith(">"))
 
 
 def test_corrected_members_count_in_species_composition(synthetic_run):
     """P0-2: corrected members are pooled into their haplotype."""
-    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    ann = _records(synthetic_run)
     h1 = ann.loc[ann["haplotype_id"] == "H0001"]
     assert len(h1) == EXPECTED["members"]["A"]
     assert (h1["status"] == "assigned_corrected").sum() == 1
@@ -91,13 +107,13 @@ def test_corrected_members_count_in_species_composition(synthetic_run):
 def test_no_assign_corrected_flag(tmp_path):
     ok, out = run_synthetic(tmp_path, haplotype__assign_corrected=False)
     assert ok
-    diag = _diagnostics(out).set_index("processid")
+    diag = _records(out).set_index("processid")
     assert diag.loc["SYN021", "status"] == "excluded_error_singleton"
 
 
 def test_assignment_summary_denominators(synthetic_run):
     """P0-3, P0-9: explicit denominators and named species counts."""
-    s = pd.read_csv(synthetic_run / "reports" / f"{ORGANISM}_assignment_summary.csv").iloc[0]
+    s = pd.read_csv(synthetic_run / "summary.csv").iloc[0]
     assert s["n_input"] == EXPECTED["n_input"]
     assert s["n_unique"] == EXPECTED["n_unique"]
     assert s["n_qc_pass"] == 23 and s["n_core_ok"] == 22
@@ -151,51 +167,67 @@ def test_tree_includes_every_non_suspect_haplotype(tmp_path):
     from Bio import Phylo
     ok, out = run_synthetic(tmp_path, phylogenetic__build_tree=True)
     assert ok
-    tips = {t.name for t in Phylo.read(out / "phylogenetic" / f"{ORGANISM}_tree.nwk", "newick").get_terminals()}
+    tips = {t.name for t in Phylo.read(out / "phylogeny" / "tree.nwk", "newick").get_terminals()}
     assert tips == {"H0001", "H0002", "H0003", "H0004"}
-    excluded = (out / "phylogenetic" / f"{ORGANISM}_excluded_tips.txt").read_text().splitlines()
+    excluded = (out / "phylogeny" / "excluded_tips.txt").read_text().splitlines()
     assert excluded == ["haplotype_id\treason"]
     d = json.loads((out / "run_provenance.json").read_text())
     assert (d["applied"]["tree_min_members"], d["applied"]["n_tree_tips"], d["applied"]["n_tree_excluded"]) == (1, 4, 0)
     assert d["warnings"] == []
-    import importlib.util
-    if importlib.util.find_spec("pymsaviz") is not None:   # [msa] extra; in environment.yml
-        assert list((out / "phylogenetic").glob(f"{ORGANISM}_MSA_chunk*.pdf"))
+    assert {"phylogeny/tree.nwk", "phylogeny/tree_labeled.nwk", "phylogeny/excluded_tips.txt",
+            "phylogeny/tree.pdf"} <= _files(out)
+    assert pd.read_csv(out / "haplotypes.csv")["in_tree"].all()
+    assert not (out / "extended").exists()                     # no MSA plots by default
 
 
 @needs_fasttree
 def test_tree_min_members_excludes_and_explains(tmp_path):
     ok, out = run_synthetic(tmp_path, phylogenetic__build_tree=True, phylogenetic__min_cluster_size=2)
     assert ok
-    excluded = (out / "phylogenetic" / f"{ORGANISM}_excluded_tips.txt").read_text().splitlines()
+    excluded = (out / "phylogeny" / "excluded_tips.txt").read_text().splitlines()
     assert excluded == ["haplotype_id\treason", "H0004\tn_members 1 < 2"]
+    # three tips are too few for FastTree: no tree, so in_tree is empty
+    assert not (out / "phylogeny" / "tree.nwk").exists()
+    assert pd.read_csv(out / "haplotypes.csv")["in_tree"].isna().all()
+
+
+@needs_fasttree
+def test_msa_plots_only_with_extended_and_pdf_only(tmp_path):
+    """P2, P3: MSA chunk plots go to extended/divergence/msa/, one format."""
+    import importlib.util
+    if importlib.util.find_spec("pymsaviz") is None:      # [msa] extra; in environment.yml
+        pytest.skip("pymsaviz not installed")
+    ok, out = run_synthetic(tmp_path, phylogenetic__build_tree=True, extended=True)
+    assert ok
+    msa = {f for f in _files(out) if "MSA_chunk" in f}
+    assert msa and all(f.startswith("extended/divergence/msa/") and f.endswith(".pdf") for f in msa)
 
 
 def test_ids_are_count_free_and_consistent(synthetic_run):
     """P0-8: H IDs carry no counts, and n_members agrees across files."""
-    fasta = (synthetic_run / "haplotypes" / f"{ORGANISM}_haplotypes.fasta").read_text()
+    fasta = (synthetic_run / "haplotypes.fasta").read_text()
     headers = [line for line in fasta.splitlines() if line.startswith(">")]
     assert headers[0].startswith(">H0001 seq_md5=")
     assert headers[0].endswith(f"n_members={EXPECTED['members']['A']}")
     assert not any("_n" in h.split()[0] for h in headers)
-    stats = pd.read_csv(synthetic_run / "haplotypes" / f"{ORGANISM}_haplotype_stats.csv")
-    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    stats = pd.read_csv(synthetic_run / "haplotypes.csv")
+    ann = _records(synthetic_run)
     per_hap = ann.dropna(subset=["haplotype_id"]).groupby("haplotype_id").size()
     pd.testing.assert_series_equal(
         stats.set_index("haplotype_id")["n_members"].sort_index(), per_hap.sort_index(),
         check_names=False, check_dtype=False)
-    readme = (synthetic_run / "divergence_analysis" / "README.md").read_text()
+    readme = (synthetic_run / "divergence" / "README.md").read_text()
     assert "_n{" not in readme and "h1_n" not in readme
 
 
 def test_one_missing_code_and_latlon_kept(synthetic_run):
     """P0-4: no 'Unknown' region code; centroid records keep lat/lon; exclusion logged."""
-    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
+    ann = _records(synthetic_run)
     assert "Unknown" not in set(ann["ocean_basin"].dropna())
     cent = ann["coord_status"] == "centroid"
     assert cent.any()
     assert ann.loc[cent, ["lat", "lon"]].notna().all(axis=None)
-    assert not ann.loc[ann["coord_status"] == "missing", "is_geographic_quality"].any()
+    assert ann.loc[ann["coord_status"] != "ok", "ocean_basin"].isna().all()
     log = (synthetic_run / f"{ORGANISM}_pipeline.log").read_text()
     assert "centroid coordinates; they keep lat/lon" in log
 
@@ -208,28 +240,28 @@ needs_goas = pytest.mark.skipif(
 @needs_goas
 def test_goas_regions_only_for_geographic_quality(tmp_path):
     """P0-4: regions only for geographic-quality records; no region is NaN, not 'Unknown'."""
-    ok, out = run_synthetic(tmp_path, skip_geo=False)
+    ok, out = run_synthetic(tmp_path, skip_geo=False, extended=True)
     assert ok
-    ann = pd.read_csv(out / f"{ORGANISM}_annotated.csv")
+    ann = _records(out)
     assert "Unknown" not in set(ann["ocean_basin"].dropna())
-    good = ann["is_geographic_quality"].astype(bool)
+    good = ann["coord_status"] == "ok"
     assert ann.loc[~good, "ocean_basin"].isna().all()
     assert ann.loc[ann["coord"] == "[12.5, -45.25]", "ocean_basin"].notna().all()
     d = json.loads((out / "run_provenance.json").read_text())
     assert set(d["data_notes"]["coord_status"]) <= {"ok", "missing", "centroid", "zero"}
     # P0-6: every map and plot, including species-level ones, is written
     assert d["warnings"] == []
-    assert (out / "visualization" / "pdf" / f"{ORGANISM}_distribution_map.pdf").exists()
-    assert (out / "visualization" / "pdf" / f"{ORGANISM}_species_distribution_map.pdf").exists()
+    assert {"geography/distribution_map.pdf", "geography/distribution_map.svg",
+            "geography/haplotype_by_region.csv",
+            "extended/geography/species_distribution_map.pdf"} <= _files(out)
     # P0-5: country counts come from country/ocean
-    coverage = pd.read_csv(next((out / "geographic_analysis").glob("*geographic_coverage.csv")))
-    assert coverage["with_country"].sum() > 0
+    assert pd.read_csv(out / "haplotypes.csv")["n_with_country"].sum() > 0
 
 
 def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
     """P1-1: describe p-distance only; no taxonomic thresholds."""
     import re
-    readme = (synthetic_run / "divergence_analysis" / "README.md").read_text()
+    readme = (synthetic_run / "divergence" / "README.md").read_text()
     for phrase in ("cryptic", "hybridizing", "misidentification", "Typical interspecific",
                    "barcoding gap exists", "## Interpretation"):
         assert phrase.lower() not in readme.lower(), phrase
@@ -239,15 +271,13 @@ def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
 
 def test_label_report_replaces_contamination_outputs(synthetic_run):
     """P1-6, P1-7, P1-8: label conflicts with evidence; no contamination or confidence."""
-    qc = synthetic_run / "quality_control"
-    summary = pd.read_csv(qc / "haplotype_label_summary.csv").set_index("haplotype_id")
+    summary = pd.read_csv(synthetic_run / "haplotypes.csv").set_index("haplotype_id")
     # H0003 (C): two 'Genus alpha' and one genus-only 'Genus' member: compatible
     assert summary.loc["H0003", "n_label_conflicts"] == 0
     assert summary.loc["H0003", "majority_fraction"] == 1.0
-    assert (qc / "label_conflicts.csv").exists() and (qc / "depositor_keyword_hits.csv").exists()
-    assert not (qc / "potential_misidentifications.csv").exists()
-    ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
-    assert {"label", "majority_label", "label_conflict", "majority_fraction"} <= set(ann.columns)
+    assert (synthetic_run / "label_conflicts.csv").exists()
+    ann = _records(synthetic_run)
+    assert {"label", "label_conflict", "depositor_keyword_hits"} <= set(ann.columns)
     assert "misidentification_confidence" not in ann.columns
 
 
@@ -260,28 +290,23 @@ def extended_run(tmp_path_factory):
 
 def test_default_run_writes_no_gap_outputs(synthetic_run):
     """P1-2: no barcoding-gap outputs by default."""
-    for rel in ("divergence_analysis/within_vs_between_species.csv",
-                "divergence_analysis/barcoding_gap.pdf",
-                "divergence_analysis/label_based_gap.csv",
-                "species_analysis/species_divergence_summary.csv"):
-        assert not (synthetic_run / rel).exists(), rel
+    assert not any("gap" in f or "species_divergence" in f for f in _files(synthetic_run))
 
 
 def test_extended_run_writes_label_based_gap(extended_run):
-    gap = pd.read_csv(extended_run / "divergence_analysis" / "label_based_gap.csv")
+    gap = pd.read_csv(extended_run / "extended" / "divergence" / "label_based_gap.csv")
     assert set(gap["label"]) == {"Genus alpha", "Genus beta", "Genus gamma"}
     assert "barcoding_gap" not in gap.columns and "label_based_gap" in gap.columns
-    assert not (extended_run / "divergence_analysis" / "within_vs_between_species.csv").exists()
+    assert not any("within_vs_between" in f for f in _files(extended_run))
+    assert "extended/labels/depositor_keyword_hits.csv" in _files(extended_run)
     d = json.loads((extended_run / "run_provenance.json").read_text())
     assert d["config"]["extended"] is True and d["warnings"] == []
 
 
 def test_default_metadata_output_is_coverage_only(synthetic_run):
     """P1-3, P1-4, P1-5: cross-tabs, temporal and first-sampled outputs only with --extended."""
-    files = {p.name for p in (synthetic_run / "metadata_summary").iterdir()}
-    assert files == {f"{ORGANISM}_metadata_coverage.json", f"{ORGANISM}_metadata_summary.csv", "README.md"}
-    summary = pd.read_csv(synthetic_run / "metadata_summary" / f"{ORGANISM}_metadata_summary.csv",
-                          keep_default_na=False).set_index("field")
+    assert not (synthetic_run / "extended").exists()
+    summary = pd.read_csv(synthetic_run / "metadata_coverage.csv", keep_default_na=False).set_index("field")
     # blank, whitespace-only and "U" sex values are missing, not a ": N" category
     assert summary.loc["sex", "n_with_value"] == 10
     assert summary.loc["sex", "top_values"] == "Male: 5; Female: 5"
@@ -290,25 +315,24 @@ def test_default_metadata_output_is_coverage_only(synthetic_run):
 
 
 def test_extended_metadata_outputs(extended_run):
-    md = extended_run / "metadata_summary"
-    sex = pd.read_csv(md / f"{ORGANISM}_sex_tabulation.csv")
+    md = extended_run / "extended" / "metadata"
+    sex = pd.read_csv(md / "sex_tabulation.csv")
     assert set(sex["value"]) == {"Male", "Female"}
-    life = pd.read_csv(md / f"{ORGANISM}_life_stage_tabulation.csv")
+    life = pd.read_csv(md / "life_stage_tabulation.csv")
     assert set(life["value"]) == {"Adult", "Immature"}
-    first = pd.read_csv(md / f"{ORGANISM}_haplotype_first_sampled.csv")
+    first = pd.read_csv(md / "haplotype_first_sampled.csv")
     assert "first_sampled" in first.columns and "first_collection_date" not in first.columns
-    assert not (md / f"{ORGANISM}_haplotype_emergence.csv").exists()
-    assert (md / f"{ORGANISM}_temporal_trends.csv").exists()
+    assert not any("emergence" in f for f in _files(extended_run))
+    assert (md / "temporal_trends.csv").exists()
     readme = (md / "README.md").read_text()
     assert "sampling" in readme and "emergence" not in readme.lower()
 
 
 def test_species_diversity_only_with_extended(synthetic_run, extended_run):
     """P1-9, P1-10."""
-    assert not (synthetic_run / "species_analysis" / "species_diversity.csv").exists()
     for run in (synthetic_run, extended_run):
-        assert not (run / "species_analysis" / "species_geographic_range.csv").exists()
-    div = pd.read_csv(extended_run / "species_analysis" / "species_diversity.csv")
+        assert not any("geographic_range" in f for f in _files(run))
+    div = pd.read_csv(extended_run / "extended" / "species" / "species_diversity.csv")
     assert "simpson_index" not in div.columns and set(div["note"]) == {"label-based, sampling-dependent"}
 
 
@@ -316,7 +340,34 @@ def test_no_metadata_summary_only_drops_cross_tabs(tmp_path):
     """--no-metadata-summary restricts --extended; coverage is always written (Task 3.1)."""
     ok, out = run_synthetic(tmp_path, metadata_summary_enabled=False, extended=True)
     assert ok
-    files = {p.name for p in (out / "metadata_summary").iterdir()}
-    assert f"{ORGANISM}_metadata_coverage.json" in files
-    assert f"{ORGANISM}_haplotype_first_sampled.csv" in files
+    files = _files(out)
+    assert "metadata_coverage.csv" in files
+    assert "extended/metadata/haplotype_first_sampled.csv" in files
     assert not any(f.endswith("_tabulation.csv") for f in files)
+
+
+def test_sweep_reads_v2_run_folder(synthetic_run):
+    """P2: the sweep reads haplotypes.csv and the QC-passed rows of records.csv."""
+    from boldgenotyper import parameter_sweep
+    m = parameter_sweep.extract_run_metrics(synthetic_run, ORGANISM, 0.01)
+    assert m["n_haplotypes"] == 4 and m["n_samples"] == 23
+    assert 0 < m["pct_assigned"] <= 100 and "pct_label_conflict" in m
+    assert 0 < m["mean_majority_fraction"] <= 1
+    tracking = parameter_sweep.track_group_membership({0.01: synthetic_run}, ORGANISM, [0.01])
+    assert len(tracking) == 23
+
+
+def test_plot_kit_and_exports_without_duplicates(tmp_path):
+    """P2: plots/ and exports/ only on request, with no copies of the FASTA or tree."""
+    ok, out = run_synthetic(tmp_path, plot_kit=True, export_formats=["all"])
+    assert ok
+    files = _files(out)
+    plots = {f for f in files if f.startswith("plots/")}
+    assert {"plots/plot_config.yaml", "plots/README.md", "plots/scripts/regenerate_all.py"} <= plots
+    for dup in ("plots/data/consensus_sequences.fasta", "plots/data/tree_data.nwk",
+                "plots/plot_customization_config.yaml", "plots/scripts/regenerate_identity.py"):
+        assert dup not in plots
+    exports = {f for f in files if f.startswith("exports/")}
+    assert "exports/generic/haplotype_membership.csv" in exports
+    assert "exports/generic/haplotype_consensus.fasta" not in exports
+    assert not [f for f in files if f.endswith(".fasta") and f not in DEFAULT_FILES]

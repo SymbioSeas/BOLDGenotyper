@@ -8,10 +8,13 @@ v2 paths.
 build_records_table()        records.csv: one row per unique input record
 build_haplotypes_table()     haplotypes.csv: one row per haplotype
 build_haplotype_by_region()  geography/haplotype_by_region.csv
+plan_moves(), apply_moves()  staged files -> v2 paths, following FILE_MAP
 """
 
 import logging
-from typing import Iterable, List, Optional, Set
+import shutil
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -165,3 +168,86 @@ def build_haplotype_by_region(records: pd.DataFrame, region_col: str) -> pd.Data
     totals = counts.groupby(region_col)["n_records"].transform("sum")
     counts["pct_of_region"] = (counts["n_records"] / totals * 100).round(2)
     return counts.sort_values([region_col, "haplotype_id"]).reset_index(drop=True)
+
+
+# Staged file (glob relative to the staging folder; {org} is the organism) ->
+# v2 path, and the run option that places it. The first matching entry claims a
+# file. A destination ending in "/" keeps the file name without the "{org}_"
+# prefix. Staged files no entry places stay in staging, which is removed with
+# intermediate/ (they are duplicates or folded into records.csv/haplotypes.csv).
+FILE_MAP = [
+    ("haplotypes/{org}_haplotypes.fasta", "haplotypes.fasta", "default"),
+    ("quality_control/label_conflicts.csv", "label_conflicts.csv", "default"),
+    ("metadata_summary/{org}_metadata_summary.csv", "metadata_coverage.csv", "default"),
+    ("divergence_analysis/{org}_consensus_aligned.fasta", "divergence/haplotypes_aligned.fasta", "default"),
+    ("divergence_analysis/pairwise_divergence_matrix.csv", "divergence/pairwise_p_distance.csv", "default"),
+    ("phylogenetic/{org}_tree.nwk", "phylogeny/tree.nwk", "default"),
+    ("phylogenetic/{org}_tree_relabeled.nwk", "phylogeny/tree_labeled.nwk", "default"),
+    ("phylogenetic/{org}_excluded_tips.txt", "phylogeny/excluded_tips.txt", "default"),
+    ("phylogenetic/{org}_tree.pdf", "phylogeny/tree.pdf", "default"),
+    ("phylogenetic/{org}_tree.svg", "phylogeny/tree.svg", "default"),
+    ("visualization/pdf/{org}_distribution_map.pdf", "geography/distribution_map.pdf", "default"),
+    ("visualization/svg/{org}_distribution_map.svg", "geography/distribution_map.svg", "default"),
+    ("divergence_analysis/README.md", "divergence/README.md", "default"),
+    ("metadata_summary/README.md", "extended/metadata/README.md", "extended"),
+
+    ("metadata_summary/{org}_*_tabulation.csv", "extended/metadata/", "extended"),
+    ("metadata_summary/{org}_haplotype_first_sampled.csv", "extended/metadata/", "extended"),
+    ("metadata_summary/{org}_temporal_*.csv", "extended/metadata/", "extended"),
+    ("visualization/metadata/pdf/{org}_*.pdf", "extended/metadata/figures/", "extended"),
+    ("visualization/metadata/png/{org}_*.png", "extended/metadata/figures/", "extended"),
+    ("divergence_analysis/label_based_gap.*", "extended/divergence/", "extended"),
+    ("divergence_analysis/divergence_heatmap.pdf", "extended/divergence/", "extended"),
+    ("divergence_analysis/divergence_summary.csv", "extended/divergence/species_pair_divergence.csv", "extended"),
+    ("species_analysis/species_divergence_summary.csv", "extended/divergence/", "extended"),
+    ("species_analysis/species_divergence_matrices/*.csv", "extended/divergence/within_species/", "extended"),
+    ("phylogenetic/{org}_MSA_chunk*.pdf", "extended/divergence/msa/", "extended"),
+    ("species_analysis/species_summary.csv", "extended/species/", "extended"),
+    ("species_analysis/species_diversity.csv", "extended/species/", "extended"),
+    ("species_analysis/species_basin_distribution.csv", "extended/species/species_by_region.csv", "extended"),
+    ("species_analysis/species_country_distribution.csv", "extended/species/species_by_country.csv", "extended"),
+    ("species_analysis/species_subsets/*.csv", "extended/species/per_species/", "extended"),
+    ("visualization/pdf/{org}_*.pdf", "extended/geography/", "extended"),
+    ("visualization/svg/{org}_*.svg", "extended/geography/", "extended"),
+    ("visualization/pdf/species_haplotype_*/*.pdf", "extended/geography/per_species/", "extended"),
+    ("visualization/svg/species_haplotype_*/*.svg", "extended/geography/per_species/", "extended"),
+    ("visualization/haplotype_plots/**/*.*", "extended/geography/per_haplotype/", "extended"),
+    ("quality_control/depositor_keyword_hits.csv", "extended/labels/", "extended"),
+    ("quality_control/*.pdf", "extended/labels/", "extended"),
+]
+
+
+def plan_moves(staging: Path, organism: str, extended: bool = False) -> Dict[Path, Path]:
+    """
+    Map each staged file that the run places to its v2 path (relative to the
+    run folder), following FILE_MAP.
+    """
+    staging = Path(staging)
+    enabled = {"default": True, "extended": extended}
+    prefix = f"{organism}_"
+    claimed: Set[Path] = set()
+    moves: Dict[Path, Path] = {}
+    for pattern, dest, category in FILE_MAP:
+        for src in sorted(staging.glob(pattern.format(org=organism))):
+            if not src.is_file() or src in claimed:
+                continue
+            claimed.add(src)
+            if not enabled[category]:
+                continue
+            if dest.endswith("/"):
+                name = src.name[len(prefix):] if src.name.startswith(prefix) else src.name
+                moves[src] = Path(dest) / name
+            else:
+                moves[src] = Path(dest)
+    return moves
+
+
+def apply_moves(moves: Dict[Path, Path], output_dir: Path) -> List[Path]:
+    """Move staged files to their v2 paths; return the destination paths."""
+    placed = []
+    for src, rel in moves.items():
+        dst = Path(output_dir) / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dst))
+        placed.append(dst)
+    return placed

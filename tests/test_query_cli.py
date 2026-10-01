@@ -79,7 +79,7 @@ def test_deprecated_tie_margin_still_runs(tmp_path, run_dir, capsys):
 
 
 def test_bare_fasta_reference_has_no_species_support(tmp_path, run_dir):
-    fasta = next((run_dir / "haplotypes").glob("*_haplotypes.fasta"))
+    fasta = run_dir / "haplotypes.fasta"
     s, _ = _query(tmp_path, fasta, {"window": WINDOW})
     assert s.loc["window", "call_level"] == "haplotype_set"
     assert s.loc["window", "flags"] == "no_reference_labels"
@@ -100,7 +100,7 @@ def test_load_reference_run(run_dir):
     assert ref["provenance_md5"] == md5
     assert ref["n_haplotypes"] == 4
     assert ref["boldgenotyper_version"] and ref["run_date"]
-    assert qa.load_reference_run(next((run_dir / "haplotypes").glob("*.fasta"))) is None
+    assert qa.load_reference_run(run_dir / "haplotypes.fasta") is None
 
 
 def test_reference_block_and_haplotypes_searched(tmp_path, run_dir):
@@ -144,3 +144,22 @@ def test_v1_style_run_folder_gives_haplotype_matching_only(tmp_path, run_dir):
     assert row["reference_run_id"] == ""
     header = (out / "query_summary.csv").read_text()
     assert "# reference_run: unknown (no run_provenance.json)" in header
+
+
+# --- v2 run-folder layout (P2) ------------------------------------------------
+
+def test_resolve_reference_v2_and_v1_layouts(tmp_path, run_dir):
+    assert (run_dir / "haplotypes.fasta").exists()
+    fasta, analysis = qa.resolve_reference(str(run_dir), None)
+    assert fasta == run_dir / "haplotypes.fasta" and analysis == run_dir
+    v1 = tmp_path / "v1"
+    (v1 / "haplotypes").mkdir(parents=True)
+    shutil.copy(run_dir / "haplotypes.fasta", v1 / "haplotypes" / "Old_haplotypes.fasta")
+    assert qa.resolve_reference(str(v1), None)[0] == v1 / "haplotypes" / "Old_haplotypes.fasta"
+
+
+def test_metadata_from_v2_haplotypes_table(run_dir):
+    from boldgenotyper import haplotype_query as hq
+    meta = hq.load_haplotype_metadata(run_dir).set_index("haplotype_id")
+    assert meta.loc["H0001", "haplotype_sp"] == "Genus alpha H0001"
+    assert meta.loc["H0001", "n_members"] == 13

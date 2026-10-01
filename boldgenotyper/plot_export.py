@@ -388,11 +388,8 @@ def create_plot_config(
                 write_dict(config)
 
     _write_yaml(config_path)
-    legacy_path = plots_dir / "plot_customization_config.yaml"
-    _write_yaml(legacy_path)
 
-    logger.info(f"  ✓ Created plot configuration: {config_path}")
-    logger.info(f"  ✓ Created plot customization config: {legacy_path}")
+    logger.info(f"  Created plot configuration: {config_path}")
 
     return config_path
 
@@ -439,15 +436,13 @@ def create_python_scripts(output_dir: Path, organism: str) -> Dict[str, Path]:
    ```bash
    python regenerate_map.py
    python regenerate_bars.py
-   python regenerate_identity.py
    ```
 
 ## Files
 
-- **regenerate_all.py**: Run all regeneration scripts
+- **regenerate_all.py**: Run all regeneration scripts (map, bars, tree)
 - **regenerate_map.py**: Regenerate distribution maps
 - **regenerate_bars.py**: Regenerate bar charts
-- **regenerate_identity.py**: Regenerate identity histograms
 
 ## Requirements
 
@@ -468,13 +463,12 @@ Edit `plot_config.yaml` to change:
 - Figure dimensions and DPI
 - Map projections and styling
 - Bar chart orientations
-- Histogram bin widths
-- Genotype filters (include/exclude specific consensus groups)
+- Haplotype filters (include/exclude specific haplotypes)
 
 ## Output
 
-Regenerated plots are saved to the parent `visualization/` directory,
-replacing the original plots.
+Regenerated plots are saved to `plots/visualization/`. The tree is read from
+the run's `phylogeny/tree.nwk`.
 """
 
     readme_path = output_dir / "plots" / "README.md"
@@ -600,42 +594,6 @@ if __name__ == "__main__":
     main()
 """
 
-    identity_script = """#!/usr/bin/env python3
-\"\"\"Regenerate identity distribution histogram from exported data.\"\"\"
-
-import sys
-from pathlib import Path
-
-# Add parent directory to path to import boldgenotyper
-parent_dir = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(parent_dir))
-
-from boldgenotyper.plot_regeneration import regenerate_identity_distribution
-
-def main():
-    # Base directory is parent of scripts/
-    scripts_dir = Path(__file__).parent
-    base_dir = scripts_dir.parent
-
-    print("Regenerating identity distribution...")
-
-    try:
-        output_files = regenerate_identity_distribution(base_dir)
-        print()
-        print(f"✓ Generated {len(output_files)} file(s)")
-        for f in output_files:
-            print(f"  - {f}")
-
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
-"""
-
     # Write Python scripts
     map_path = scripts_dir / "regenerate_map.py"
     with open(map_path, 'w') as f:
@@ -648,12 +606,6 @@ if __name__ == "__main__":
         f.write(bars_script)
     bars_path.chmod(0o755)
     scripts['regenerate_bars'] = bars_path
-
-    identity_path = scripts_dir / "regenerate_identity.py"
-    with open(identity_path, 'w') as f:
-        f.write(identity_script)
-    identity_path.chmod(0o755)
-    scripts['regenerate_identity'] = identity_path
 
     logger.info(f"  ✓ Created Python regeneration scripts in {scripts_dir}")
 
@@ -702,9 +654,11 @@ plots/
 └── scripts/                         # Python regeneration scripts
     ├── regenerate_all.py            # Regenerate all plots at once
     ├── regenerate_map.py            # Regenerate distribution map only
-    ├── regenerate_bars.py           # Regenerate bar charts only
-    └── regenerate_identity.py       # Regenerate identity histogram only
+    └── regenerate_bars.py           # Regenerate bar charts only
 ```
+
+The tree is read from the run's `phylogeny/tree.nwk`; haplotype sequences are in
+the run's `haplotypes.fasta`.
 
 ## Quick Start
 
@@ -718,7 +672,6 @@ plots/
    - Figure dimensions and DPI
    - Map projection and styling
    - Bar chart layout and orientation
-   - Histogram binning and overlays
    - Haplotype filters (include/exclude specific haplotypes)
 
 3. **Regenerate plots:**
@@ -731,10 +684,9 @@ plots/
    ```bash
    python regenerate_map.py
    python regenerate_bars.py
-   python regenerate_identity.py
    ```
 
-4. **Find updated plots** in the parent `visualization/` directory
+4. **Find updated plots** in `plots/visualization/`
    (saved as `*_custom.pdf`, `*_custom.png`, etc.)
 
 ## Customization Examples
@@ -781,8 +733,6 @@ filters:
 ## Notes
 
 - All data files are in CSV format for easy editing
-- Tree data is in Newick format
-- Consensus sequences are in FASTA format
 - Regenerated plots are saved with `_custom` suffix alongside originals
 - All required packages are included in the boldgenotyper conda environment
 

@@ -246,10 +246,13 @@ def resolve_reference(haplotypes_arg, analysis_dir_arg):
     (reference_fasta_path, analysis_dir)."""
     p = Path(haplotypes_arg)
     if p.is_dir():
-        matches = sorted(p.glob("haplotypes/*_haplotypes.fasta"))
+        if (p / "haplotypes.fasta").exists():          # v2 layout
+            analysis_dir = analysis_dir_arg if analysis_dir_arg is not None else p
+            return p / "haplotypes.fasta", analysis_dir
+        matches = sorted(p.glob("haplotypes/*_haplotypes.fasta"))   # v1 layout
         if not matches:
             raise ValueError(
-                f"No *_haplotypes.fasta found under {p / 'haplotypes'}. "
+                f"No haplotypes.fasta (or haplotypes/*_haplotypes.fasta) in {p}. "
                 "Pass the FASTA file directly with --haplotypes."
             )
         if len(matches) > 1:

@@ -447,7 +447,8 @@ def export_generic(
     haplotype_column: str = 'haplotype_id'
 ) -> Dict[str, Path]:
     """
-    Export generic formats: membership CSV, consensus FASTA, haplotype summary.
+    Export generic formats: membership CSV and haplotype summary (the haplotype
+    sequences are in the run's haplotypes.fasta).
 
     Includes all samples with a haplotype assignment regardless of whether they
     have a population (``pop_column``) value. Useful for users who want to
@@ -500,22 +501,6 @@ def export_generic(
     )
     membership_df.to_csv(membership_file, index=False)
     files['membership'] = membership_file
-
-    # 2. Consensus FASTA (one record per haplotype)
-    alignment_file = output_dir / "haplotype_consensus.fasta"
-    records = []
-    for hap, seq in consensus_seqs.items():
-        sub = df_assigned[df_assigned[haplotype_column] == hap]
-        if len(sub) == 0:
-            continue
-        species_mode = sub['species'].mode() if 'species' in sub.columns else pd.Series(dtype=object)
-        species = species_mode.iloc[0] if len(species_mode) else 'Unknown'
-        records.append(SeqRecord(
-            Seq(seq), id=str(hap),
-            description=f"n={len(sub)} species={species}"
-        ))
-    SeqIO.write(records, alignment_file, 'fasta')
-    files['alignment'] = alignment_file
 
     # 3. Haplotype summary table (one row per haplotype)
     haplotypes_file = output_dir / "haplotype_summary.csv"
@@ -641,14 +626,13 @@ BOLDGenotyper on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.
 
 **Purpose:** General use and custom analyses
 **Files:**
-- `generic/alignment.fasta` - Consensus sequences for all genotypes
-- `generic/genotype_membership.csv` - Sample-to-genotype mapping with metadata
-- `generic/haplotypes.csv` - Summary table of unique haplotypes
+- `generic/haplotype_membership.csv` - Record-to-haplotype mapping with location and sequence
+- `generic/haplotype_summary.csv` - One row per haplotype with its sequence and populations
+
+The haplotype sequences are in the run's `haplotypes.fasta`.
 
 **Usage:**
-These files can be imported into any software that accepts standard formats:
-- FASTA alignments: MEGA, Geneious, PhyloSuite, etc.
-- CSV tables: R, Python, Excel, etc.
+CSV tables can be read in R, Python, Excel, etc.
 
 """
 

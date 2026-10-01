@@ -909,12 +909,15 @@ def regenerate_phylogenetic_tree(
     tree_cfg = config.get('tree', {})
     general_cfg = config.get('general', {})
 
-    # Load tree data
+    # Load tree data: the run's phylogeny/tree.nwk (v2 plot kits sit in the run
+    # folder), or data/tree_data.nwk in v1 kits
     data_dir = base_dir / "data"
-    tree_path = data_dir / "tree_data.nwk"
+    tree_path = base_dir.parent / "phylogeny" / "tree.nwk"
+    if not tree_path.exists():
+        tree_path = data_dir / "tree_data.nwk"
 
     if not tree_path.exists():
-        logger.warning(f"tree_data.nwk not found in {data_dir}, skipping tree regeneration")
+        logger.warning(f"No tree found ({base_dir.parent / 'phylogeny' / 'tree.nwk'}), skipping tree regeneration")
         return []
 
     # Load consensus_group to consensus_group_sp mapping
@@ -1240,13 +1243,14 @@ def regenerate_all_plots(base_dir: Path, output_dir: Optional[Path] = None) -> D
         logger.error(f"  Failed to regenerate bars: {e}")
         results['bars'] = []
 
-    # Regenerate identity distribution
-    try:
-        logger.info("  3. Regenerating identity distribution...")
-        results['identity'] = regenerate_identity_distribution(base_dir, output_dir, config)
-    except Exception as e:
-        logger.error(f"  Failed to regenerate identity: {e}")
-        results['identity'] = []
+    # Identity distribution: v1 kits only (the ESV workflow has no identity data)
+    if (base_dir / "data" / "identity_distribution.csv").exists():
+        try:
+            logger.info("  3. Regenerating identity distribution...")
+            results['identity'] = regenerate_identity_distribution(base_dir, output_dir, config)
+        except Exception as e:
+            logger.error(f"  Failed to regenerate identity: {e}")
+            results['identity'] = []
 
     # Regenerate phylogenetic tree
     try:

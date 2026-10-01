@@ -124,6 +124,28 @@ def run_single_threshold(
     return metrics
 
 
+def _load_run_tables(output_dir: Path, organism: str):
+    """
+    (haplotype table or None, QC-passed record table or None) of a run folder:
+    v2 haplotypes.csv and the qc_pass rows of records.csv, or v1
+    haplotypes/<org>_haplotype_stats.csv and <org>_annotated.csv.
+    """
+    output_dir = Path(output_dir)
+    hap_path = output_dir / "haplotypes.csv"
+    if not hap_path.exists():
+        hap_path = output_dir / "haplotypes" / f"{organism}_haplotype_stats.csv"
+    haplotypes = pd.read_csv(hap_path) if hap_path.exists() else None
+
+    records_path = output_dir / "records.csv"
+    if records_path.exists():
+        records = pd.read_csv(records_path, low_memory=False)
+        records = records[records['qc_pass'].astype(str).str.lower() == 'true']
+    else:
+        annotated_path = output_dir / f"{organism}_annotated.csv"
+        records = pd.read_csv(annotated_path, low_memory=False) if annotated_path.exists() else None
+    return haplotypes, records
+
+
 def extract_run_metrics(
     output_dir: Path,
     organism: str,
@@ -132,9 +154,9 @@ def extract_run_metrics(
     """
     Extract summary metrics from a completed run.
 
-    Reads two files:
-    - haplotypes/{organism}_haplotype_stats.csv  → haplotype counts
-    - {organism}_annotated.csv                   → sample-level metrics
+    Reads haplotypes.csv (haplotype counts) and the QC-passed rows of
+    records.csv (sample-level metrics); v1 run folders: the haplotype stats
+    table and <organism>_annotated.csv.
 
     Parameters
     ----------
@@ -155,9 +177,8 @@ def extract_run_metrics(
     # ---------------------------------------------------------------------------
     # Haplotype-level metrics (from haplotype_stats.csv)
     # ---------------------------------------------------------------------------
-    stats_path = output_dir / "haplotypes" / f"{organism}_haplotype_stats.csv"
-    if stats_path.exists():
-        stats_df = pd.read_csv(stats_path)
+    stats_df, df = _load_run_tables(output_dir, organism)
+    if stats_df is not None:
         metrics['n_haplotypes'] = len(stats_df)
         if 'is_singleton' in stats_df.columns:
             metrics['n_singletons'] = int(stats_df['is_singleton'].sum())
@@ -167,11 +188,9 @@ def extract_run_metrics(
     # ---------------------------------------------------------------------------
     # Sample-level metrics (from annotated CSV)
     # ---------------------------------------------------------------------------
-    annotated_path = output_dir / f"{organism}_annotated.csv"
-    if not annotated_path.exists():
+    if df is None:
         return metrics
 
-    df = pd.read_csv(annotated_path)
     metrics['n_samples'] = len(df)
 
     # Assignment coverage: fraction of samples assigned to a haplotype
@@ -195,7 +214,9 @@ def extract_run_metrics(
             metrics['n_haplotypes_with_label_conflict'] = int(per_hap.sum())
 
     # Mean majority fraction across haplotypes
-    if 'majority_fraction' in df.columns and 'haplotype_id' in df.columns:
+    if stats_df is not None and 'majority_fraction' in stats_df.columns:          # v2
+        metrics['mean_majority_fraction'] = float(stats_df['majority_fraction'].mean())
+    elif 'majority_fraction' in df.columns and 'haplotype_id' in df.columns:
         fractions = df.groupby('haplotype_id')['majority_fraction'].first()
         metrics['mean_majority_fraction'] = float(fractions.mean()) if len(fractions) > 0 else 0
 
@@ -205,8 +226,8 @@ def extract_run_metrics(
 def cleanup_intermediate_files(output_dir: Path) -> None:
     """
     Remove per-threshold output directories that are no longer needed after
-    metrics have been extracted.  Retains only the annotated CSV and haplotype
-    stats that the analysis scripts read.
+    metrics have been extracted.  Retains the record and haplotype tables
+    (records.csv, haplotypes.csv; v1: the annotated CSV and haplotype stats).
 
     Parameters
     ----------
@@ -216,6 +237,7 @@ def cleanup_intermediate_files(output_dir: Path) -> None:
     # These directories are produced by the sweep runs but are not needed
     # once extract_run_metrics has pulled the numbers.
     removable = [
+        'divergence', 'phylogeny', 'geography', 'extended', 'exports', 'plots',
         'haplotype_assignments',
         'species_analysis',
         'taxonomy',
@@ -267,10 +289,9 @@ def track_group_membership(
 
     for threshold in sorted(thresholds):
         output_dir = run_outputs[threshold]
-        annotated_path = output_dir / f"{organism}_annotated.csv"
+        _, df = _load_run_tables(output_dir, organism)
 
-        if annotated_path.exists():
-            df = pd.read_csv(annotated_path)
+        if df is not None:
             if 'processid' in df.columns and 'haplotype_id' in df.columns:
                 assignments = dict(zip(df['processid'], df['haplotype_id']))
                 sample_assignments[threshold] = assignments

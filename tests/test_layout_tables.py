@@ -123,3 +123,61 @@ def test_haplotype_by_region(records):
                                        "n_records", "pct_of_region"]
     rows = {(r.haplotype_id, r.ocean_basin): (r.n_records, r.pct_of_region) for r in by_region.itertuples()}
     assert rows == {("H0001", "North Atlantic"): (1, 100.0), ("H0002", "Indian"): (1, 100.0)}
+
+
+# --- File map (P2) ------------------------------------------------------------
+
+def _stage(tmp_path, names):
+    for name in names:
+        p = tmp_path / "staging" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("x")
+    return tmp_path / "staging"
+
+
+STAGED = [
+    "haplotypes/Synth_haplotypes.fasta", "haplotypes/Synth_haplotype_stats.csv",
+    "Synth_annotated.csv", "quality_control/label_conflicts.csv",
+    "quality_control/haplotype_label_summary.csv", "quality_control/label_composition_heatmap.pdf",
+    "visualization/pdf/Synth_distribution_map.pdf", "visualization/pdf/Synth_distribution_bar.pdf",
+    "visualization/svg/species_haplotype_maps/Genus_alpha_haplotype_distribution_map.svg",
+    "metadata_summary/Synth_metadata_summary.csv", "metadata_summary/Synth_sex_tabulation.csv",
+    "metadata_summary/Synth_metadata_coverage.json", "phylogenetic/Synth_MSA_chunk1.pdf",
+    "phylogenetic/Synth_MSA_chunk1.png",
+]
+
+
+def test_plan_moves_default(tmp_path):
+    staging = _stage(tmp_path, STAGED)
+    moves = {str(s.relative_to(staging)): str(d) for s, d in layout.plan_moves(staging, "Synth").items()}
+    assert moves == {
+        "haplotypes/Synth_haplotypes.fasta": "haplotypes.fasta",
+        "quality_control/label_conflicts.csv": "label_conflicts.csv",
+        "visualization/pdf/Synth_distribution_map.pdf": "geography/distribution_map.pdf",
+        "metadata_summary/Synth_metadata_summary.csv": "metadata_coverage.csv",
+    }
+
+
+def test_plan_moves_extended(tmp_path):
+    staging = _stage(tmp_path, STAGED)
+    moves = {str(s.relative_to(staging)): str(d)
+             for s, d in layout.plan_moves(staging, "Synth", extended=True).items()}
+    assert moves["visualization/pdf/Synth_distribution_map.pdf"] == "geography/distribution_map.pdf"
+    assert moves["visualization/pdf/Synth_distribution_bar.pdf"] == "extended/geography/distribution_bar.pdf"
+    assert moves["metadata_summary/Synth_sex_tabulation.csv"] == "extended/metadata/sex_tabulation.csv"
+    assert moves["phylogenetic/Synth_MSA_chunk1.pdf"] == "extended/divergence/msa/MSA_chunk1.pdf"
+    assert moves["quality_control/label_composition_heatmap.pdf"] == \
+        "extended/labels/label_composition_heatmap.pdf"
+    assert moves["visualization/svg/species_haplotype_maps/Genus_alpha_haplotype_distribution_map.svg"] == \
+        "extended/geography/per_species/Genus_alpha_haplotype_distribution_map.svg"
+    for dropped in ("Synth_annotated.csv", "haplotypes/Synth_haplotype_stats.csv",
+                    "quality_control/haplotype_label_summary.csv",
+                    "metadata_summary/Synth_metadata_coverage.json", "phylogenetic/Synth_MSA_chunk1.png"):
+        assert dropped not in moves
+
+
+def test_apply_moves(tmp_path):
+    staging = _stage(tmp_path, STAGED)
+    placed = layout.apply_moves(layout.plan_moves(staging, "Synth"), tmp_path / "run")
+    assert (tmp_path / "run" / "geography" / "distribution_map.pdf").exists()
+    assert len(placed) == 4 and not (staging / "haplotypes" / "Synth_haplotypes.fasta").exists()

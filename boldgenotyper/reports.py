@@ -4249,7 +4249,9 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
 def generate_html_report(
     organism: str,
     output_dir: Path,
-    version: str = "1.0.0"
+    version: str = "1.0.0",
+    staging_dir: Optional[Path] = None,
+    report_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """
     Generate comprehensive HTML summary report.
@@ -4262,9 +4264,14 @@ def generate_html_report(
     organism : str
         Organism name
     output_dir : Path
-        Base output directory containing reports/, taxonomy/, etc.
+        Run folder (run_provenance.json, the log, summary.csv)
     version : str, optional
         BOLDGenotyper version (default: "1.0.0")
+    staging_dir : Path, optional
+        Folder holding the step outputs (taxonomy/, quality_control/, ...);
+        default output_dir (a v1-style folder)
+    report_path : Path, optional
+        Where to write the report (default: output_dir/report.html)
 
     Returns
     -------
@@ -4286,12 +4293,16 @@ def generate_html_report(
         # Initialize builder
         builder = HTMLReportBuilder(organism=organism, version=version)
 
-        # Define paths
+        # Define paths: step outputs come from staging, run-level files from the run folder
+        run_dir = Path(output_dir)
+        output_dir = Path(staging_dir) if staging_dir is not None else run_dir
         reports_dir = output_dir / 'reports'
         taxonomy_dir = output_dir / 'taxonomy'
         quality_dir = output_dir / 'quality_control'
 
-        assignment_summary_file = reports_dir / f"{organism}_assignment_summary.csv"
+        assignment_summary_file = run_dir / "summary.csv"
+        if not assignment_summary_file.exists():
+            assignment_summary_file = reports_dir / f"{organism}_assignment_summary.csv"
         annotated_file = output_dir / f"{organism}_annotated.csv"
         # Note: diagnostics may be in 'haplotype_assignments' or 'genotype_assignments' (legacy)
         diagnostics_file = output_dir / 'haplotype_assignments' / f"{organism}_diagnostics.csv"
@@ -4338,9 +4349,9 @@ def generate_html_report(
 
         # Build sections
         builder.add_section(_build_executive_summary_section(assignment_summary, annotated_df))
-        builder.add_section(_build_parameters_section(output_dir, organism))
+        builder.add_section(_build_parameters_section(run_dir, organism))
         builder.add_section(_build_visualizations_section(output_dir, organism))
-        builder.add_section(_build_methods_section(output_dir, organism, version))
+        builder.add_section(_build_methods_section(run_dir, organism, version))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_quality_control_section(quality_dir))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
@@ -4352,7 +4363,7 @@ def generate_html_report(
         html_content = builder.render()
 
         # Save report
-        output_file = output_dir / f"{organism}_summary_report.html"
+        output_file = Path(report_path) if report_path is not None else run_dir / "report.html"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         with open(output_file, 'w', encoding='utf-8') as f:
