@@ -49,6 +49,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
 
+from .utils import save_capped_png
+
 logger = logging.getLogger(__name__)
 
 # Default metadata fields to analyze
@@ -71,11 +73,10 @@ DATE_FIELD = 'collection_date_start'
 
 def _save_multi_format(fig, output_path: Path, dpi: int = 150):
     """
-    Save a figure in PNG, PDF, and SVG formats to their correct directories.
+    Save a figure as PDF and as a PNG for the report (P3: the PNG is capped by
+    utils.png_dpi at 150 dpi and 3000 px per side; no SVG).
 
-    Routes each format to the correct subdirectory under visualization/metadata/:
     - PDF → visualization/metadata/pdf/
-    - SVG → visualization/metadata/svg/
     - PNG → visualization/metadata/png/
 
     Parameters
@@ -85,7 +86,7 @@ def _save_multi_format(fig, output_path: Path, dpi: int = 150):
     output_path : Path
         Base output path (typically in the pdf/ subdirectory)
     dpi : int
-        DPI for PNG output
+        Requested DPI for the PNG (capped)
     """
     output_path = Path(output_path)
     base_name = output_path.stem
@@ -98,7 +99,6 @@ def _save_multi_format(fig, output_path: Path, dpi: int = 150):
 
     fmt_dirs = {
         'pdf': parent,  # Keep PDF in the original directory
-        'svg': metadata_base / 'svg',
         'png': metadata_base / 'png',
     }
 
@@ -106,7 +106,7 @@ def _save_multi_format(fig, output_path: Path, dpi: int = 150):
         d.mkdir(parents=True, exist_ok=True)
         save_path = d / f"{base_name}.{fmt}"
         if fmt == 'png':
-            plt.savefig(save_path, dpi=dpi, bbox_inches='tight')
+            save_capped_png(plt.gcf(), save_path, dpi, bbox_inches='tight')
         else:
             plt.savefig(save_path, bbox_inches='tight')
 

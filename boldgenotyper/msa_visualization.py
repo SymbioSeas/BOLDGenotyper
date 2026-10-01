@@ -71,7 +71,7 @@ def create_phylo_ordered_msa(
     show_logo : bool, optional
         Show sequence logo (default: True)
     output_formats : List[str], optional
-        Output formats (default: ["pdf", "png"])
+        Output formats (default: ["pdf"])
 
     Returns
     -------
@@ -112,7 +112,7 @@ def create_phylo_ordered_msa(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if output_formats is None:
-        output_formats = ["pdf", "png"]
+        output_formats = ["pdf"]
 
     logger.info(f"Generating MSA visualization for {organism}")
 

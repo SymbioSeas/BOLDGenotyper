@@ -185,7 +185,7 @@ def export_arlequin(
         f.write(content)
 
     logger.info(
-        f"  ✓ Arlequin .arp exported: {arp_file} "
+        f"  Arlequin .arp exported: {arp_file} "
         f"({n_populations} populations, {len(df_eligible)} samples"
         + (f", {skipped_no_seq} samples skipped for missing consensus)" if skipped_no_seq else ")")
     )
@@ -325,7 +325,7 @@ def export_popart_nexus(
     with open(nexus_file, 'w') as f:
         f.write(nexus_content)
 
-    msg = f"  ✓ PopART NEXUS exported: {nexus_file} ({len(taxa)} taxa)"
+    msg = f"  PopART NEXUS exported: {nexus_file} ({len(taxa)} taxa)"
     if skipped_no_seq:
         msg += f"; {skipped_no_seq} samples skipped for missing consensus"
     logger.info(msg)
@@ -428,7 +428,7 @@ def export_dnasp(
     SeqIO.write(records, fas_file, 'fasta')
 
     msg = (
-        f"  ✓ DnaSP .fas exported: {fas_file} "
+        f"  DnaSP .fas exported: {fas_file} "
         f"({len(records)} samples across {df_eligible[pop_column].nunique()} populations)"
     )
     if skipped_no_seq:
@@ -525,7 +525,7 @@ def export_generic(
     pd.DataFrame(rows).to_csv(haplotypes_file, index=False)
     files['haplotypes'] = haplotypes_file
 
-    logger.info(f"  ✓ Generic exports written: {len(files)} files")
+    logger.info(f"  Generic exports written: {len(files)} files")
     return files
 
 
@@ -692,7 +692,7 @@ For format-specific software support, consult the respective software documentat
     with open(readme_path, 'w') as f:
         f.write(content)
 
-    logger.info(f"  ✓ Export README created: {readme_path}")
+    logger.info(f"  Export README created: {readme_path}")
 
     return readme_path
 
@@ -803,5 +803,5 @@ def export_population_genetics_formats(
                                        population_note=population_note)
     results['files']['readme'] = readme_path
 
-    logger.info(f"✓ Population genetics exports complete: {exports_dir}")
+    logger.info(f"Population genetics exports complete: {exports_dir}")
     return results

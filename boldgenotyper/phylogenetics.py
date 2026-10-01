@@ -577,7 +577,7 @@ def build_phylogeny(
         # Load and return tree
         if Path(tree_file).exists():
             tree = Phylo.read(tree_file, "newick")
-            logger.info(f"  ✓ Phylogenetic tree built successfully")
+            logger.info(f"  Phylogenetic tree built successfully")
             logger.info(f"    - {n_kept}/{n_total} consensus sequences used")
             logger.info(f"    - Filtered out: {', '.join(filtered_ids[:3])}"
                        f"{' ...' if len(filtered_ids) > 3 else ''}")
@@ -1005,7 +1005,7 @@ def reroot_tree_by_label(tree_file: str, outgroup_label: str, output_file: Optio
 
         tree.root_with_outgroup(tip)
         Phylo.write(tree, output_path, "newick")
-        logger.info(f"  ✓ Rerooted tree on '{outgroup_label}': {output_path}")
+        logger.info(f"  Rerooted tree on '{outgroup_label}': {output_path}")
         return str(output_path)
     except Exception as e:
         logger.warning(f"Failed to reroot tree on '{outgroup_label}': {e}", extra={"step_failure": "8 phylogeny reroot"})
@@ -1082,7 +1082,7 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
 
         output_path = Path(output_file) if output_file else tree_path
         Phylo.write(tree, output_path, "newick")
-        logger.info(f"  ✓ Rerooted tree on taxon '{taxon_query}' (n={len(tip_matches)} tips): {output_path}")
+        logger.info(f"  Rerooted tree on taxon '{taxon_query}' (n={len(tip_matches)} tips): {output_path}")
         return str(output_path)
     except Exception as e:
         logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}", extra={"step_failure": "8 phylogeny reroot"})

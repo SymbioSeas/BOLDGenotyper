@@ -135,6 +135,38 @@ def setup_logging(
 # External Tool Management
 # ============================================================================
 
+PNG_MAX_DPI = 150
+PNG_MAX_PIXELS = 3000
+
+
+def png_dpi(fig=None, dpi: float = PNG_MAX_DPI, size_inches=None, pad_inches: float = 0.1) -> float:
+    """
+    DPI for saving a PNG (P3): at most PNG_MAX_DPI, and low enough that neither
+    side of the saved image exceeds PNG_MAX_PIXELS. The size is the figure's
+    tight bounding box (plus the savefig padding) unless size_inches is given.
+    """
+    if size_inches is None:
+        bbox = fig.get_tightbbox(fig.canvas.get_renderer())
+        size_inches = (bbox.width, bbox.height)
+    longest = max(size_inches) + 2 * pad_inches
+    return min(dpi, PNG_MAX_DPI, PNG_MAX_PIXELS / longest) if longest > 0 else min(dpi, PNG_MAX_DPI)
+
+
+def save_capped_png(fig, path, dpi: float = PNG_MAX_DPI, **savefig_kwargs) -> None:
+    """
+    Save fig as a PNG within the png_dpi caps. The size is checked after
+    saving (layout can change at draw time) and the PNG is saved again,
+    smaller, if a side exceeds PNG_MAX_PIXELS.
+    """
+    from PIL import Image
+    d = png_dpi(fig, dpi)
+    fig.savefig(path, dpi=d, **savefig_kwargs)
+    with Image.open(path) as im:
+        longest = max(im.size)
+    if longest > PNG_MAX_PIXELS:
+        fig.savefig(path, dpi=d * PNG_MAX_PIXELS / longest * 0.99, **savefig_kwargs)
+
+
 def check_external_tool(
     tool_name: str,
     min_version: Optional[str] = None,

@@ -137,7 +137,7 @@ def export_plot_data(
 
         # Skip if no identity data (ESV workflow uses exact matching)
         if 'identity' not in diag_df.columns or 'consensus_group' not in diag_df.columns:
-            logger.info("  ⊘ Skipping identity export (not available in ESV workflow)")
+            logger.info("  Skipping identity export (not available in ESV workflow)")
         else:
 
             identity_cols = ['processid', 'consensus_group', 'identity']
@@ -228,7 +228,7 @@ def export_plot_data(
         shutil.copy(consensus_path, consensus_copy_path)
         exported_files['consensus'] = consensus_copy_path
 
-    logger.info(f"  ✓ Exported {len(exported_files)} plot data files to {plot_data_dir}")
+    logger.info(f"  Exported {len(exported_files)} plot data files to {plot_data_dir}")
 
     return exported_files
 
@@ -607,7 +607,7 @@ if __name__ == "__main__":
     bars_path.chmod(0o755)
     scripts['regenerate_bars'] = bars_path
 
-    logger.info(f"  ✓ Created Python regeneration scripts in {scripts_dir}")
+    logger.info(f"  Created Python regeneration scripts in {scripts_dir}")
 
     return scripts
 
@@ -744,7 +744,7 @@ For issues or questions, see the BOLDGenotyper documentation or file an issue on
     with open(readme_path, 'w') as f:
         f.write(content)
 
-    logger.info(f"  ✓ Created README: {readme_path}")
+    logger.info(f"  Created README: {readme_path}")
 
     return readme_path
 
@@ -809,6 +809,6 @@ def export_plots_complete(
     readme_path = create_readme(output_dir, organism, exported_files)
     results['readme'] = readme_path
 
-    logger.info(f"✓ Plot regeneration kit exported to {output_dir / 'plots'}")
+    logger.info(f"Plot regeneration kit exported to {output_dir / 'plots'}")
 
     return results

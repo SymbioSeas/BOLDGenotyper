@@ -397,7 +397,7 @@ def run_pipeline(
         logger.info("1.1: Parsing BOLD TSV metadata...")
         df = metadata.parse_bold_tsv(tsv_path)
         prov.data_notes["n_duplicate_processids"] = prov.input["n_rows"] - len(df)
-        logger.info(f"  ✓ Loaded {len(df)} samples with {len(df.columns)} columns")
+        logger.info(f"  Loaded {len(df)} samples with {len(df.columns)} columns")
 
         # Save parsed metadata
         parsed_tsv = dirs['intermediate'] / "01_parsed_metadata.tsv"
@@ -432,22 +432,22 @@ def run_pipeline(
             df_with_basins[geo_category] = df_with_basins['processid'].map(regions)
             n_quality = int(df['is_geographic_quality'].sum())
             n_assigned = int(df_with_basins[geo_category].notna().sum())
-            logger.info(f"  ✓ Assigned {geo_category} to {n_assigned} samples")
-            logger.info(f"  → {n_quality - n_assigned} geographic-quality samples fall outside all regions; "
+            logger.info(f"  Assigned {geo_category} to {n_assigned} samples")
+            logger.info(f"  {n_quality - n_assigned} geographic-quality samples fall outside all regions; "
                         f"{len(df) - n_quality} samples lack geographic-quality coordinates "
                         f"(missing, unparseable, centroid, zero or out of range)")
 
         if skip_geo:
-            logger.info("  ⊘ Geographic analysis disabled (--no-geo flag)")
+            logger.info("  Geographic analysis disabled (--no-geo flag)")
         elif shapefile_path:
             # Use custom shapefile
-            logger.info(f"  → Using custom shapefile: {shapefile_path}")
-            logger.info(f"  → Shapefile field: {shapefile_field}")
-            logger.info(f"  → Geographic category: {geo_category}")
+            logger.info(f"  Using custom shapefile: {shapefile_path}")
+            logger.info(f"  Shapefile field: {shapefile_field}")
+            logger.info(f"  Geographic category: {geo_category}")
 
             try:
                 df_geo_quality = df[df['is_geographic_quality']].copy()
-                logger.info(f"  → {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
+                logger.info(f"  {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
 
                 if len(df_geo_quality) > 0:
                     df_geo_assigned = geographic.assign_regions_from_shapefile(
@@ -460,7 +460,7 @@ def run_pipeline(
                     _attach_regions(df_geo_assigned, geo_category)
                     geo_analysis_performed = True
                 else:
-                    logger.warning("  ⚠ No samples with geographic-quality coordinates")
+                    logger.warning("  No samples with geographic-quality coordinates")
 
             except Exception as e:
                 step_warnings.record("1.3 region assignment",
@@ -469,7 +469,7 @@ def run_pipeline(
                 df_with_basins[geo_category] = np.nan
 
         elif not cfg.geographic.goas_shapefile_path.exists():
-            logger.warning(f"  ⚠ GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
+            logger.warning(f"  GOaS shapefile not found at: {cfg.geographic.goas_shapefile_path}")
             logger.warning("")
             logger.warning("  To enable geographic analysis, download the GOaS shapefile manually:")
             logger.warning("  1. Visit: https://www.marineregions.org/downloads.php")
@@ -483,12 +483,12 @@ def run_pipeline(
                                  "geographic analysis skipped")
         else:
             # Use default GOaS shapefile
-            logger.info("  → Using default GOaS ocean basin shapefile")
+            logger.info("  Using default GOaS ocean basin shapefile")
             try:
                 goas_data = geographic.load_goas_data(cfg.geographic.goas_shapefile_path)
 
                 df_geo_quality = df[df['is_geographic_quality']].copy()
-                logger.info(f"  → {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
+                logger.info(f"  {len(df_geo_quality)}/{len(df)} samples have geographic-quality coordinates")
 
                 if len(df_geo_quality) > 0:
                     df_geo_assigned = geographic.assign_ocean_basins(
@@ -497,7 +497,7 @@ def run_pipeline(
                     _attach_regions(df_geo_assigned, 'ocean_basin')
                     geo_analysis_performed = True
                 else:
-                    logger.warning("  ⚠ No samples with geographic-quality coordinates")
+                    logger.warning("  No samples with geographic-quality coordinates")
 
             except Exception as e:
                 step_warnings.record("1.3 region assignment",
@@ -746,7 +746,7 @@ def run_pipeline(
 
         # Save annotated data
         df_with_haplotypes.to_csv(annotated_tsv, sep="\t", index=False)
-        logger.info(f"  ✓ Wrote annotated metadata: {annotated_tsv}")
+        logger.info(f"  Wrote annotated metadata: {annotated_tsv}")
 
         # Diagnostics: every unique record, with its status
         diagnostics_df = status_df.rename(columns={'haplotype_id': 'assigned_haplotype'})
@@ -755,7 +755,7 @@ def run_pipeline(
             'assigned_corrected': 'nearest_retained_haplotype',
         }).fillna('')
         diagnostics_df.to_csv(diagnostics_csv, index=False)
-        logger.info(f"  ✓ Wrote diagnostics: {diagnostics_csv}")
+        logger.info(f"  Wrote diagnostics: {diagnostics_csv}")
 
         status_counts = status_df['status'].value_counts().reindex(record_status.STATUSES, fill_value=0)
         logger.info("  Record statuses:")
@@ -848,7 +848,7 @@ def run_pipeline(
             for c in final_cols.columns:
                 df_with_haplotypes[c] = final_cols[c]
 
-        logger.info(f"  ✓ Assigned taxonomy to {len(assign_table)} haplotypes")
+        logger.info(f"  Assigned taxonomy to {len(assign_table)} haplotypes")
 
         # Merge with geographic data (only if not already present in df_with_haplotypes)
         geo_cols_to_merge = []
@@ -870,7 +870,7 @@ def run_pipeline(
 
         # Verify file was created
         if annotated_csv.exists():
-            logger.info(f"  ✓ Saved annotated dataset: {annotated_csv}")
+            logger.info(f"  Saved annotated dataset: {annotated_csv}")
         else:
             step_warnings.record("5 annotated table", f"Failed to save annotated dataset: {annotated_csv}")
 
@@ -903,7 +903,7 @@ def run_pipeline(
         # Save enhanced annotated file
         annotated_csv_enhanced = dirs['base'] / f"{organism}_annotated.csv"
         df_final_enhanced.to_csv(annotated_csv_enhanced, index=False, quoting=1)
-        logger.info(f"  ✓ Annotated dataset with label columns: {annotated_csv_enhanced}")
+        logger.info(f"  Annotated dataset with label columns: {annotated_csv_enhanced}")
 
         # Update df_final to use the enhanced version
         df_final = df_final_enhanced
@@ -918,7 +918,7 @@ def run_pipeline(
             haplotype_sequences={r.id: str(r.seq) for r in haplotype_records},
         )
 
-        logger.info(f"  ✓ Label report saved to: {dirs['quality_control']}")
+        logger.info(f"  Label report saved to: {dirs['quality_control']}")
 
         # Print quality alerts to console
         quality_control.print_quality_alert(qc_results)
@@ -991,7 +991,7 @@ def run_pipeline(
 
             # Per-species record files are written from records.csv at the end (--extended)
 
-            logger.info(f"  ✓ Species-level analysis complete: {dirs['species_analysis']}")
+            logger.info(f"  Species-level analysis complete: {dirs['species_analysis']}")
 
     except Exception as e:
         step_warnings.record("6.5 species aggregation", e)
@@ -1025,9 +1025,9 @@ def run_pipeline(
                 # Re-save the enhanced annotated CSV
                 annotated_csv_enhanced = dirs['base'] / f"{organism}_annotated.csv"
                 df_final.to_csv(annotated_csv_enhanced, index=False, quoting=1)
-                logger.info(f"  ✓ Updated annotated dataset with geographic enhancements")
+                logger.info(f"  Updated annotated dataset with geographic enhancements")
 
-            logger.info(f"  ✓ Geographic enhancement complete: {dirs['geographic_analysis']}")
+            logger.info(f"  Geographic enhancement complete: {dirs['geographic_analysis']}")
 
         except Exception as e:
             step_warnings.record("7 geographic enhancement", e)
@@ -1125,7 +1125,7 @@ def run_pipeline(
                             output_file=tree_path
                         )
 
-                    logger.info(f"  ✓ Built phylogenetic tree: {tree_path}")
+                    logger.info(f"  Built phylogenetic tree: {tree_path}")
 
                     # Create relabeled versions with haplotype_sp labels
                     logger.info("8.2: Creating relabeled tree and alignment files...")
@@ -1146,8 +1146,8 @@ def run_pipeline(
                                 label_column="haplotype_sp",
                                 id_column="haplotype_id",
                             )
-                            logger.info(f"  ✓ Created relabeled tree: {relabeled_tree_path}")
-                            logger.info(f"  ✓ Created relabeled alignment (intermediate): {relabeled_alignment_path}")
+                            logger.info(f"  Created relabeled tree: {relabeled_tree_path}")
+                            logger.info(f"  Created relabeled alignment (intermediate): {relabeled_alignment_path}")
                         else:
                             step_warnings.record("8.2 tree relabeling", "alignment or taxonomy file not found")
                     except Exception as e:
@@ -1182,7 +1182,7 @@ def run_pipeline(
                                     output_formats=cfg.msa.output_formats
                                 )
                                 if msa_plots:
-                                    logger.info(f"  ✓ Generated {len(msa_plots)} MSA plot(s)")
+                                    logger.info(f"  Generated {len(msa_plots)} MSA plot(s)")
                                 else:
                                     step_warnings.record("8.3 MSA visualization", "no MSA plots generated")
                             else:
@@ -1206,7 +1206,7 @@ def run_pipeline(
         except Exception as e:
             step_warnings.record("8 phylogeny", e)
     else:
-        logger.info("  ⊘ Phylogenetic tree building disabled in config")
+        logger.info("  Phylogenetic tree building disabled in config")
 
     # ========================================================================
     # PHASE 9: Divergence Analysis
@@ -1232,7 +1232,7 @@ def run_pipeline(
                 records=df_final,
             )
 
-            logger.info(f"  ✓ Divergence analysis complete: {dirs['divergence_analysis']}")
+            logger.info(f"  Divergence analysis complete: {dirs['divergence_analysis']}")
 
             # Print summary to console
             divergence_analysis.print_divergence_summary(divergence_results)
@@ -1242,7 +1242,7 @@ def run_pipeline(
             species_summary_csv = dirs['species_analysis'] / 'species_summary.csv'
 
             if not cfg.extended:
-                logger.info("  ⊘ Species-level divergence summary written only with --extended")
+                logger.info("  Species-level divergence summary written only with --extended")
             elif species_summary_csv.exists() and 'divergence_matrix' in divergence_results:
                 try:
                     # Load divergence matrix
@@ -1257,7 +1257,7 @@ def run_pipeline(
                         output_dir=dirs['species_analysis']
                     )
 
-                    logger.info(f"  ✓ Species-level divergence analysis complete")
+                    logger.info(f"  Species-level divergence analysis complete")
 
                     # Species-faceted divergence (within-species haplotype divergence)
                     logger.info("9.3: Calculating within-species divergence matrices...")
@@ -1270,7 +1270,7 @@ def run_pipeline(
                             min_haplotypes=2
                         )
                         n_species_with_div = len(species_faceted_div_results['matrices'])
-                        logger.info(f"  ✓ Generated within-species divergence matrices for {n_species_with_div} species")
+                        logger.info(f"  Generated within-species divergence matrices for {n_species_with_div} species")
                     except Exception as e:
                         step_warnings.record("9.3 within-species divergence", e)
                         logger.debug("Within-species divergence error details:", exc_info=True)
@@ -1279,7 +1279,7 @@ def run_pipeline(
                     step_warnings.record("9.2 species divergence", e)
                     logger.debug("Species divergence error details:", exc_info=True)
             else:
-                logger.info("  ⊘ Skipping species-level divergence (species data not available)")
+                logger.info("  Skipping species-level divergence (species data not available)")
 
         else:
             step_warnings.record("9 divergence", "skipped: haplotype or taxonomy file not found")
@@ -1314,7 +1314,7 @@ def run_pipeline(
             cross_tabs=metadata_summary_enabled
         )
 
-        logger.info(f"  ✓ Metadata summarization complete")
+        logger.info(f"  Metadata summarization complete")
         logger.info(f"    - Fields tabulated: {metadata_summary_results.get('n_fields_tabulated', 0)}")
         logger.info(f"    - Visualizations created: {metadata_summary_results.get('n_visualizations', 0)}")
         if metadata_summary_results.get('temporal_analysis'):
@@ -1475,7 +1475,7 @@ def run_pipeline(
                             # Species-faceted haplotype visualizations
                             # (separate plots for each species showing haplotypes)
                             try:
-                                logger.info("  → Generating species-faceted haplotype distribution maps...")
+                                logger.info("  Generating species-faceted haplotype distribution maps...")
                                 # Use simplified background for species-faceted plots (many maps)
                                 detail = "simple" if cfg.visualization.map_background_detail == "auto" else cfg.visualization.map_background_detail
 
@@ -1495,12 +1495,12 @@ def run_pipeline(
                                     dpi=cfg.visualization.facet_dpi,
                                     map_background_detail=detail
                                 )
-                                logger.info(f"  ✓ Created {len(species_maps_results)} species-faceted haplotype maps")
+                                logger.info(f"  Created {len(species_maps_results)} species-faceted haplotype maps")
                             except Exception as e:
                                 step_warnings.record("10.1 species plots", f"species-faceted haplotype maps: {e}")
 
                             try:
-                                logger.info("  → Generating species-faceted haplotype basin charts...")
+                                logger.info("  Generating species-faceted haplotype basin charts...")
                                 # For species-faceted plots, use format-specific subdirectory
                                 species_bar_facet_dir = dirs['visualization_pdf'] if fmt == 'pdf' else (
                                     dirs['visualization_svg'] if fmt == 'svg' else dirs['visualization_pdf']
@@ -1514,7 +1514,7 @@ def run_pipeline(
                                     min_haplotypes=2,
                                     figure_format=fmt
                                 )
-                                logger.info(f"  ✓ Created {len(species_bars_results)} species-faceted haplotype bar charts")
+                                logger.info(f"  Created {len(species_bars_results)} species-faceted haplotype bar charts")
                             except Exception as e:
                                 step_warnings.record("10.1 species plots", f"species-faceted haplotype bar charts: {e}")
 
@@ -1616,20 +1616,6 @@ def run_pipeline(
             else:
                 logger.info("  Skipping geographic visualizations (geographic analysis not performed)")
 
-            # Identity distribution (always generated if diagnostics exist)
-            if diagnostics_csv.exists():
-                try:
-                    # Use intermediate DPI for diagnostic plots
-                    visualization.plot_identity_distribution(
-                        diagnostics_csv=str(diagnostics_csv),
-                        output_path=str(dirs['assignments'] / f"{organism}_identity_distribution.{fmt}"),
-                        figsize=(10, 6),
-                        dpi=cfg.visualization.intermediate_dpi
-                    )
-                except Exception as e:
-                    step_warnings.record("10.1 identity distribution", e)
-                    logger.debug("Full traceback:", exc_info=True)
-
             # Phylogenetic tree
             if tree_path and Path(tree_path).exists():
                 try:
@@ -1657,12 +1643,12 @@ def run_pipeline(
                         figsize=None,  # Auto-scale based on tree size
                         dpi=cfg.visualization.figure_dpi
                     )
-                    logger.info(f"  ✓ Generated phylogenetic tree plot: {organism}_tree.{fmt}")
+                    logger.info(f"  Generated phylogenetic tree plot: {organism}_tree.{fmt}")
                 except Exception as e:
                     step_warnings.record("10.1 tree plot", e)
                     logger.debug("Full traceback:", exc_info=True)
 
-        logger.info(f"  ✓ Generated visualization plots")
+        logger.info(f"  Generated visualization plots")
 
     except Exception as e:
         step_warnings.record("10 visualization", e)
@@ -1693,7 +1679,7 @@ def run_pipeline(
                 color_map=haplotype_colors
             )
 
-            logger.info(f"  ✓ Plot regeneration kit exported to {output_dir / 'plots'}")
+            logger.info(f"  Plot regeneration kit exported to {output_dir / 'plots'}")
 
         except Exception as e:
             step_warnings.record("10.5 plot data export", e)
@@ -1719,7 +1705,7 @@ def run_pipeline(
                 haplotype_column='haplotype_id',
             )
 
-            logger.info(f"  ✓ Population genetics formats exported to {output_dir / 'exports'}")
+            logger.info(f"  Population genetics formats exported to {output_dir / 'exports'}")
 
         except Exception as e:
             step_warnings.record("11 popgen export", e)

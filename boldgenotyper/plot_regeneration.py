@@ -471,7 +471,7 @@ def regenerate_distribution_map(
         outfile = output_dir / f"distribution_map_custom.{fmt}"
         plt.savefig(outfile, dpi=dpi, bbox_inches='tight')
         output_files.append(outfile)
-        logger.info(f"✓ Wrote {outfile}")
+        logger.info(f"Wrote {outfile}")
 
     plt.close()
 
@@ -688,13 +688,13 @@ def regenerate_bar_charts(
         outfile_rel = output_dir / f"distribution_bar_relative_custom.{fmt}"
         fig_rel.savefig(outfile_rel, dpi=dpi, bbox_inches='tight')
         output_files.append(outfile_rel)
-        logger.info(f"✓ Wrote {outfile_rel}")
+        logger.info(f"Wrote {outfile_rel}")
 
         # Absolute
         outfile_abs = output_dir / f"distribution_bar_absolute_custom.{fmt}"
         fig_abs.savefig(outfile_abs, dpi=dpi, bbox_inches='tight')
         output_files.append(outfile_abs)
-        logger.info(f"✓ Wrote {outfile_abs}")
+        logger.info(f"Wrote {outfile_abs}")
 
     plt.close('all')
 
@@ -864,7 +864,7 @@ def regenerate_identity_distribution(
         outfile = output_dir / f"identity_distribution_custom.{fmt}"
         plt.savefig(outfile, dpi=dpi, bbox_inches='tight')
         output_files.append(outfile)
-        logger.info(f"✓ Wrote {outfile}")
+        logger.info(f"Wrote {outfile}")
 
     plt.close()
 
@@ -1196,7 +1196,7 @@ def regenerate_phylogenetic_tree(
         outfile = output_dir / f"phylogenetic_tree_custom.{fmt}"
         plt.savefig(outfile, dpi=dpi, bbox_inches='tight')
         output_files.append(outfile)
-        logger.info(f"✓ Wrote {outfile}")
+        logger.info(f"Wrote {outfile}")
 
     plt.close()
 
@@ -1261,7 +1261,7 @@ def regenerate_all_plots(base_dir: Path, output_dir: Optional[Path] = None) -> D
         results['tree'] = []
 
     total_files = sum(len(files) for files in results.values())
-    logger.info(f"✓ All plots regenerated successfully! ({total_files} files)")
+    logger.info(f"All plots regenerated successfully! ({total_files} files)")
 
     if output_dir is None:
         output_dir = base_dir / "visualization"

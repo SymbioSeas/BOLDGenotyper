@@ -285,16 +285,22 @@ def track_group_membership(
 
     # Load annotated data for each threshold
     sample_assignments = {}  # threshold -> {sample_id: haplotype_id}
+    sample_md5 = {}          # threshold -> {sample_id: seq_md5 of its haplotype}
     group_members = {}       # threshold -> {haplotype_id: set(sample_ids)}
 
     for threshold in sorted(thresholds):
         output_dir = run_outputs[threshold]
-        _, df = _load_run_tables(output_dir, organism)
+        haps, df = _load_run_tables(output_dir, organism)
 
         if df is not None:
             if 'processid' in df.columns and 'haplotype_id' in df.columns:
                 assignments = dict(zip(df['processid'], df['haplotype_id']))
                 sample_assignments[threshold] = assignments
+                # Haplotype IDs are renumbered in every run; the sequence key is comparable
+                key = (dict(zip(haps['haplotype_id'], haps['seq_md5']))
+                       if haps is not None and 'seq_md5' in haps.columns else {})
+                sample_md5[threshold] = {
+                    s: (key.get(h, h) if pd.notna(h) else '') for s, h in assignments.items()}
 
                 members = {}
                 for sample, hap in assignments.items():
@@ -322,6 +328,7 @@ def track_group_membership(
             if threshold in sample_assignments:
                 hap = sample_assignments[threshold].get(sample_id, 'unassigned')
                 row[f't_{threshold}'] = hap
+                row[f'md5_{threshold}'] = sample_md5[threshold].get(sample_id, 'NA')
 
                 if pd.notna(hap) and hap != 'unassigned' and threshold in group_members:
                     partners = group_members[threshold].get(hap, set()) - {sample_id}
@@ -330,6 +337,7 @@ def track_group_membership(
                     cluster_partners_by_threshold.append((threshold, set()))
             else:
                 row[f't_{threshold}'] = 'NA'
+                row[f'md5_{threshold}'] = 'NA'
 
         # Count biologically meaningful changes:
         # How many times does the cluster composition change significantly?
@@ -552,134 +560,116 @@ def find_elbow_point(summary_df: pd.DataFrame) -> float:
     return thresholds[elbow_idx]
 
 
+def adjacent_change_rates(tracking_df: pd.DataFrame, thresholds: List[float]) -> pd.DataFrame:
+    """
+    Share of records whose haplotype changes between adjacent thresholds (P3).
+
+    A record's haplotype is compared by sequence (the md5_<threshold> columns
+    of group_membership_tracking.csv), so renumbered IDs do not count as
+    changes; becoming assigned or unassigned does. Records missing from either
+    run ('NA') are left out.
+    """
+    rows = []
+    ordered = sorted(thresholds)
+    for lo, hi in zip(ordered, ordered[1:]):
+        a, b = tracking_df.get(f'md5_{lo}'), tracking_df.get(f'md5_{hi}')
+        if a is None or b is None:
+            continue
+        a, b = a.fillna(''), b.fillna('')
+        both = (a != 'NA') & (b != 'NA')
+        n = int(both.sum())
+        changed = int((both & (a != b)).sum())
+        rows.append({'threshold_from': lo, 'threshold_to': hi, 'n_records': n,
+                     'n_changed': changed, 'pct_changed': round(changed / n * 100, 2) if n else 0.0})
+    return pd.DataFrame(rows, columns=['threshold_from', 'threshold_to', 'n_records', 'n_changed', 'pct_changed'])
+
+
 def generate_recommendations(
     summary_df: pd.DataFrame,
     organism: str,
-    output_path: Path
+    output_path: Path,
+    tracking_df: Optional[pd.DataFrame] = None,
 ) -> float:
     """
-    Generate automated recommendations text file.
+    Write recommendations.txt: the elbow of the haplotype-count curve and, for
+    each pair of adjacent thresholds, the share of records whose haplotype
+    changes (from group_membership_tracking.csv). No acceptable range is
+    given (v1's covered the whole tested range).
 
-    Parameters
-    ----------
-    summary_df : pd.DataFrame
-        Summary metrics
-    organism : str
-        Organism name
-    output_path : Path
-        Output path for recommendations file
-
-    Returns
-    -------
-    float
-        Recommended threshold
+    Returns the threshold at the elbow.
     """
     logger.info("  Generating recommendations...")
 
-    # Find elbow point
     recommended_threshold = find_elbow_point(summary_df)
+    rows = summary_df.to_dict('records')          # keeps integer counts as integers
+    rec_row = next(r for r in rows if r['threshold'] == recommended_threshold)
+    first_row, last_row = rows[0], rows[-1]
+    lo, hi = summary_df['threshold'].min(), summary_df['threshold'].max()
 
-    # Get metrics for recommended threshold
-    rec_row = summary_df[summary_df['threshold'] == recommended_threshold].iloc[0]
+    def fmt(value, spec):
+        if value is None or pd.isna(value):
+            return 'N/A'
+        return format(int(value) if spec.endswith('d') else value, spec)
 
-    # Define acceptable range: thresholds with similar haplotype count (±20%)
-    rec_n_haplotypes = rec_row['n_haplotypes']
-    acceptable = summary_df[
-        (summary_df['n_haplotypes'] >= rec_n_haplotypes * 0.8) &
-        (summary_df['n_haplotypes'] <= rec_n_haplotypes * 1.2)
-    ]
-
-    if len(acceptable) > 0:
-        min_threshold = acceptable['threshold'].min()
-        max_threshold = acceptable['threshold'].max()
-    else:
-        min_threshold = max(summary_df['threshold'].min(), recommended_threshold - 0.01)
-        max_threshold = min(summary_df['threshold'].max(), recommended_threshold + 0.01)
-
-    # Singleton counts at boundaries
-    first_row = summary_df.iloc[0]
-    last_row  = summary_df.iloc[-1]
-
-    text = f"""Singleton Distance Threshold — Sweep Results
+    text = f"""Singleton Distance Threshold: Sweep Results
 =============================================
 
 Dataset:                  {organism}
-Total Samples:            {rec_row['n_samples']}
-Threshold Range Tested:   {summary_df['threshold'].min():.3f} – {summary_df['threshold'].max():.3f}
-Number of Thresholds:     {len(summary_df)}
+QC-passed records:        {fmt(rec_row.get('n_samples'), 'd')}
+Threshold range tested:   {lo:.3f} to {hi:.3f}
+Number of thresholds:     {len(summary_df)}
 
 WHAT WAS SWEPT
 --------------
-min_singleton_distance controls removal of singleton haplotypes (one-member
-ESVs) that are very similar to an existing multi-member haplotype.  These
-singletons are likely sequencing or PCR errors.  A higher threshold removes
-more singletons; a lower threshold retains them.
+--singleton-distance (min_singleton_distance): singleton haplotypes within this
+p-distance of another haplotype are treated as likely sequencing or PCR errors,
+and their records are assigned to the nearest retained haplotype when it is
+unique and within the same distance.
 
-KEY FINDINGS
-------------
-1. Haplotype count
-   At {summary_df['threshold'].min():.3f}:               {first_row['n_haplotypes']} haplotypes
-   At {recommended_threshold:.3f} (elbow):         {rec_row['n_haplotypes']} haplotypes
-   At {summary_df['threshold'].max():.3f}:               {last_row['n_haplotypes']} haplotypes
-
-2. Singletons retained
-   At {summary_df['threshold'].min():.3f}:               {first_row.get('n_singletons', 'N/A')}
-   At {recommended_threshold:.3f} (elbow):         {rec_row.get('n_singletons', 'N/A')}
-   At {summary_df['threshold'].max():.3f}:               {last_row.get('n_singletons', 'N/A')}
-
-3. Assignment coverage at elbow:  {rec_row.get('pct_assigned', 'N/A'):.1f}%"""
-
-    if 'pct_label_conflict' in rec_row.index and pd.notna(rec_row.get('pct_label_conflict')):
-        text += f"""
-   Records with a label conflict:     {rec_row['pct_label_conflict']:.1f}%"""
+HAPLOTYPE COUNT
+---------------
+   threshold   haplotypes   singletons   assigned (% of QC-passed)
+"""
+    for r in rows:
+        mark = "   <- elbow" if r['threshold'] == recommended_threshold else ""
+        text += (f"   {r['threshold']:.3f}       {fmt(r.get('n_haplotypes'), '>6d')}       "
+                 f"{fmt(r.get('n_singletons'), '>6d')}       {fmt(r.get('pct_assigned'), '>6.1f')}{mark}\n")
 
     text += f"""
+The elbow (largest change in the slope of the haplotype-count curve) is at
+{recommended_threshold:.3f}: {fmt(rec_row['n_haplotypes'], 'd')} haplotypes, against {fmt(first_row['n_haplotypes'], 'd')} at {lo:.3f} and {fmt(last_row['n_haplotypes'], 'd')} at {hi:.3f}.
+"""
 
-RECOMMENDATIONS
----------------
-PRIMARY:  min_singleton_distance = {recommended_threshold:.3f}
-  • Elbow point in the haplotype-count curve
-  • {rec_row['n_haplotypes']} haplotypes, {rec_row.get('n_singletons', 'N/A')} singletons retained
-  • Assignment coverage: {rec_row.get('pct_assigned', 'N/A'):.1f}%
+    rates = adjacent_change_rates(tracking_df, summary_df['threshold'].tolist()) \
+        if tracking_df is not None and len(tracking_df) else pd.DataFrame()
+    if len(rates):
+        text += """
+STABILITY
+---------
+Share of records whose haplotype changes between adjacent thresholds
+(compared by sequence; becoming assigned or unassigned counts as a change):
 
-ACCEPTABLE RANGE:  {min_threshold:.3f} – {max_threshold:.3f}
-  • Haplotype count within ±20% of the elbow value
-  • Use lower end to retain more rare variants
-  • Use upper end for a more conservative (error-filtered) set
-
-AVOID
------
-  < {min_threshold:.3f}  — retains singletons that are likely sequencing errors
-  > {max_threshold:.3f}  — removes biologically real rare haplotypes
-
-IMPORTANT NOTES
----------------
-• These recommendations are based on automated elbow detection.
-• Always visually inspect threshold_stability.pdf to confirm.
-• Biological knowledge and study goals should inform the final choice.
-• group_membership_tracking.csv shows which samples change haplotype
-  assignments across thresholds — samples with stability_score = 'low'
-  warrant manual review.
-
+"""
+        for _, r in rates.iterrows():
+            text += (f"   {r['threshold_from']:.3f} -> {r['threshold_to']:.3f}   "
+                     f"{int(r['n_changed']):>6} of {int(r['n_records'])} records   {r['pct_changed']:.1f}%\n")
+        text += """
+Thresholds where this share is small give nearly the same haplotypes for
+nearly every record. Per-record detail: group_membership_tracking.csv.
+"""
+    text += f"""
 NEXT STEPS
 ----------
-1. Review threshold_stability.pdf and elbow_plot.pdf
+1. Review elbow_plot.pdf, threshold_stability.pdf and the stability table above.
+   The elbow is a starting point; the choice of threshold is yours.
 
-2. Run the full pipeline with your chosen threshold using the
-   --singleton-distance flag:
+2. Run the pipeline with the chosen threshold, passed explicitly so the run is
+   reproducible (the default is 0.005):
 
-       boldgenotyper --input your_data.tsv \\
-                     --output output/ \\
-                     --singleton-distance {recommended_threshold:.3f} \\
-                     [other options]
+       boldgenotyper your_data.tsv --organism {organism} \\
+                     --singleton-distance {recommended_threshold:.3f} [other options]
 
-   The default threshold is 0.005 (0.5%).  Always pass the sweep-recommended
-   value explicitly so your analysis is reproducible.
-
-3. If the result looks over- or under-split, adjust within the acceptable
-   range and re-run.
-
-4. Document the threshold and its rationale in your methods section.
+3. Report the threshold and how it was chosen in your methods.
 
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
@@ -800,7 +790,8 @@ def run_parameter_sweep(
     try:
         recommendations_path = output_dir / "recommendations.txt"
         recommended_threshold = generate_recommendations(
-            summary_df, organism, recommendations_path
+            summary_df, organism, recommendations_path,
+            tracking_df=tracking_df if len(tracking_df) > 0 else None,
         )
         results['recommendations'] = recommendations_path
         results['recommended_threshold'] = recommended_threshold
@@ -841,7 +832,11 @@ rare variants.
 ## Reading group_membership_tracking.csv
 
 Each row is one sample.  Columns `t_X.XXX` show which haplotype the sample
-was assigned to at each tested threshold.  The key derived columns are:
+was assigned to at each tested threshold, and `md5_X.XXX` the seq_md5 of that
+haplotype (empty when unassigned, NA when the record is not in that run).
+recommendations.txt uses the md5 columns to report, for each pair of adjacent
+thresholds, the share of records whose haplotype changes.  The key derived
+columns are:
 
 - **n_changes** — number of times the sample's haplotype *composition*
   changed significantly (Jaccard similarity of cluster partners < 0.7).
@@ -857,9 +852,8 @@ was assigned to at each tested threshold.  The key derived columns are:
 
 ## Interpretation
 
-See `recommendations.txt`.  The recommended threshold is the elbow point
-where haplotype count stops dropping sharply — balancing error removal
-against retention of biologically real rare variants.
+See `recommendations.txt`: the elbow of the haplotype-count curve, and the
+share of records whose haplotype changes between adjacent thresholds.
 
 ## Generated
 

@@ -133,7 +133,7 @@ def align_consensus_sequences(
                 check=True
             )
 
-        logger.info(f"  ✓ Aligned sequences saved to {aligned_path}")
+        logger.info(f"  Aligned sequences saved to {aligned_path}")
         return aligned_path
 
     except subprocess.CalledProcessError as e:

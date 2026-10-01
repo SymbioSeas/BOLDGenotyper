@@ -860,9 +860,9 @@ def merge_zero_divergence_haplotypes(
             logger.info(f"  Merging {len(group_members)} haplotypes into {representative_id}:")
             for hap_id in sorted(group_members):
                 if hap_id == representative_id:
-                    logger.info(f"    ✓ {hap_id} (representative, n={member_counts[hap_id]})")
+                    logger.info(f"    {hap_id} (representative, n={member_counts[hap_id]})")
                 else:
-                    logger.info(f"    → {hap_id} (n={member_counts[hap_id]}) merged into {representative_id}")
+                    logger.info(f"    {hap_id} (n={member_counts[hap_id]}) merged into {representative_id}")
 
     # Update mapping
     if haplotype_merges:

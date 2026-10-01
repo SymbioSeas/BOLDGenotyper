@@ -383,7 +383,7 @@ Data Quality Notes:
     with open(output_path, 'w') as f:
         f.write(report)
 
-    logger.info(f"  ✓ Missing data report saved to {output_path}")
+    logger.info(f"  Missing data report saved to {output_path}")
 
 
 def print_geographic_warnings(
@@ -459,7 +459,7 @@ def enhance_geographic_analysis(
     coverage_path = output_dir / "geographic_coverage.csv"
     coverage_df.to_csv(coverage_path, index=False)
     results['coverage'] = coverage_path
-    logger.info(f"  ✓ Coverage assessment saved: {coverage_path}")
+    logger.info(f"  Coverage assessment saved: {coverage_path}")
 
     # 2. Calculate basin confidence
     df_enhanced = calculate_basin_assignment_confidence(df, goas_data, geo_category=geo_category)
@@ -522,6 +522,6 @@ they are not a measure of how well a haplotype's range has been sampled.
 
     results['readme'] = readme_path
 
-    logger.info("  ✓ Geographic enhancement complete")
+    logger.info("  Geographic enhancement complete")
 
     return results

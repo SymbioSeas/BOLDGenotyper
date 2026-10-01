@@ -77,6 +77,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
 from matplotlib.patches import Rectangle
+
+from .utils import save_capped_png
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
@@ -456,7 +458,7 @@ def _save_individual_facet(
 
             # Save just this axes with tight bounding box
             if fmt == "png":
-                fig.savefig(output_path, bbox_inches=bbox_inches, dpi=dpi, pad_inches=0.1)
+                save_capped_png(fig, output_path, dpi, bbox_inches=bbox_inches, pad_inches=0.1)
             else:
                 fig.savefig(output_path, bbox_inches=bbox_inches, pad_inches=0.1)
 
@@ -601,7 +603,7 @@ def plot_distribution_map(
     plt.tight_layout()
     try:
         if out.suffix.lower() == ".png":
-            plt.savefig(out, dpi=dpi, bbox_inches="tight")
+            save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
         else:
             plt.savefig(out, bbox_inches="tight")
 
@@ -758,7 +760,7 @@ def plot_ocean_basin_abundance(
     ax.set_xticklabels(display_labels)
     plt.tight_layout()
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -897,7 +899,7 @@ def plot_ocean_basin_abundance_total(
     ax.set_xticklabels(display_labels)
     plt.tight_layout()
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -1253,7 +1255,7 @@ def plot_distribution_map_faceted(
     plt.tight_layout()
     try:
         if out.suffix.lower() == ".png":
-            plt.savefig(out, dpi=dpi, bbox_inches="tight")
+            save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
         else:
             plt.savefig(out, bbox_inches="tight")
 
@@ -1505,7 +1507,7 @@ def plot_ocean_basin_abundance_faceted(
     plt.subplots_adjust(left=0.08, right=0.95, hspace=0.4, wspace=0.2)
 
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -1729,7 +1731,7 @@ def plot_phylogenetic_tree(
 
     plt.tight_layout()
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -1810,7 +1812,7 @@ def plot_identity_distribution(
 
     plt.tight_layout()
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -1896,7 +1898,7 @@ def plot_identity_by_status(
 
     plt.tight_layout()
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -1980,7 +1982,7 @@ def plot_assignment_status(
 
     plt.tight_layout()
     if out.suffix.lower() == ".png":
-        plt.savefig(out, dpi=dpi, bbox_inches="tight")
+        save_capped_png(plt.gcf(), out, dpi, bbox_inches="tight")
     else:
         plt.savefig(out, bbox_inches="tight")
     plt.close()
@@ -2275,12 +2277,12 @@ def plot_haplotypes_by_species_maps(
 
             if result:
                 results[species] = result
-                logger.info(f"  ✓ {species}: {n_haplotypes} haplotypes, {len(group)} samples")
+                logger.info(f"  {species}: {n_haplotypes} haplotypes, {len(group)} samples")
 
         except Exception as e:
-            logger.warning(f"  ⚠ Failed to create map for {species}: {e}", extra={"step_failure": "10.1 species plots"})
+            logger.warning(f"  Failed to create map for {species}: {e}", extra={"step_failure": "10.1 species plots"})
 
-    logger.info(f"  ✓ Created maps for {len(results)} species")
+    logger.info(f"  Created maps for {len(results)} species")
 
     return results
 
@@ -2377,11 +2379,11 @@ def plot_haplotypes_by_species_basin_bars(
 
             if result:
                 results[species] = result
-                logger.info(f"  ✓ {species}: {n_haplotypes} haplotypes, {len(group)} samples")
+                logger.info(f"  {species}: {n_haplotypes} haplotypes, {len(group)} samples")
 
         except Exception as e:
-            logger.warning(f"  ⚠ Failed to create bar chart for {species}: {e}", extra={"step_failure": "10.1 species plots"})
+            logger.warning(f"  Failed to create bar chart for {species}: {e}", extra={"step_failure": "10.1 species plots"})
 
-    logger.info(f"  ✓ Created bar charts for {len(results)} species")
+    logger.info(f"  Created bar charts for {len(results)} species")
 
     return results

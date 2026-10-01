@@ -355,6 +355,8 @@ def test_sweep_reads_v2_run_folder(synthetic_run):
     assert 0 < m["mean_majority_fraction"] <= 1
     tracking = parameter_sweep.track_group_membership({0.01: synthetic_run}, ORGANISM, [0.01])
     assert len(tracking) == 23
+    md5s = set(pd.read_csv(synthetic_run / "haplotypes.csv")["seq_md5"])
+    assert set(tracking["md5_0.01"]) - {""} <= md5s
 
 
 def test_plot_kit_and_exports_without_duplicates(tmp_path):
@@ -417,3 +419,11 @@ def test_report_links_figures_and_describes_this_workflow(tmp_path):
     for old in ("clustering threshold", "Similarity threshold", "Tie detection", "edlib", "Consensus genotypes"):
         assert old.lower() not in methods.lower(), old
     assert "core region" in methods and "FastTree" in methods
+
+
+def test_log_has_no_glyphs(extended_run):
+    """P3: plain log lines (no check marks or arrows)."""
+    log = (extended_run / f"{ORGANISM}_pipeline.log").read_text()
+    for glyph in ("✓", "→", "⊘", "⚠"):
+        assert glyph not in log, glyph
+    assert "Identity column not found" not in log

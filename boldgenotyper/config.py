@@ -930,7 +930,7 @@ class MSAConfig:
         Show conservation bar chart (default: True)
 
     output_formats : List[str]
-        Output file formats (default: ["pdf", "png"])
+        Output file formats (default: ["pdf"]; P3: one format)
 
     Notes
     -----
@@ -959,7 +959,7 @@ class MSAConfig:
     show_consensus: bool = True
     show_logo: bool = True
     show_conservation: bool = True
-    output_formats: List[str] = field(default_factory=lambda: ["pdf", "png"])
+    output_formats: List[str] = field(default_factory=lambda: ["pdf"])
 
     def __post_init__(self):
         """Validate configuration parameters."""
