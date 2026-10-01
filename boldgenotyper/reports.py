@@ -2427,7 +2427,7 @@ class HTMLReportBuilder:
     embedded tables, metrics, and visualizations.
     """
 
-    def __init__(self, organism: str, version: str = "1.0.0"):
+    def __init__(self, organism: str, version: Optional[str] = None):
         """
         Initialize HTML report builder.
 
@@ -2436,8 +2436,10 @@ class HTMLReportBuilder:
         organism : str
             Organism name
         version : str, optional
-            BOLDGenotyper version
+            BOLDGenotyper version (default: the installed package version)
         """
+        if version is None:
+            from . import __version__ as version
         self.organism = organism
         self.version = version
         self.sections = []
@@ -3885,7 +3887,7 @@ def _build_methods_section(output_dir: Path, organism: str, version: str) -> str
 def generate_html_report(
     organism: str,
     output_dir: Path,
-    version: str = "1.0.0",
+    version: Optional[str] = None,
     staging_dir: Optional[Path] = None,
     report_path: Optional[Path] = None,
     links: Optional[dict] = None,
@@ -3903,7 +3905,7 @@ def generate_html_report(
     output_dir : Path
         Run folder (run_provenance.json, the log, summary.csv)
     version : str, optional
-        BOLDGenotyper version (default: "1.0.0")
+        BOLDGenotyper version (default: the installed package version)
     staging_dir : Path, optional
         Folder holding the step outputs (taxonomy/, quality_control/, ...);
         default output_dir (a v1-style folder)
@@ -3929,6 +3931,8 @@ def generate_html_report(
     >>> print(f"Report generated: {report_path}")
     """
     logger.info(f"Generating HTML summary report for {organism}...")
+    if version is None:
+        from . import __version__ as version
 
     try:
         # Initialize builder
