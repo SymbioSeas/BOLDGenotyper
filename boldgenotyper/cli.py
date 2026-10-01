@@ -27,6 +27,7 @@ Author: Steph Smith (symbioseas@outlook.com)
 """
 
 import argparse
+import importlib.util
 import sys
 import os
 import logging
@@ -1115,12 +1116,47 @@ def run_pipeline(
                 intermediate_prefix = dirs['intermediate_phylo'] / organism
                 output_prefix = dirs['phylogenetic'] / organism
 
+                # Choose tips explicitly (P0-7): every haplotype with at least
+                # --tree-min-members members and the minimum length, except
+                # suspect haplotypes. Exclusions are listed with their reasons.
+                records = list(SeqIO.parse(haplotype_fasta, "fasta"))
+                suspect = {}
+                if 'is_suspect' in haplotype_stats.columns:
+                    flagged = haplotype_stats[haplotype_stats['is_suspect'].fillna(False).astype(bool)]
+                    reasons = flagged['suspect_reasons'] if 'suspect_reasons' in flagged.columns else None
+                    suspect = {
+                        hid: (reasons.loc[i] if reasons is not None and isinstance(reasons.loc[i], str)
+                              and reasons.loc[i] else 'flagged')
+                        for i, hid in flagged['haplotype_id'].items()
+                    }
+                kept, excluded = phylogenetics.select_tree_haplotypes(
+                    records, cfg.phylogenetic.min_cluster_size,
+                    cfg.phylogenetic.min_consensus_length, suspect)
+                excluded_path = dirs['phylogenetic'] / f"{organism}_excluded_tips.txt"
+                with open(excluded_path, 'w') as f:
+                    f.write("haplotype_id\treason\n")
+                    for hid, reason in excluded:
+                        f.write(f"{hid}\t{reason}\n")
+                tree_input = dirs['intermediate_phylo'] / f"{organism}_tree_input.fasta"
+                SeqIO.write(kept, tree_input, "fasta")
+                logger.info(f"  Tree tips: {len(kept)} of {len(records)} haplotypes "
+                            f"({len(excluded)} excluded; see {excluded_path.name}); "
+                            f"--tree-min-members {cfg.phylogenetic.min_cluster_size}, "
+                            f"minimum length {cfg.phylogenetic.min_consensus_length} bp")
+                prov.applied.update(
+                    tree_min_members=cfg.phylogenetic.min_cluster_size,
+                    tree_min_length_bp=cfg.phylogenetic.min_consensus_length,
+                    n_tree_tips=len(kept),
+                    n_tree_excluded=len(excluded),
+                )
+
+                # Tips are already selected, so build_phylogeny's own filter keeps everything.
                 tree = phylogenetics.build_phylogeny(
-                    consensus_fasta=str(haplotype_fasta),
+                    consensus_fasta=str(tree_input),
                     output_prefix=str(intermediate_prefix),
                     threads=cfg.n_threads,
-                    min_consensus_length=cfg.phylogenetic.min_consensus_length,
-                    min_cluster_size=cfg.phylogenetic.min_cluster_size,
+                    min_consensus_length=0,
+                    min_cluster_size=1,
                     outgroup_fasta=str(cfg.phylogenetic.outgroup_fasta) if cfg.phylogenetic.outgroup_fasta else None,
                     trim_alignment=cfg.phylogenetic.trim_alignment,
                     trim_method=cfg.phylogenetic.trim_method
@@ -1188,6 +1224,10 @@ def run_pipeline(
                             elif Path(f"{intermediate_prefix}_aligned.fasta").exists():
                                 alignment_file = Path(f"{intermediate_prefix}_aligned.fasta")
 
+                            if importlib.util.find_spec("pymsaviz") is None:
+                                # msa_visualization swallows its own ImportError;
+                                # check first so the optional extra is not a warning
+                                raise ImportError("pymsaviz")
                             if alignment_file and alignment_file.exists():
                                 msa_plots = msa_visualization.create_phylo_ordered_msa(
                                     alignment_path=alignment_file,
@@ -2069,6 +2109,15 @@ Notes:
     )
 
     parser.add_argument(
+        '--tree-min-members',
+        type=int,
+        default=None,
+        help='Minimum members for a haplotype to be a tree tip (default: 1, every '
+             'non-suspect haplotype). Suspect haplotypes are always excluded. '
+             'Excluded haplotypes are listed with their reason in excluded_tips.txt.'
+    )
+
+    parser.add_argument(
         '--phylo-outgroup-fasta',
         type=Path,
         default=None,
@@ -2387,6 +2436,8 @@ def main():
         output_dir=output_dir,
         log_level=args.log_level,
         phylogenetic__build_tree=args.build_tree,
+        **({'phylogenetic__min_cluster_size': args.tree_min_members}
+           if args.tree_min_members is not None else {}),
         phylogenetic__outgroup_fasta=args.phylo_outgroup_fasta,
         phylogenetic__outgroup_label=args.phylo_outgroup_label,
         phylogenetic__outgroup_taxon=args.phylo_outgroup_taxon,

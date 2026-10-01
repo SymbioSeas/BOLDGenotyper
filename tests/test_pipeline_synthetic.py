@@ -24,9 +24,9 @@ def run_synthetic(workdir, **cfg_updates):
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv")
     out = workdir / "out"
     utils.setup_logging(log_level="INFO", log_file=str(out / f"{ORGANISM}_pipeline.log"))
-    cfg = config.get_default_config().update(
-        output_dir=out, n_threads=1, phylogenetic__build_tree=False, **cfg_updates
-    )
+    settings = dict(output_dir=out, n_threads=1, phylogenetic__build_tree=False)
+    settings.update(cfg_updates)
+    cfg = config.get_default_config().update(**settings)
     ok = cli.run_pipeline(
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
         no_report=True, skip_geo=True, export_plot_data=False,
@@ -138,3 +138,29 @@ def test_reused_output_folder_warns(tmp_path):
     assert d["status"] == "completed_with_warnings"
     last = (out / f"{ORGANISM}_pipeline.log").read_text().strip().splitlines()[-1]
     assert "Pipeline completed with" in last
+
+
+needs_fasttree = pytest.mark.skipif(shutil.which("FastTree") is None and shutil.which("fasttree") is None,
+                                    reason="FastTree not installed")
+
+
+@needs_fasttree
+def test_tree_includes_every_non_suspect_haplotype(tmp_path):
+    """P0-7: default --tree-min-members 1; exclusions listed in excluded_tips.txt."""
+    from Bio import Phylo
+    ok, out = run_synthetic(tmp_path, phylogenetic__build_tree=True)
+    assert ok
+    tips = {t.name for t in Phylo.read(out / "phylogenetic" / f"{ORGANISM}_tree.nwk", "newick").get_terminals()}
+    assert tips == {"H0001", "H0002", "H0003", "H0004"}
+    excluded = (out / "phylogenetic" / f"{ORGANISM}_excluded_tips.txt").read_text().splitlines()
+    assert excluded == ["haplotype_id\treason"]
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert (d["applied"]["tree_min_members"], d["applied"]["n_tree_tips"], d["applied"]["n_tree_excluded"]) == (1, 4, 0)
+
+
+@needs_fasttree
+def test_tree_min_members_excludes_and_explains(tmp_path):
+    ok, out = run_synthetic(tmp_path, phylogenetic__build_tree=True, phylogenetic__min_cluster_size=2)
+    assert ok
+    excluded = (out / "phylogenetic" / f"{ORGANISM}_excluded_tips.txt").read_text().splitlines()
+    assert excluded == ["haplotype_id\treason", "H0004\tn_members 1 < 2"]

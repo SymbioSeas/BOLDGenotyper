@@ -836,9 +836,10 @@ class PhylogeneticConfig:
         short core regions so trees are still built.
 
     min_cluster_size : int
-        Minimum number of samples per haplotype for inclusion (default: 5).
-        Small clusters tend to produce incomplete consensus sequences; requiring
-        ≥5 members yields longer, more reliable sequences for tree building.
+        Minimum members (n_members) for a haplotype to be a tree tip
+        (--tree-min-members; default: 1, every non-suspect haplotype). Suspect
+        haplotypes are always excluded. Every excluded haplotype is listed with
+        its reason in excluded_tips.txt and counted in run_provenance.json.
 
     trim_alignment : bool
         Trim gappy alignment columns with trimAl (default: True).
@@ -874,7 +875,7 @@ class PhylogeneticConfig:
     tree_algorithm: str = "fasttree"
     midpoint_root: bool = True
     min_consensus_length: int = 150  # Default tuned for short core regions; raise for full-length barcodes
-    min_cluster_size: int = 3  # Avoid fragmentary singletons in tree building
+    min_cluster_size: int = 1  # --tree-min-members; every non-suspect haplotype by default
     trim_alignment: bool = True
     trim_method: str = "gappyout"
 
