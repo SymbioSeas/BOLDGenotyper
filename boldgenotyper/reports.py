@@ -1675,7 +1675,7 @@ HTML_REPORT_TEMPLATE = """
                 const escapedId = genotype.replace(/[^a-zA-Z0-9-_]/g, '_');
                 html += '<div style="display: flex; align-items: center; margin-bottom: 8px; padding: 5px; border-radius: 4px; background: #f8f9fa;">';
                 html += `<input type="color" id="color-${escapedId}" value="${color}" `;
-                html += `onchange="updateGlobalColor(\`${genotype}\`, this.value)" `;
+                html += `onchange="updateGlobalColor(\\`${genotype}\\`, this.value)" `;
                 html += 'style="width: 40px; height: 30px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; margin-right: 10px;">';
                 html += `<label for="color-${escapedId}" style="flex: 1; font-size: 0.9em; cursor: pointer;">${genotype}</label>`;
                 html += '</div>';
@@ -2660,7 +2660,7 @@ def _build_assignment_section(
     """Build genotype assignment results section."""
     html = '<div class="section" id="section-assignment">\n'
     html += '<h2>Genotype Assignment Results</h2>\n'
-    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 Full assignment data available at: <code>reports/{organism}_assignment_summary.csv</code> and <code>genotype_assignments/{organism}_diagnostics.csv</code></p>\n'
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Full assignment data: <code>summary.csv</code> and <code>records.csv</code> (one row per record, with its status)</p>\n'
 
     if assignment_summary.empty:
         html += '<p class="alert alert-warning">No assignment summary data available</p>\n'
@@ -2718,7 +2718,7 @@ def _build_taxonomy_section(
 
     if consensus_tax_file.exists():
         html += '<h3>Haplotype Taxonomy</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>taxonomy/{organism}_haplotype_taxonomy.csv</code></p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Full table: <code>haplotypes.csv</code></p>\n'
         try:
             tax_df = pd.read_csv(consensus_tax_file)
             # Select key columns
@@ -2735,7 +2735,7 @@ def _build_taxonomy_section(
 
     if species_by_cons_file.exists():
         html += '<h3>Species Composition per Haplotype</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>haplotype_assignments/{organism}_species_composition.csv</code></p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Full table: <code>haplotypes.csv</code> (<code>labels</code>, <code>majority_label</code>, <code>majority_fraction</code>)</p>\n'
         try:
             species_df = pd.read_csv(species_by_cons_file)
             html += _dataframe_to_html(species_df, max_rows=50)
@@ -2815,7 +2815,7 @@ def _build_species_composition_section(
     html += '</div>\n'
 
     # Download note
-    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table available at: <code>{}_species_composition.csv</code></p>\n'.format(organism)
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Full table: <code>haplotypes.csv</code> (<code>labels</code>, <code>majority_label</code>, <code>majority_fraction</code>)</p>\n'
 
     # Interactive table
     html += '<div class="table-container">\n'
@@ -2869,7 +2869,7 @@ def _build_species_composition_section(
     html += '</ul>\n'
     html += '<p style="margin-top: 10px; margin-bottom: 0; font-size: 0.9em; color: #666;">'
     html += '<strong>Note:</strong> These counts describe the records\u2019 BOLD labels. Label conflicts within haplotypes, '
-    html += 'with the evidence for each record, are listed in <code>quality_control/label_conflicts.csv</code>.'
+    html += 'with the evidence for each record, are listed in <code>label_conflicts.csv</code>.'
     html += '</p>\n'
     html += '</div>\n'
 
@@ -2911,7 +2911,7 @@ def _build_quality_control_section(quality_dir: Path) -> str:
     with_conflict = int((summary_df['n_label_conflicts'] > 0).sum()) if 'n_label_conflicts' in summary_df.columns else 0
     n_missing = int(summary_df['n_missing_label'].sum()) if 'n_missing_label' in summary_df.columns else 0
 
-    html += '<p>Counts compare each haplotype\u2019s member records by their BOLD labels; they do not decide which label is correct. Definitions: <code>quality_control/README.md</code>.</p>\n'
+    html += '<p>Counts compare each haplotype\u2019s member records by their BOLD labels; they do not decide which label is correct. Definitions: <code>README.md</code>.</p>\n'
     html += '<div class="metric-grid">\n'
     html += '  <div class="metric-card"><div class="title">Haplotypes</div>'
     html += f'  <div class="value">{_format_number(total_groups, 0)}</div>'
@@ -2937,7 +2937,7 @@ def _build_quality_control_section(quality_dir: Path) -> str:
 
     if not summary_df.empty:
         html += '<h3>Haplotypes with Label Conflicts</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Full table: <code>quality_control/haplotype_label_summary.csv</code></p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Full table: <code>haplotypes.csv</code></p>\n'
         flagged = summary_df[summary_df['n_label_conflicts'] > 0] if 'n_label_conflicts' in summary_df.columns else summary_df
         keep_cols = [c for c in ['haplotype_id', 'n_members', 'n_labeled', 'n_missing_label', 'majority_label',
                                  'majority_fraction', 'labels', 'n_label_conflicts'] if c in flagged.columns]
@@ -2948,7 +2948,7 @@ def _build_quality_control_section(quality_dir: Path) -> str:
 
     if not conflicts_df.empty:
         html += '<h3>Label-Conflict Records</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/label_conflicts.csv</code></p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Details: <code>label_conflicts.csv</code></p>\n'
         keep_cols = [c for c in ['processid', 'label', 'haplotype_id', 'majority_label', 'n_majority', 'n_labeled',
                                  'majority_fraction', 'nearest_haplotype_with_label',
                                  'distance_to_nearest_with_label'] if c in conflicts_df.columns]
@@ -2957,7 +2957,7 @@ def _build_quality_control_section(quality_dir: Path) -> str:
 
     if not hits_df.empty:
         html += '<h3>Depositor-Note Keyword Hits</h3>\n'
-        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">📁 Details: <code>quality_control/depositor_keyword_hits.csv</code></p>\n'
+        html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Details: <code>records.csv</code> (<code>depositor_keyword_hits</code>); with --extended, <code>extended/labels/depositor_keyword_hits.csv</code></p>\n'
         keep_cols = [c for c in ['processid', 'haplotype_id', 'label', 'keyword_hits', 'depositor_note'] if c in hits_df.columns]
         if keep_cols:
             html += _dataframe_to_html(hits_df[keep_cols], max_rows=15)
@@ -3045,7 +3045,7 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
     """Build geographic distribution section."""
     html = '<div class="section" id="section-geographic">\n'
     html += '<h2>Geographic Distribution</h2>\n'
-    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 Full annotated dataset with geographic data available at: <code>{organism}_annotated.csv</code></p>\n'
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Coordinates, coordinate status and regions per record: <code>records.csv</code></p>\n'
 
     if 'ocean_basin' not in annotated_df.columns:
         html += '<p class="alert alert-info">No geographic data available</p>\n'
@@ -3121,7 +3121,8 @@ def _build_geographic_section(annotated_df: pd.DataFrame) -> str:
 
 def _build_metadata_summary_section(
     output_dir: Path,
-    organism: str
+    organism: str,
+    resolve=None,
 ) -> str:
     """
     Build metadata summarization section for HTML report.
@@ -3144,6 +3145,7 @@ def _build_metadata_summary_section(
     """
     html = '<div class="section" id="section-metadata-summary">\n'
     html += '<h2>Metadata Summary</h2>\n'
+    resolve = resolve or _relative_link(output_dir)
 
     metadata_dir = output_dir / 'metadata_summary'
     viz_dir = output_dir / 'visualization' / 'metadata'
@@ -3165,7 +3167,7 @@ def _build_metadata_summary_section(
         return html
 
     html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">'
-    html += f'📁 Full metadata summary outputs available at: <code>metadata_summary/</code></p>\n'
+    html += 'Field coverage: <code>metadata_coverage.csv</code>; with --extended, cross-tabulations and collection-date summaries in <code>extended/metadata/</code></p>\n'
 
     # 1. Coverage Overview
     coverage_json = metadata_dir / f'{organism}_metadata_coverage.json'
@@ -3214,10 +3216,10 @@ def _build_metadata_summary_section(
         # Embed coverage visualization if available
         coverage_img = _find_viz_image(f'{organism}_metadata_coverage.png')
         if coverage_img.exists():
-            encoded = _encode_image_to_base64(coverage_img)
-            if encoded:
+            src = resolve(coverage_img)
+            if src:
                 html += '<div class="viz-container">\n'
-                html += f'<img src="{encoded}" alt="Metadata Coverage" class="viz-image" style="max-width: 800px;">\n'
+                html += f'<img src="{src}" alt="Metadata Coverage" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
     # 2. Collection dates (--extended)
@@ -3242,20 +3244,20 @@ def _build_metadata_summary_section(
 
         temporal_img = _find_viz_image(f'{organism}_temporal_composition.png')
         if temporal_img.exists():
-            encoded = _encode_image_to_base64(temporal_img)
-            if encoded:
+            src = resolve(temporal_img)
+            if src:
                 html += '<h4>Records by Collection Year</h4>\n'
                 html += '<div class="viz-container">\n'
-                html += f'<img src="{encoded}" alt="Records by collection year" class="viz-image" style="max-width: 800px;">\n'
+                html += f'<img src="{src}" alt="Records by collection year" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
         timeline_plot = _find_viz_image(f'{organism}_haplotype_sampling_timeline.png')
         if timeline_plot.exists():
-            encoded = _encode_image_to_base64(timeline_plot)
-            if encoded:
+            src = resolve(timeline_plot)
+            if src:
                 html += '<h4>Sampling Timeline</h4>\n'
                 html += '<div class="viz-container">\n'
-                html += f'<img src="{encoded}" alt="Sampling timeline" class="viz-image" style="max-width: 800px;">\n'
+                html += f'<img src="{src}" alt="Sampling timeline" class="viz-image" style="max-width: 800px;">\n'
                 html += '</div>\n'
 
     # 4. Metadata Heatmap
@@ -3263,32 +3265,32 @@ def _build_metadata_summary_section(
     if heatmap_img.exists():
         html += '<h3>Metadata Coverage Heatmap</h3>\n'
         html += '<p>Coverage of metadata fields across haplotypes.</p>\n'
-        encoded = _encode_image_to_base64(heatmap_img)
-        if encoded:
+        src = resolve(heatmap_img)
+        if src:
             html += '<div class="viz-container">\n'
-            html += f'<img src="{encoded}" alt="Metadata Heatmap" class="viz-image" style="max-width: 100%;">\n'
+            html += f'<img src="{src}" alt="Metadata Heatmap" class="viz-image" style="max-width: 100%;">\n'
             html += '</div>\n'
 
     # 5. Selected Categorical Analyses
-    categorical_files = list(metadata_dir.glob(f'{organism}_*_analysis.csv'))
+    categorical_files = list(metadata_dir.glob(f'{organism}_*_tabulation.csv'))
     categorical_files = [f for f in categorical_files if 'association' not in f.name and 'temporal' not in f.name]
 
     if categorical_files:
         html += '<h3>Categorical Field Analyses</h3>\n'
         html += '<p>Haplotype distribution across selected metadata categories. '
-        html += 'Full tabulations available in <code>metadata_summary/</code> directory.</p>\n'
+        html += 'Full tabulations in <code>extended/metadata/</code>.</p>\n'
 
         # Create tabs for each categorical analysis
         html += '<div class="subtabs">\n'
         for idx, cat_file in enumerate(categorical_files[:6]):  # Limit to 6 tabs
-            field_name = cat_file.stem.replace(f'{organism}_', '').replace('_analysis', '')
+            field_name = cat_file.stem.replace(f'{organism}_', '').replace('_tabulation', '')
             active = ' active' if idx == 0 else ''
             tab_id = f'meta-cat-{idx}'
             html += f'<button class="subtab-button{active}" onclick="switchSubtab(\'{tab_id}\')">{field_name}</button>\n'
         html += '</div>\n'
 
         for idx, cat_file in enumerate(categorical_files[:6]):
-            field_name = cat_file.stem.replace(f'{organism}_', '').replace('_analysis', '')
+            field_name = cat_file.stem.replace(f'{organism}_', '').replace('_tabulation', '')
             active = ' active' if idx == 0 else ''
             tab_id = f'meta-cat-{idx}'
 
@@ -3309,10 +3311,10 @@ def _build_metadata_summary_section(
                     field_clean = field_name.replace('/', '_')
                     viz_file = _find_viz_image(f'{organism}_{field_clean}_by_haplotype.png')
                     if viz_file.exists():
-                        encoded = _encode_image_to_base64(viz_file)
-                        if encoded:
+                        src = resolve(viz_file)
+                        if src:
                             html += '<div class="viz-container" style="margin-top: 15px;">\n'
-                            html += f'<img src="{encoded}" alt="{field_name} Distribution" class="viz-image" style="max-width: 100%;">\n'
+                            html += f'<img src="{src}" alt="{field_name} Distribution" class="viz-image" style="max-width: 100%;">\n'
                             html += '</div>\n'
             except Exception as e:
                 html += f'<p class="alert alert-warning">Could not load {field_name} analysis: {e}</p>\n'
@@ -3321,6 +3323,20 @@ def _build_metadata_summary_section(
 
     html += '</div>\n'  # Close section
     return html
+
+
+def _relative_link(base_dir: Path):
+    """Link resolver for a report written in base_dir: path relative to it."""
+    import os
+    base = Path(base_dir).resolve()
+    return lambda p: os.path.relpath(Path(p).resolve(), base).replace(os.sep, "/")
+
+
+def _link_resolver(links: dict):
+    """Link resolver for staged files: their path in the run folder, or None
+    when the run does not keep the file (P2: the report links, it does not embed)."""
+    table = {Path(src).resolve(): Path(rel).as_posix() for src, rel in links.items()}
+    return lambda p: table.get(Path(p).resolve())
 
 
 def _encode_image_to_base64(image_path: Path) -> Optional[str]:
@@ -3368,7 +3384,8 @@ def _encode_image_to_base64(image_path: Path) -> Optional[str]:
 
 def _build_visualizations_section(
     output_dir: Path,
-    organism: str
+    organism: str,
+    resolve=None,
 ) -> str:
     """
     Build visualizations section with embedded images.
@@ -3387,7 +3404,8 @@ def _build_visualizations_section(
     """
     html = '<div class="section" id="section-visualizations">\n'
     html += '<h2>Visualizations</h2>\n'
-    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">📁 High-resolution images available in <code>visualization/pdf/</code> and <code>visualization/svg/</code>; plot data in <code>visualization/json/</code></p>\n'
+    resolve = resolve or _relative_link(output_dir)
+    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Figures are linked from the run folder (<code>geography/</code>, <code>phylogeny/</code>, <code>extended/</code>); open this report from that folder.</p>\n'
 
     # Add global color picker container
     html += '<div id="global-color-picker" class="plot-controls" style="margin-bottom: 20px; max-width: 600px;">\n'
@@ -3411,7 +3429,7 @@ def _build_visualizations_section(
             'pattern': f'{organism}_tree.png',
             'directory': 'phylogenetic',
             'description': 'Phylogenetic tree showing relationships between haplotypes',
-            'note': f'Newick tree file available at <code>phylogenetic/{organism}_tree_relabeled.nwk</code> for opening in tree editors such as <a href="https://treeviewer.org/" target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024) for re-rooting and customization'
+            'note': f'Newick tree files: <code>phylogeny/tree.nwk</code> (haplotype IDs) and <code>phylogeny/tree_labeled.nwk</code> (haplotype labels), for opening in tree editors such as <a href="https://treeviewer.org/" target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024) for re-rooting and customization'
         },
         {
             'title': 'Relative Abundance by Geographic Region',
@@ -3479,12 +3497,20 @@ def _build_visualizations_section(
             base_search_dir / Path(base_pattern).with_suffix('.svg'),
             base_search_dir / Path(base_pattern).with_suffix('.png'),
         ]
-        image_path = next((p for p in candidate_paths if p.exists()), None)
+        # Link to the first candidate that the run folder keeps (not embedded)
+        image_path, image_src = next(((p, resolve(p)) for p in candidate_paths
+                                      if p.exists() and resolve(p)), (None, None))
 
         if image_path:
-            encoded_image = _encode_image_to_base64(image_path)
-            if encoded_image:
-                viz_data = {**viz, 'encoded_image': encoded_image, 'resolved_image': image_path.name}
+            files = []
+            for ext in ('.pdf', '.svg'):
+                name = Path(base_pattern).with_suffix(ext).name
+                staged = next((d / name for d in (viz_pdf_dir, viz_svg_dir, viz_dir, base_search_dir)
+                               if (d / name).exists() and resolve(d / name)), None)
+                if staged is not None:
+                    files.append(resolve(staged))
+            if image_src:
+                viz_data = {**viz, 'image_src': image_src, 'files': files}
 
                 # Load JSON data if available (for interactive plots)
                 if 'json_pattern' in viz:
@@ -3526,18 +3552,8 @@ def _build_visualizations_section(
         html += '<div class="viz-container">\n'
         html += f'<h3>{viz["title"]}</h3>\n'
         html += f'<p class="viz-description">{viz["description"]}</p>\n'
-        # Determine directory for file paths
-        file_dir = viz.get('directory', 'visualization')
-        image_name = viz.get('resolved_image', viz["pattern"])
-        pdf_name = Path(image_name).with_suffix('.pdf').name
-        svg_name = Path(image_name).with_suffix('.svg').name
-        # Show actual file locations in subdirectories
-        pdf_path = f'visualization/pdf/{pdf_name}'
-        svg_path = f'visualization/svg/{svg_name}'
-        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">📁 Files: <code>{pdf_path}</code>, <code>{svg_path}</code>'
-        if 'json_pattern' in viz:
-            html += f', <code>{viz["json_pattern"]}</code>'
-        html += '</p>\n'
+        links = ', '.join(f'<a href="{f}"><code>{f}</code></a>' for f in viz['files'])
+        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">Files: {links}</p>\n'
         # Add optional note if present
         if 'note' in viz:
             html += f'<p style="color: #2563eb; font-size: 0.85em; margin-bottom: 10px; padding: 8px; background-color: #eff6ff; border-left: 3px solid #2563eb; border-radius: 3px;">{viz["note"]}</p>\n'
@@ -3556,7 +3572,7 @@ def _build_visualizations_section(
 
             # Static plot (shown by default)
             html += f'<div id="{plot_id}-static" class="plot-view active">\n'
-            html += f'<img src="{viz["encoded_image"]}" alt="{viz["title"]}" class="viz-image">\n'
+            html += f'<img src="{viz["image_src"]}" alt="{viz["title"]}" class="viz-image">\n'
             html += '</div>\n'
 
             # Interactive plot container (hidden by default)
@@ -3657,7 +3673,7 @@ def _build_visualizations_section(
             html += '\n</script>\n'
         else:
             # No interactive data or faceted plot - just show static image
-            html += f'<img src="{viz["encoded_image"]}" alt="{viz["title"]}" class="viz-image">\n'
+            html += f'<img src="{viz["image_src"]}" alt="{viz["title"]}" class="viz-image">\n'
 
         html += '</div>\n'  # viz-container
         html += '</div>\n'  # subtab-content
@@ -3666,583 +3682,201 @@ def _build_visualizations_section(
     return html
 
 
-def _parse_pipeline_log(log_file: Path) -> dict:
-    """
-    Parse pipeline log file to extract timing and metrics information.
-
-    Parameters
-    ----------
-    log_file : Path
-        Path to pipeline log file
-
-    Returns
-    -------
-    dict
-        Dictionary containing extracted metrics and timing information
-    """
-    from datetime import datetime
-    import re
-
-    metrics = {
-        'start_time': None,
-        'end_time': None,
-        'total_runtime_seconds': None,
-        'total_samples_loaded': None,
-        'duplicates_removed': None,
-        'unique_samples': None,
-        'samples_after_coord_filter': None,
-        'centroid_coords_excluded': None,
-        'valid_sequences': None,
-        'invalid_sequences': None,
-        'sequences_too_short': None,
-        'pairwise_comparisons': None,
-        'consensus_genotypes': None,
-        'samples_for_assignment': None,
-        'successfully_assigned': None,
-        'assignment_rate': None,
-        'unassigned_no_sequence': None,
-        'unassigned_below_threshold': None,
-        'ties_flagged': None,
-        'low_confidence_flagged': None,
-        'samples_with_coords': None,
-        'ocean_basin_assigned': None,
-        'outside_basins': None,
-        'unknown_basin': None,
-        'mafft_params': None,
-        'trimal_params': None,
-        'fasttree_params': None,
-        'input_file': None,
-    }
-
-    if not log_file.exists():
-        return metrics
-
-    try:
-        with open(log_file, 'r') as f:
-            lines = f.readlines()
-
-        # Find the last run (in case log has multiple runs)
-        last_start_idx = None
-        for i, line in enumerate(lines):
-            if 'BOLDGenotyper Pipeline -' in line:
-                last_start_idx = i - 2  # Start time is 2 lines before
-
-        if last_start_idx is None:
-            return metrics
-
-        # Parse from last run onwards
-        relevant_lines = lines[last_start_idx:]
-
-        for i, line in enumerate(relevant_lines):
-            # Extract timestamp and content
-            timestamp_match = re.match(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]', line)
-
-            # Start time
-            if timestamp_match and 'Logging to file:' in line:
-                metrics['start_time'] = timestamp_match.group(1)
-
-            # End time
-            if timestamp_match and 'Pipeline completed successfully' in line:
-                metrics['end_time'] = timestamp_match.group(1)
-
-            # Input file
-            if 'Input TSV:' in line:
-                metrics['input_file'] = line.split('Input TSV:')[1].strip()
-
-            # Data loading metrics
-            if 'Read' in line and 'rows and' in line and 'columns' in line:
-                match = re.search(r'Read (\d+) rows', line)
-                if match:
-                    metrics['total_samples_loaded'] = int(match.group(1))
-
-            if 'Found' in line and 'duplicate processids' in line:
-                match = re.search(r'Found (\d+) duplicate', line)
-                if match:
-                    metrics['duplicates_removed'] = int(match.group(1))
-
-            if 'After removing duplicates:' in line and 'rows remaining' in line:
-                match = re.search(r'(\d+) rows remaining', line)
-                if match:
-                    metrics['unique_samples'] = int(match.group(1))
-
-            if 'Retained' in line and 'samples after coordinate filtering' in line:
-                match = re.search(r'Retained (\d+)/(\d+)', line)
-                if match:
-                    metrics['samples_after_coord_filter'] = int(match.group(1))
-
-            if 'Excluded' in line and 'samples with centroid coordinates' in line:
-                match = re.search(r'Excluded (\d+) samples', line)
-                if match:
-                    metrics['centroid_coords_excluded'] = int(match.group(1))
-
-            if 'Created' in line and 'FASTA records' in line:
-                match = re.search(r'Created (\d+) FASTA records', line)
-                if match:
-                    metrics['valid_sequences'] = int(match.group(1))
-
-            if 'Skipped' in line and 'samples with missing or invalid sequences' in line:
-                match = re.search(r'Skipped (\d+) samples', line)
-                if match:
-                    metrics['invalid_sequences'] = int(match.group(1))
-
-            if 'Filtered' in line and 'sequences shorter than' in line and 'after trimming' in line:
-                match = re.search(r'Filtered (\d+) sequences', line)
-                if match:
-                    metrics['sequences_too_short'] = int(match.group(1))
-
-            if 'Distance calculation complete:' in line:
-                match = re.search(r'(\d+) pairwise distances', line)
-                if match:
-                    metrics['pairwise_comparisons'] = int(match.group(1))
-
-            if 'Identified' in line and 'unique genotypes' in line:
-                match = re.search(r'Identified (\d+) unique genotypes', line)
-                if match:
-                    metrics['consensus_genotypes'] = int(match.group(1))
-
-            if 'Total samples:' in line:
-                # Check if this is in the context of genotype assignment
-                context = ' '.join(relevant_lines[max(0, i-10):i+1])
-                if 'Genotype assignment' in context or 'assignment summary' in context.lower():
-                    match = re.search(r'Total samples: (\d+)', line)
-                    if match:
-                        metrics['samples_for_assignment'] = int(match.group(1))
-
-            if 'Successfully assigned:' in line:
-                match = re.search(r'Successfully assigned: (\d+)', line)
-                if match:
-                    metrics['successfully_assigned'] = int(match.group(1))
-                match = re.search(r'\((\d+\.?\d*)%\)', line)
-                if match:
-                    metrics['assignment_rate'] = float(match.group(1))
-
-            if '- No sequence in FASTA:' in line:
-                match = re.search(r'No sequence in FASTA: (\d+)', line)
-                if match:
-                    metrics['unassigned_no_sequence'] = int(match.group(1))
-
-            if '- Below identity threshold:' in line:
-                match = re.search(r'Below identity threshold: (\d+)', line)
-                if match:
-                    metrics['unassigned_below_threshold'] = int(match.group(1))
-
-            if '- Ties (ambiguous):' in line:
-                match = re.search(r'Ties \(ambiguous\): (\d+)', line)
-                if match:
-                    metrics['ties_flagged'] = int(match.group(1))
-
-            if '- Low confidence:' in line:
-                match = re.search(r'Low confidence: (\d+)', line)
-                if match:
-                    metrics['low_confidence_flagged'] = int(match.group(1))
-
-            if 'Creating point geometries for' in line:
-                match = re.search(r'for (\d+)/(\d+) samples with coordinates', line)
-                if match:
-                    metrics['samples_with_coords'] = int(match.group(1))
-
-            if 'Spatial join results:' in line:
-                match = re.search(r'(\d+) assigned to basins, (\d+) outside all basins', line)
-                if match:
-                    metrics['ocean_basin_assigned'] = int(match.group(1))
-                    metrics['outside_basins'] = int(match.group(2))
-
-            if "samples have no basin" in line or ("Assigned" in line and "to 'Unknown' basin" in line):
-                match = re.search(r'(\d+) samples have no basin', line) or re.search(r'Assigned (\d+) samples', line)
-                if match:
-                    metrics['unknown_basin'] = int(match.group(1))
-
-            # Tool parameters
-            if 'Running MAFFT alignment: mafft' in line:
-                match = re.search(r'mafft (.+?)(?:\s+/)', line)
-                if match:
-                    metrics['mafft_params'] = match.group(1).strip()
-
-            if 'Running trimAl: trimal' in line:
-                match = re.search(r'trimal (.+?)(?:\s+-in)', line)
-                if match:
-                    metrics['trimal_params'] = match.group(1).strip()
-
-            if 'Running FastTree: fasttree' in line:
-                match = re.search(r'fasttree (.+?)(?:\s+/)', line)
-                if match:
-                    metrics['fasttree_params'] = match.group(1).strip()
-
-        # Calculate runtime
-        if metrics['start_time'] and metrics['end_time']:
-            try:
-                start = datetime.strptime(metrics['start_time'], '%Y-%m-%d %H:%M:%S')
-                end = datetime.strptime(metrics['end_time'], '%Y-%m-%d %H:%M:%S')
-                metrics['total_runtime_seconds'] = (end - start).total_seconds()
-            except Exception:
-                pass
-
-    except Exception as e:
-        logger.warning(f"Could not parse log file: {e}", extra={"step_failure": "12 HTML report"})
-
-    return metrics
-
-
 def _build_methods_section(output_dir: Path, organism: str, version: str) -> str:
     """
-    Build comprehensive methods section suitable for publication.
-
-    Parameters
-    ----------
-    output_dir : Path
-        Base output directory
-    organism : str
-        Organism name
-    version : str
-        BOLDGenotyper version
-
-    Returns
-    -------
-    str
-        HTML content for methods section
+    Methods for the haplotype (exact sequence variant) workflow, with the
+    values this run used, read from run_provenance.json.
     """
     import json
 
-    html = '<div class="section" id="section-methods">\n'
-    html += '<h2>Methods</h2>\n'
-    html += '<p class="section-description">Comprehensive analysis methodology and parameters suitable for reporting in peer-reviewed publications.</p>\n'
-
-    # Create subtabs for different method sections
-    method_tabs = [
-        ('Analysis Overview', 'overview'),
-        ('Sample Processing & QC', 'qc'),
-        ('Sequence Dereplication', 'dereplication'),
-        ('Genotype Assignment', 'assignment'),
-        ('Phylogenetic Analysis', 'phylogenetic'),
-        ('Geographic Analysis', 'geographic'),
-        ('Software & Dependencies', 'software'),
-        ('Methods Statement', 'statement'),
-        ('References', 'references')
-    ]
-
-    # Load the parameters this section uses from run_provenance.json
-    params = {}
+    prov = {}
     params_file = output_dir / "run_provenance.json"
     if params_file.exists():
         try:
-            with open(params_file, 'r') as f:
-                prov = json.load(f)
-            params = {
-                'build_tree': prov.get('config', {}).get('phylogenetic', {}).get('build_tree', False),
-                'geo_category': prov.get('applied', {}).get('geo_category', 'ocean_basin'),
-                'custom_shapefile': prov.get('applied', {}).get('custom_shapefile'),
-            }
+            prov = json.loads(params_file.read_text())
         except Exception:
-            pass
+            prov = {}
+    cfg = prov.get('config', {})
+    applied = prov.get('applied', {})
+    tools = prov.get('tools', {})
+    summary = applied.get('assignment_summary', {})
+    qc = cfg.get('qc', {})
+    coi = cfg.get('coi_validation', {})
+    core = cfg.get('core_region', {})
+    hap = cfg.get('haplotype', {})
+    phy = cfg.get('phylogenetic', {})
+    tax = cfg.get('taxonomy', {})
+    notes = prov.get('data_notes', {})
 
-    # Load log metrics
-    log_file = output_dir / f"{organism}_pipeline.log"
-    metrics = _parse_pipeline_log(log_file)
+    def v(value, fmt="{}", missing="not recorded"):
+        return fmt.format(value) if value is not None else missing
 
-    # Create subtab buttons
+    def row(name, value):
+        return f'<tr><td><strong>{name}</strong></td><td>{value}</td></tr>\n'
+
+    def table(rows):
+        return '<table class="data-table">\n<tbody>\n' + ''.join(rows) + '</tbody>\n</table>\n'
+
+    code = coi.get('mitochondrial_code')
+    code_name = {2: "vertebrate mitochondrial", 5: "invertebrate mitochondrial"}.get(code, "NCBI genetic code")
+    tree_built = applied.get('n_tree_tips') is not None
+    geo = applied.get('geographic_analysis', False)
+    geo_cat = applied.get('geo_category') or 'ocean_basin'
+    custom_shp = applied.get('custom_shapefile')
+    d = hap.get('min_singleton_distance')
+
+    tabs = [('Overview', 'overview'), ('Quality Control', 'qc'), ('Haplotypes', 'haplotypes'),
+            ('Record Statuses', 'statuses'), ('Taxonomy & Labels', 'taxonomy'),
+            ('Phylogeny', 'phylogenetic'), ('Geography', 'geographic'), ('Software', 'software'),
+            ('Methods Statement', 'statement'), ('References', 'references')]
+
+    html = '<div class="section" id="section-methods">\n<h2>Methods</h2>\n'
+    html += ('<p class="section-description">What this run did, with the values it used '
+             '(from <code>run_provenance.json</code>).</p>\n')
     html += '<div class="subtabs">\n'
-    for idx, (title, tab_id) in enumerate(method_tabs):
-        active_class = ' active' if idx == 0 else ''
-        html += f'<button class="subtab-button{active_class}" onclick="switchSubtab(\'methods-{tab_id}\')">{title}</button>\n'
+    for idx, (title, tab_id) in enumerate(tabs):
+        active = ' active' if idx == 0 else ''
+        html += f'<button class="subtab-button{active}" onclick="switchSubtab(\'methods-{tab_id}\')">{title}</button>\n'
     html += '</div>\n'
 
-    # 1. Analysis Overview
-    active_class = ' active'
-    html += f'<div id="methods-overview" class="subtab-content{active_class}">\n'
-    html += '<h3>1. Analysis Overview</h3>\n'
-    html += '<table class="data-table">\n'
-    html += '<tbody>\n'
-    html += f'<tr><td><strong>Pipeline Version</strong></td><td>BOLDGenotyper v{version}</td></tr>\n'
+    def tab(tab_id, title, body, active=False):
+        return (f'<div id="methods-{tab_id}" class="subtab-content{" active" if active else ""}">\n'
+                f'<h3>{title}</h3>\n{body}</div>\n')
 
-    if metrics['start_time']:
-        html += f'<tr><td><strong>Analysis Date</strong></td><td>{metrics["start_time"].split()[0]}</td></tr>\n'
+    inp = prov.get('input', {})
+    html += tab('overview', 'Overview', table([
+        row('BOLDGenotyper', f'v{prov.get("boldgenotyper_version", version)}'),
+        row('Run started', v(prov.get('started_at'))),
+        row('Input', f'<code>{v(inp.get("path"))}</code> ({v(inp.get("n_rows"), "{:,}")} rows; md5 {v(inp.get("md5"))})'),
+        row('BOLD download date', v(inp.get('download_date'))),
+        row('Command', f'<code>{v(prov.get("command_line"))}</code>'),
+    ]), active=True)
 
-    if metrics['total_runtime_seconds']:
-        minutes = int(metrics['total_runtime_seconds'] // 60)
-        seconds = int(metrics['total_runtime_seconds'] % 60)
-        html += f'<tr><td><strong>Total Runtime</strong></td><td>{minutes}m {seconds}s</td></tr>\n'
+    html += tab('qc', 'Quality Control', table([
+        row('Duplicate processids', f'{v(notes.get("n_duplicate_processids"), "{:,}")} removed (first record kept)'),
+        row('Orientation and reading frame',
+            f'Sequences oriented and checked for an open reading frame with genetic code {v(code)} '
+            f'({code_name}): ORF coverage at least {v(coi.get("orf_min_coverage"))}, at most '
+            f'{v(coi.get("orf_max_internal_stops"))} internal stop codons'),
+        row('Length', f'At least {v(qc.get("min_raw_length_abs"))} bp and at least '
+                      f'{v(qc.get("min_raw_length_frac_of_median"))} of the median length'),
+        row('Ambiguous bases', f'N fraction at most {v(qc.get("max_raw_N_fraction"))}'),
+        row('Valid reading frame required', v(qc.get('require_valid_orf'))),
+        row('Records passing QC', f'{v(summary.get("n_qc_pass"), "{:,}")} of {v(summary.get("n_unique"), "{:,}")} unique records'),
+    ]))
 
-    if metrics['input_file']:
-        html += f'<tr><td><strong>Input File</strong></td><td><code>{metrics["input_file"]}</code></td></tr>\n'
+    html += tab('haplotypes', 'Haplotypes', table([
+        row('Alignment', f'QC-passed sequences aligned with MAFFT {v(tools.get("mafft"), "v{}", "")} (<code>--auto</code>)'),
+        row('Core region', f'Alignment columns with sequence in at least {v(core.get("core_min_coverage"))} of '
+                           f'sequences; {v(applied.get("core_region_length_bp"))} bp in this run'),
+        row('Core coverage per record', f'Records whose ungapped core is shorter than {v(core.get("min_sequence_coverage"))} '
+                                         f'of the 95th-percentile core length ({v(applied.get("min_sequence_length_bp"), "{:.0f}")} bp) '
+                                         f'are excluded ({v(summary.get("n_excluded_core"), "{:,}")} records)'),
+        row('Haplotypes', 'Each distinct core sequence is a haplotype (exact sequence variant), keyed by the md5 of '
+                          'its sequence; haplotypes that differ only at gaps or Ns are merged'),
+        row('Error filter', f'Singleton haplotypes within p-distance {v(d)} of another haplotype are treated as '
+                            'likely sequencing errors and removed'),
+        row('Correction', ('A removed singleton record is assigned to its nearest retained haplotype when that '
+                           f'haplotype is unique and within {v(d)}' if hap.get('assign_corrected', True)
+                           else 'Disabled (--no-assign-corrected): removed singleton records stay unassigned')),
+        row('Suspect flags', f'Singletons more than {v(hap.get("max_singleton_distance"))} from their nearest neighbor, '
+                             'distance outliers and members failing the reading-frame check flag a haplotype as suspect'),
+        row('IDs', 'H0001, H0002, ... in order of member count, then seq_md5'),
+        row('Haplotypes retained', v(applied.get('n_haplotypes'), "{:,}")),
+    ]))
 
-    html += '</tbody>\n'
-    html += '</table>\n'
-    html += '</div>\n'  # Close overview subtab-content
+    status_rows = [row(s, v(summary.get(c), "{:,}")) for s, c in (
+        ('assigned', 'n_assigned'), ('assigned_corrected', 'n_assigned_corrected'),
+        ('excluded_error_singleton', 'n_excluded_error'), ('excluded_core_coverage', 'n_excluded_core'),
+        ('failed_qc', 'n_failed_qc'), ('no_sequence', 'n_no_sequence'))]
+    status_rows.append(row('Assigned (of QC-passed records)', v(summary.get('pct_assigned'), "{}%")))
+    html += tab('statuses', 'Record Statuses', '<p>Every unique record has one status (definitions in README.md).</p>\n'
+                + table(status_rows))
 
-    # 2. Sample Processing & Quality Control
-    html += '<div id="methods-qc" class="subtab-content">\n'
-    html += '<h3>2. Sample Processing &amp; Quality Control</h3>\n'
-    html += '<table class="data-table">\n'
-    html += '<tbody>\n'
+    html += tab('taxonomy', 'Taxonomy &amp; Labels', table([
+        row('Record label', 'The species field, or the genus when the species is missing'),
+        row('Haplotype taxon', f'The species carried by more than {v(tax.get("majority_species_threshold"))} of members '
+                               '(members without a label counted; ties not resolved); otherwise the most common genus'),
+        row('Label conflicts', 'Members whose species-level label differs from the haplotype’s majority label; '
+                               'listed with their evidence in label_conflicts.csv'),
+        row('Divergence', 'Uncorrected p-distance between aligned haplotype sequences, skipping gaps and Ns; '
+                          'no taxonomic thresholds are applied'),
+    ]))
 
-    if metrics['total_samples_loaded']:
-        html += f'<tr><td><strong>Total samples loaded</strong></td><td>{metrics["total_samples_loaded"]:,}</td></tr>\n'
-
-    if metrics['duplicates_removed']:
-        html += f'<tr><td><strong>Duplicate samples removed</strong></td><td>{metrics["duplicates_removed"]:,}</td></tr>\n'
-
-    if metrics['unique_samples']:
-        html += f'<tr><td><strong>Unique samples after deduplication</strong></td><td>{metrics["unique_samples"]:,}</td></tr>\n'
-
-    if metrics['samples_after_coord_filter'] and metrics['unique_samples']:
-        pct = (metrics['samples_after_coord_filter'] / metrics['unique_samples']) * 100
-        html += f'<tr><td><strong>Coordinate quality filtering</strong></td><td>{metrics["samples_after_coord_filter"]:,}/{metrics["unique_samples"]:,} ({pct:.1f}%) retained</td></tr>\n'
-
-    if metrics['centroid_coords_excluded']:
-        html += f'<tr><td><strong>Centroid coordinates excluded</strong></td><td>{metrics["centroid_coords_excluded"]:,}</td></tr>\n'
-
-    if metrics['valid_sequences']:
-        html += f'<tr><td><strong>Valid sequences for analysis</strong></td><td>{metrics["valid_sequences"]:,}</td></tr>\n'
-
-    if metrics['invalid_sequences']:
-        html += f'<tr><td><strong>Missing/invalid sequences excluded</strong></td><td>{metrics["invalid_sequences"]:,}</td></tr>\n'
-
-    if metrics['sequences_too_short']:
-        html += f'<tr><td><strong>Sequences too short after trimming</strong></td><td>{metrics["sequences_too_short"]:,}</td></tr>\n'
-
-    html += '</tbody>\n'
-    html += '</table>\n'
-    html += '</div>\n'  # Close qc subtab-content
-
-    # 3. Sequence Dereplication
-    html += '<div id="methods-dereplication" class="subtab-content">\n'
-    html += '<h3>3. Sequence Dereplication</h3>\n'
-    html += '<table class="data-table">\n'
-    html += '<tbody>\n'
-    html += '<tr><td><strong>Algorithm</strong></td><td>Hierarchical clustering (average linkage)</td></tr>\n'
-
-    if metrics['mafft_params']:
-        html += f'<tr><td><strong>Alignment</strong></td><td>MAFFT <code>{metrics["mafft_params"]}</code></td></tr>\n'
+    if tree_built:
+        body = table([
+            row('Tips', f'Haplotypes with at least {v(applied.get("tree_min_members"))} member(s) and at least '
+                        f'{v(applied.get("tree_min_length_bp"))} bp, not suspect: {v(applied.get("n_tree_tips"))} tips, '
+                        f'{v(applied.get("n_tree_excluded"))} excluded (phylogeny/excluded_tips.txt)'),
+            row('Alignment', f'MAFFT; trimmed with trimAl ({v(phy.get("trim_method"))}) when trimAl is installed'
+                if phy.get('trim_alignment') else 'MAFFT'),
+            row('Inference', f'FastTree {v(tools.get("fasttree"), "v{}", "")} <code>-nt -gtr -gamma</code>, '
+                             f'seed {v(prov.get("seeds", {}).get("fasttree"))}; support values are FastTree local support'),
+            row('Rooting', 'Rerooted on the given outgroup' if (phy.get('outgroup_label') or phy.get('outgroup_taxon'))
+                else 'Unrooted, as written by FastTree'),
+        ])
     else:
-        html += '<tr><td><strong>Alignment</strong></td><td>MAFFT</td></tr>\n'
+        body = '<p class="alert alert-info">No tree was built in this run (--build-tree not given).</p>\n'
+    html += tab('phylogenetic', 'Phylogeny', body)
 
-    if metrics['trimal_params']:
-        html += f'<tr><td><strong>Trimming</strong></td><td>trimAl <code>{metrics["trimal_params"]}</code></td></tr>\n'
+    if geo:
+        ref = (f'Custom shapefile <code>{Path(custom_shp).name}</code>, field {v(applied.get("shapefile_field"))}'
+               if custom_shp else 'Global Oceans and Seas (GOaS) v1')
+        body = table([
+            row('Regions', f'{ref}; region column <code>{geo_cat}</code>'),
+            row('Records assigned a region', 'Only records whose coordinates are of geographic quality '
+                                             '(coord_status ok). Country- and province-centroid coordinates are '
+                                             'kept but not assigned a region or mapped'),
+            row('Coordinate status counts', ', '.join(f'{k} {n:,}' for k, n in notes.get('coord_status', {}).items())),
+        ])
     else:
-        html += '<tr><td><strong>Trimming</strong></td><td>trimAl</td></tr>\n'
+        body = '<p class="alert alert-info">No geographic analysis in this run.</p>\n'
+    html += tab('geographic', 'Geography', body)
 
-    html += '<tr><td><strong>Minimum sequence length</strong></td><td>400 bp</td></tr>\n'
+    sw = [row('BOLDGenotyper', f'v{prov.get("boldgenotyper_version", version)}'),
+          row('Python', v(prov.get('python_version')))]
+    sw += [row(name, v(tools.get(key))) for name, key in (('MAFFT', 'mafft'), ('FastTree', 'fasttree'),
+                                                            ('trimAl', 'trimal')) if tools.get(key)]
+    html += tab('software', 'Software', table(sw))
 
-    ct = params.get('clustering_threshold', 'N/A')
-    if isinstance(ct, (int, float)):
-        html += f'<tr><td><strong>Clustering threshold</strong></td><td>{ct} ({(1-ct)*100:.1f}% identity)</td></tr>\n'
+    n_core_ok = summary.get('n_core_ok')
+    text = (f"COI barcode records for {organism} were downloaded from the Barcode of Life Data System "
+            f"(BOLD; Ratnasingham &amp; Hebert, 2007) and analyzed with BOLDGenotyper v{prov.get('boldgenotyper_version', version)}. "
+            f"Of {v(summary.get('n_unique'), '{:,}', '[N]')} unique records, {v(summary.get('n_qc_pass'), '{:,}', '[N]')} "
+            f"passed quality control (length, ambiguous bases and an open reading frame under genetic code {v(code, missing='[N]')}). "
+            f"Sequences were aligned with MAFFT (Katoh &amp; Standley, 2013), and the {v(applied.get('core_region_length_bp'), missing='[N]')} bp "
+            f"core region was extracted; {v(n_core_ok, '{:,}', '[N]')} records covered it. Each distinct core sequence was treated "
+            f"as a haplotype; singleton haplotypes within p-distance {v(d, missing='[d]')} of another haplotype were treated as "
+            f"likely sequencing errors, and their records assigned to the nearest retained haplotype when unique and within "
+            f"that distance. {v(summary.get('n_assigned', 0) + summary.get('n_assigned_corrected', 0) if summary else None, '{:,}', '[N]')} "
+            f"records ({v(summary.get('pct_assigned'), missing='[X]')}% of QC-passed records) were assigned to "
+            f"{v(applied.get('n_haplotypes'), '{:,}', '[M]')} haplotypes. ")
+    if tree_built:
+        text += ("A tree of the haplotypes was inferred with FastTree (Price et al., 2010) under the GTR+Gamma model. ")
+    if geo and not custom_shp:
+        text += ("Records with geographic-quality coordinates were assigned to ocean basins of the Global Oceans and "
+                 "Seas dataset (Flanders Marine Institute, 2021). ")
+    elif geo:
+        text += f"Records with geographic-quality coordinates were assigned to regions of a custom shapefile ({geo_cat}). "
+    html += tab('statement', 'Methods Statement',
+                '<div class="code-block" style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; '
+                'margin: 10px 0; font-family: \'Times New Roman\', serif; line-height: 1.6;">\n'
+                f'<p>{text}</p>\n</div>\n'
+                '<button onclick="navigator.clipboard.writeText(this.previousElementSibling.innerText)" class="btn" '
+                'style="margin-top: 10px;">Copy to Clipboard</button>\n')
 
-    if metrics['pairwise_comparisons']:
-        html += f'<tr><td><strong>Pairwise comparisons</strong></td><td>{metrics["pairwise_comparisons"]:,}</td></tr>\n'
+    refs = ['<p>Katoh, K., &amp; Standley, D. M. (2013). MAFFT multiple sequence alignment software version 7: improvements in performance and usability. <em>Molecular Biology and Evolution</em>, 30(4), 772-780.</p>\n',
+            '<p>Ratnasingham, S., &amp; Hebert, P. D. (2007). BOLD: The Barcode of Life Data System. <em>Molecular Ecology Notes</em>, 7(3), 355-364.</p>\n']
+    if tree_built:
+        refs.append('<p>Price, M. N., Dehal, P. S., &amp; Arkin, A. P. (2010). FastTree 2 – Approximately maximum-likelihood trees for large alignments. <em>PLoS ONE</em>, 5(3), e9490.</p>\n')
+        refs.append('<p>Bianchini, G., &amp; Sánchez-Baracaldo, P. (2024). TreeViewer: Flexible, modular software to visualise and manipulate phylogenetic trees. <em>Ecology and Evolution</em>, 14, e10873. <a href="https://doi.org/10.1002/ece3.10873" target="_blank">https://doi.org/10.1002/ece3.10873</a></p>\n')
+        if tools.get('trimal') and phy.get('trim_alignment'):
+            refs.append('<p>Capella-Gutiérrez, S., Silla-Martínez, J. M., &amp; Gabaldón, T. (2009). trimAl: a tool for automated alignment trimming in large-scale phylogenetic analyses. <em>Bioinformatics</em>, 25(15), 1972-1973.</p>\n')
+    if geo and not custom_shp:
+        refs.append('<p>Flanders Marine Institute (2021). Global Oceans and Seas, version 1. Available online at <a href="https://www.marineregions.org/" target="_blank">https://www.marineregions.org/</a></p>\n')
+    html += tab('references', 'References', '<div style="font-size: 0.9em; line-height: 1.8;">\n' + ''.join(sorted(refs)) + '</div>\n')
 
-    if metrics['consensus_genotypes']:
-        html += f'<tr><td><strong>Consensus genotypes identified</strong></td><td>{metrics["consensus_genotypes"]:,}</td></tr>\n'
-
-    html += '</tbody>\n'
-    html += '</table>\n'
-    html += '</div>\n'  # Close dereplication subtab-content
-
-    # 4. Genotype Assignment
-    html += '<div id="methods-assignment" class="subtab-content">\n'
-    html += '<h3>4. Genotype Assignment</h3>\n'
-    html += '<table class="data-table">\n'
-    html += '<tbody>\n'
-    html += '<tr><td><strong>Assignment method</strong></td><td>Edit distance (edlib)</td></tr>\n'
-
-    st = params.get('similarity_threshold', 'N/A')
-    if isinstance(st, (int, float)):
-        html += f'<tr><td><strong>Similarity threshold</strong></td><td>{st} ({st*100:.0f}% identity)</td></tr>\n'
-
-    tm = params.get('tie_margin', 'N/A')
-    if isinstance(tm, (int, float)):
-        html += f'<tr><td><strong>Tie detection margin</strong></td><td>{tm} ({tm*100:.1f}%)</td></tr>\n'
-
-    tt = params.get('tie_threshold', 'N/A')
-    if isinstance(tt, (int, float)):
-        html += f'<tr><td><strong>Tie detection threshold</strong></td><td>{tt} ({tt*100:.0f}% identity)</td></tr>\n'
-
-    if metrics['successfully_assigned'] and metrics['samples_for_assignment']:
-        pct = (metrics['successfully_assigned'] / metrics['samples_for_assignment']) * 100
-        html += f'<tr><td><strong>Successfully assigned</strong></td><td>{metrics["successfully_assigned"]:,}/{metrics["samples_for_assignment"]:,} ({pct:.1f}%)</td></tr>\n'
-
-    if metrics['unassigned_no_sequence']:
-        html += f'<tr><td><strong>Unassigned (no sequence)</strong></td><td>{metrics["unassigned_no_sequence"]:,}</td></tr>\n'
-
-    if metrics['unassigned_below_threshold']:
-        html += f'<tr><td><strong>Unassigned (below threshold)</strong></td><td>{metrics["unassigned_below_threshold"]:,}</td></tr>\n'
-
-    if metrics['ties_flagged'] is not None:
-        html += f'<tr><td><strong>Ambiguous assignments (ties)</strong></td><td>{metrics["ties_flagged"]:,}</td></tr>\n'
-
-    if metrics['low_confidence_flagged'] is not None:
-        html += f'<tr><td><strong>Low confidence assignments</strong></td><td>{metrics["low_confidence_flagged"]:,}</td></tr>\n'
-
-    html += '</tbody>\n'
-    html += '</table>\n'
-    html += '</div>\n'  # Close assignment subtab-content
-
-    # 5. Phylogenetic Analysis (if applicable)
-    html += '<div id="methods-phylogenetic" class="subtab-content">\n'
-    if params.get('build_tree', False):
-        html += '<h3>5. Phylogenetic Analysis</h3>\n'
-        html += '<table class="data-table">\n'
-        html += '<tbody>\n'
-
-        if metrics['mafft_params']:
-            html += f'<tr><td><strong>Alignment</strong></td><td>MAFFT <code>{metrics["mafft_params"]}</code></td></tr>\n'
-        else:
-            html += '<tr><td><strong>Alignment</strong></td><td>MAFFT</td></tr>\n'
-
-        html += '<tr><td><strong>Tree inference</strong></td><td>FastTree</td></tr>\n'
-
-        if metrics['fasttree_params']:
-            html += f'<tr><td><strong>FastTree parameters</strong></td><td><code>{metrics["fasttree_params"]}</code></td></tr>\n'
-            if '-gtr' in metrics['fasttree_params'].lower() and '-gamma' in metrics['fasttree_params'].lower():
-                html += '<tr><td><strong>Substitution model</strong></td><td>GTR+Gamma</td></tr>\n'
-
-        if metrics['consensus_genotypes']:
-            html += f'<tr><td><strong>Number of taxa</strong></td><td>{metrics["consensus_genotypes"]:,}</td></tr>\n'
-
-        html += '</tbody>\n'
-        html += '</table>\n'
-    else:
-        html += '<p class="alert alert-info">Phylogenetic tree construction was not enabled for this analysis.</p>\n'
-    html += '</div>\n'  # Close phylogenetic subtab-content
-
-    # 6. Geographic Analysis (if applicable)
-    html += '<div id="methods-geographic" class="subtab-content">\n'
-    if metrics['samples_with_coords'] or metrics['ocean_basin_assigned']:
-        geo_cat = params.get('geo_category', 'ocean_basin')
-        custom_shp = params.get('custom_shapefile')
-        geo_label = geo_cat.replace('_', ' ').title()
-
-        html += '<h3>6. Geographic Analysis</h3>\n'
-        html += '<table class="data-table">\n'
-        html += '<tbody>\n'
-
-        if custom_shp:
-            shp_name = Path(custom_shp).stem
-            html += f'<tr><td><strong>Reference dataset</strong></td><td>Custom shapefile ({shp_name})</td></tr>\n'
-            html += f'<tr><td><strong>Geographic category</strong></td><td>{geo_label}</td></tr>\n'
-        else:
-            html += '<tr><td><strong>Reference dataset</strong></td><td>GOaS v1 (Global Oceans and Seas)</td></tr>\n'
-
-        if metrics['samples_with_coords'] and metrics['samples_for_assignment']:
-            pct = (metrics['samples_with_coords'] / metrics['samples_for_assignment']) * 100
-            html += f'<tr><td><strong>Samples with coordinates</strong></td><td>{metrics["samples_with_coords"]:,}/{metrics["samples_for_assignment"]:,} ({pct:.1f}%)</td></tr>\n'
-
-        if metrics['ocean_basin_assigned'] and metrics['samples_with_coords']:
-            pct = (metrics['ocean_basin_assigned'] / metrics['samples_with_coords']) * 100
-            html += f'<tr><td><strong>{geo_label} assignments</strong></td><td>{metrics["ocean_basin_assigned"]:,}/{metrics["samples_with_coords"]:,} ({pct:.1f}%)</td></tr>\n'
-
-        if metrics['outside_basins']:
-            html += f'<tr><td><strong>Outside known regions</strong></td><td>{metrics["outside_basins"]:,}</td></tr>\n'
-
-        if metrics['unknown_basin']:
-            html += f'<tr><td><strong>Unknown location</strong></td><td>{metrics["unknown_basin"]:,} samples</td></tr>\n'
-
-        html += '</tbody>\n'
-        html += '</table>\n'
-    else:
-        html += '<p class="alert alert-info">Geographic analysis was not performed (no coordinate data available).</p>\n'
-    html += '</div>\n'  # Close geographic subtab-content
-
-    # 7. Software & Dependencies
-    html += '<div id="methods-software" class="subtab-content">\n'
-    html += '<h3>7. Software &amp; Dependencies</h3>\n'
-    html += '<table class="data-table">\n'
-    html += '<tbody>\n'
-    html += f'<tr><td><strong>BOLDGenotyper</strong></td><td>v{version}</td></tr>\n'
-    html += '<tr><td><strong>MAFFT</strong></td><td>Multiple sequence alignment (Katoh &amp; Standley, 2013)</td></tr>\n'
-    html += '<tr><td><strong>trimAl</strong></td><td>Alignment trimming (Capella-Gutiérrez et al., 2009)</td></tr>\n'
-
-    if params.get('build_tree', False):
-        html += '<tr><td><strong>FastTree</strong></td><td>Phylogenetic inference (Price et al., 2010)</td></tr>\n'
-
-    html += '<tr><td><strong>edlib</strong></td><td>Edit distance calculation (Šošić &amp; Šikić, 2017)</td></tr>\n'
-
-    if metrics['ocean_basin_assigned'] or metrics['samples_with_coords']:
-        html += '<tr><td><strong>GOaS</strong></td><td>Global Oceans and Seas dataset (Flanders Marine Institute, 2021)</td></tr>\n'
-
-    html += '</tbody>\n'
-    html += '</table>\n'
-    html += '</div>\n'  # Close software subtab-content
-
-    # 8. Templated Methods Paragraph
-    html += '<div id="methods-statement" class="subtab-content">\n'
-    html += '<h3>8. Methods Statement</h3>\n'
-    html += '<div class="code-block" style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 10px 0; font-family: \'Times New Roman\', serif; line-height: 1.6;">\n'
-
-    # Build templated paragraph
-    n_sequences = metrics.get('valid_sequences', '[N]')
-    n_genotypes = metrics.get('consensus_genotypes', '[M]')
-    n_assigned = metrics.get('successfully_assigned', '[X]')
-    n_total = metrics.get('samples_for_assignment', '[Y]')
-    assign_pct = metrics.get('assignment_rate', '[X]')
-
-    ct = params.get('clustering_threshold', '[threshold]')
-    st = params.get('similarity_threshold', '[X]')
-
-    if isinstance(ct, (int, float)):
-        ct_pct = f"{(1-ct)*100:.0f}%"
-    else:
-        ct_pct = "[X]%"
-
-    if isinstance(st, (int, float)):
-        st_pct = f"{st*100:.0f}%"
-    else:
-        st_pct = "[X]%"
-
-    methods_text = f"DNA barcode sequences for {organism} were downloaded from the Barcode of Life Data System (BOLD; Ratnasingham &amp; Hebert, 2007) and processed using BOLDGenotyper v{version}. "
-
-    if isinstance(n_sequences, int):
-        methods_text += f"A total of {n_sequences:,} sequences were analyzed "
-    else:
-        methods_text += "Sequences were analyzed "
-
-    methods_text += "after removing duplicates and filtering for sequence quality (minimum length: 400 bp). "
-    methods_text += "Sequences were aligned using MAFFT (Katoh &amp; Standley, 2013) and trimmed with trimAl (Capella-Gutiérrez et al., 2009). "
-    methods_text += f"Consensus genotypes were identified through hierarchical clustering at {ct_pct} sequence identity using average linkage. "
-    methods_text += f"Individual sequences were assigned to genotypes using edit distance calculations (minimum identity: {st_pct}). "
-
-    if params.get('build_tree', False):
-        methods_text += "A phylogenetic tree was constructed using FastTree (Price et al., 2010) with the GTR+Gamma substitution model. "
-
-    if metrics.get('ocean_basin_assigned') or metrics.get('samples_with_coords'):
-        geo_cat = params.get('geo_category', 'ocean_basin')
-        custom_shp = params.get('custom_shapefile')
-        if custom_shp:
-            geo_label = geo_cat.replace('_', ' ')
-            methods_text += f"Geographic distributions were mapped using coordinates provided in BOLD and assigned to {geo_label}s using a custom shapefile. "
-        else:
-            methods_text += "Geographic distributions were mapped using coordinates provided in BOLD and assigned to ocean basins using the Global Oceans and Seas (GOaS) v1 dataset (Flanders Marine Institute, 2021). "
-
-    if isinstance(n_assigned, int) and isinstance(n_total, int) and isinstance(n_genotypes, int):
-        methods_text += f"{n_assigned:,} sequences ({assign_pct:.1f}%) were successfully assigned to {n_genotypes} consensus genotypes."
-    else:
-        methods_text += "[N] sequences ([X]%) were successfully assigned to [M] consensus genotypes."
-
-    html += f'<p>{methods_text}</p>\n'
     html += '</div>\n'
-    html += '<button onclick="navigator.clipboard.writeText(this.previousElementSibling.innerText)" class="btn" style="margin-top: 10px;">Copy to Clipboard</button>\n'
-    html += '</div>\n'  # Close statement subtab-content
-
-    # 9. References
-    html += '<div id="methods-references" class="subtab-content">\n'
-    html += '<h3>9. References</h3>\n'
-    html += '<div style="font-size: 0.9em; line-height: 1.8;">\n'
-
-    if params.get('build_tree', False):
-        html += '<p>Bianchini, G., &amp; Sánchez-Baracaldo, P. (2024). TreeViewer: Flexible, modular software to visualise and manipulate phylogenetic trees. <em>Ecology and Evolution</em>, 14, e10873. <a href="https://doi.org/10.1002/ece3.10873" target="_blank">https://doi.org/10.1002/ece3.10873</a></p>\n'
-
-    html += '<p>Capella-Gutiérrez, S., Silla-Martínez, J. M., &amp; Gabaldón, T. (2009). trimAl: a tool for automated alignment trimming in large-scale phylogenetic analyses. <em>Bioinformatics</em>, 25(15), 1972-1973.</p>\n'
-    html += '<p>Flanders Marine Institute (2021). Global Oceans and Seas, version 1. Available online at <a href="https://www.marineregions.org/" target="_blank">https://www.marineregions.org/</a></p>\n'
-    html += '<p>Katoh, K., &amp; Standley, D. M. (2013). MAFFT multiple sequence alignment software version 7: improvements in performance and usability. <em>Molecular Biology and Evolution</em>, 30(4), 772-780.</p>\n'
-
-    if params.get('build_tree', False):
-        html += '<p>Price, M. N., Dehal, P. S., &amp; Arkin, A. P. (2010). FastTree 2 – Approximately maximum-likelihood trees for large alignments. <em>PLoS ONE</em>, 5(3), e9490.</p>\n'
-
-    html += '<p>Ratnasingham, S., &amp; Hebert, P. D. (2007). BOLD: The Barcode of Life Data System. <em>Molecular Ecology Notes</em>, 7(3), 355-364.</p>\n'
-    html += '<p>Šošić, M., &amp; Šikić, M. (2017). Edlib: a C/C++ library for fast, exact sequence alignment using edit distance. <em>Bioinformatics</em>, 33(9), 1394-1395.</p>\n'
-    html += '</div>\n'
-    html += '</div>\n'  # Close references subtab-content
-
-    html += '</div>\n'  # Close section
     return html
 
 
@@ -4252,6 +3886,7 @@ def generate_html_report(
     version: str = "1.0.0",
     staging_dir: Optional[Path] = None,
     report_path: Optional[Path] = None,
+    links: Optional[dict] = None,
 ) -> Optional[Path]:
     """
     Generate comprehensive HTML summary report.
@@ -4272,6 +3907,10 @@ def generate_html_report(
         default output_dir (a v1-style folder)
     report_path : Path, optional
         Where to write the report (default: output_dir/report.html)
+    links : dict, optional
+        Staged file -> path in the run folder (layout.plan_moves). Figures are
+        linked at those paths; staged files not in it are not shown. Without
+        it, figures are linked relative to the report.
 
     Returns
     -------
@@ -4350,14 +3989,15 @@ def generate_html_report(
         # Build sections
         builder.add_section(_build_executive_summary_section(assignment_summary, annotated_df))
         builder.add_section(_build_parameters_section(run_dir, organism))
-        builder.add_section(_build_visualizations_section(output_dir, organism))
+        resolve = _link_resolver(links) if links is not None else None
+        builder.add_section(_build_visualizations_section(output_dir, organism, resolve))
         builder.add_section(_build_methods_section(run_dir, organism, version))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_quality_control_section(quality_dir))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
         builder.add_section(_build_species_composition_section(species_comp_dir, organism, annotated_df))
         builder.add_section(_build_geographic_section(annotated_df))
-        builder.add_section(_build_metadata_summary_section(output_dir, organism))
+        builder.add_section(_build_metadata_summary_section(output_dir, organism, resolve))
 
         # Render HTML
         html_content = builder.render()

@@ -20,7 +20,7 @@ ORGANISM = "Synth"
 
 
 def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_kit=False,
-                  export_formats=None, **cfg_updates):
+                  export_formats=None, report=False, **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv")
@@ -31,7 +31,7 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_ki
     cfg = config.get_default_config().update(**settings)
     ok = cli.run_pipeline(
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
-        no_report=True, skip_geo=skip_geo, export_plot_data=plot_kit,
+        no_report=not report, skip_geo=skip_geo, export_plot_data=plot_kit,
         export_popgen_formats=export_formats, metadata_summary_enabled=metadata_summary_enabled,
         temporal_analysis=True,
     )
@@ -400,3 +400,20 @@ def test_run_readme_definitions(synthetic_run):
         assert f"| `{col}` |" in readme
     assert "Country- and province-centroid coordinates are kept in lat/lon but are not assigned a region" in readme
     assert "| `ocean_basin` |" in readme
+
+
+def test_report_links_figures_and_describes_this_workflow(tmp_path):
+    """P2: report.html links figures in the run folder; Methods describe the ESV workflow."""
+    ok, out = run_synthetic(tmp_path, report=True, extended=True, phylogenetic__build_tree=True)
+    assert ok
+    html = (out / "report.html").read_text()
+    assert "data:image" not in html
+    assert (out / "report.html").stat().st_size < 10 * 1024 * 1024
+    links = set(re.findall(r'(?:src|href)="([^"#:]+)"', html))
+    assert "phylogeny/tree.svg" in links
+    for link in links:
+        assert (out / link).is_file(), link
+    methods = html[html.index('id="section-methods"'):]
+    for old in ("clustering threshold", "Similarity threshold", "Tie detection", "edlib", "Consensus genotypes"):
+        assert old.lower() not in methods.lower(), old
+    assert "core region" in methods and "FastTree" in methods
