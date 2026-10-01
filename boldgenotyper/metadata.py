@@ -5,7 +5,9 @@ This module handles parsing of BOLD TSV files and assignment of samples to
 their best-matching consensus genotype groups based on sequence similarity.
 
 Key Responsibilities:
+
 1. Parse BOLD TSV files and extract critical fields:
+
    - processid: Unique sample identifier (REQUIRED)
    - nuc: COI nucleotide sequence (REQUIRED)
    - coord: Geographic coordinates in format [lat, lon]
@@ -14,6 +16,7 @@ Key Responsibilities:
    - Other taxonomic and collection metadata
 
 2. Genotype Assignment:
+
    - Map each sample to its best-matching consensus sequence
    - Use global edit distance (edlib preferred, fallback to Levenshtein)
    - Require minimum identity threshold (default: 0.90)
@@ -21,11 +24,13 @@ Key Responsibilities:
    - Generate diagnostics showing identity scores
 
 3. Data Validation:
+
    - Check for required fields
    - Handle missing or malformed data gracefully
    - Provide informative warnings for data quality issues
 
 Important Notes:
+
 - The genotype assignment uses edit distance rather than alignment-based
   similarity for computational efficiency with large datasets.
 - Samples below the minimum identity threshold are flagged but retained
@@ -33,6 +38,7 @@ Important Notes:
 - The processid field must be unique; duplicates will raise an error.
 
 File Naming Convention:
+
 - Input: {organism}_name.tsv (from BOLD)
 - Output: {organism}_with_genotypes.tsv
 
@@ -709,15 +715,16 @@ def mark_coordinate_quality(
     Added Columns
     -------------
     coord_status : str
-        One of:
-        ok            parseable, in range, not [0, 0], not a centroid
-        missing       no coordinate given
-        unparseable   a coordinate was given but could not be parsed
-        centroid      coord_source says the coordinate is a country or province
-                      centroid; lat/lon are kept, but the record is not assigned
-                      a region or mapped
-        zero          exactly [0, 0]
-        out_of_range  latitude outside [-90, 90] or longitude outside [-180, 180]
+        One of::
+
+            ok            parseable, in range, not [0, 0], not a centroid
+            missing       no coordinate given
+            unparseable   a coordinate was given but could not be parsed
+            centroid      coord_source says the coordinate is a country or province
+                          centroid; lat/lon are kept, but the record is not assigned
+                          a region or mapped
+            zero          exactly [0, 0]
+            out_of_range  latitude outside [-90, 90] or longitude outside [-180, 180]
     has_missing_coords, has_centroid_coords, has_zero_coords, has_invalid_coords : bool
         One flag per problem (has_missing_coords covers missing and unparseable)
     is_geographic_quality : bool

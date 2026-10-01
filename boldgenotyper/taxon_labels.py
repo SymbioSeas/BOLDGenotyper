@@ -1,13 +1,13 @@
 """Classify species labels and count species under explicit definitions.
 
-label_level():
+label_level()::
 
     species  two or more words naming a species ("Genus alpha")
     open     open nomenclature ("Genus sp. 1", "Genus cf. alpha", "Genus aff. alpha")
     genus    a single word ("Genus")
     missing  empty or NaN
 
-species_count_summary() returns the species counts defined in the run README:
+species_count_summary() returns the species counts defined in the run README::
 
     n_species_labels_input          unique non-empty species labels among unique input records
     n_species_labels_species_level  of those, labels at level "species"

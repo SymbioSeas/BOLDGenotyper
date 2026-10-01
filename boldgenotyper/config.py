@@ -440,11 +440,13 @@ class GenotypeAssignmentConfig:
     -----
     The default minimum identity of 0.5 (50%) provides a permissive threshold
     for haplotype assignment, allowing for:
+
     - Greater intraspecific variation
     - Degraded or low-quality sequences
     - Differences between haplotype and raw sequences
 
     Tie Detection:
+
     - tie_margin: Controls sensitivity of tie detection (default 0.003 = 0.3%)
     - tie_threshold: Minimum quality for considering ties (default 0.95 = 95%)
     - Ties are only called when: best_identity >= tie_threshold AND

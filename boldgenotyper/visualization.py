@@ -7,7 +7,9 @@ plots work with any region type (ocean basins, freshwater basins, ecoregions,
 watersheds, biomes, etc.) via the ``basin_column`` parameter.
 
 Figure Types:
+
 1. Global Distribution Map
+
    - Points colored by haplotype
    - Point size proportional to sample count at location
    - World map background with country boundaries
@@ -15,6 +17,7 @@ Figure Types:
    - Scale bar and coordinates
 
 2. Geographic Region Abundance Plot
+
    - Stacked bar chart showing haplotype proportions per region
    - Bars arranged by region (curated order for GOaS ocean basins,
      alphabetical for custom regions)
@@ -24,19 +27,23 @@ Figure Types:
      ecoregions, watersheds, biomes, etc.
 
 3. Phylogenetic Tree (optional)
+
    - Maximum likelihood tree with bootstrap support
    - Branch tips colored by haplotype
    - Bootstrap values shown for key nodes
    - Scale bar for genetic distance
 
 4. Sequence Alignment Viewer (optional)
+
    - Pairwise alignment highlighting differences
    - Color-coded nucleotides
    - Consensus sequence shown
 
 Design Specifications:
+
 - Color palette: Colorblind-friendly (seaborn 'colorblind' or 'tab10')
   For consistency with reference analysis, first 3 colors approximate:
+
   * Purple (#8545C1)
   * Teal (#10B3A5)
   * Yellow (#FFB031)

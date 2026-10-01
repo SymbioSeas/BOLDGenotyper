@@ -6,23 +6,29 @@ package, including file I/O operations, external tool verification, logging
 configuration, sequence validation, and taxonomy assignment helpers.
 
 Key Utilities:
+
 1. Logging Configuration
+
    - Centralized logging setup with console and file output
 
 2. External Tool Management
+
    - Check for required bioinformatics tools (MAFFT, trimAl, FastTree)
    - Version checking and installation instructions
 
 3. File Operations
+
    - FASTA reading and writing (pure Python, no BioPython required)
    - Filename sanitization and organism name extraction from BOLD filenames
 
 4. Sequence Validation
+
    - DNA sequence quality checks (length, N-content, gaps)
    - COI open reading frame validation and orientation detection
    - Core alignment region extraction for variable-length barcodes
 
 5. Taxonomy Assignment
+
    - Consensus taxonomy for haplotype groups (majority-rule species assignment)
    - Multi-source taxonomy resolution (sequence-based vs metadata-based)
 

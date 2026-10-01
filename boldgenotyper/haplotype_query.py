@@ -7,6 +7,7 @@ new sequences (e.g., reference genomes, museum specimens, field samples) match
 any known haplotypes without re-running the full pipeline.
 
 Key Features:
+
 - Multi-FASTA support for batch processing; aligned input is cleaned (gaps removed)
 - Overlap alignment (global, free end gaps): every base where query and
   haplotype overlap is compared, whatever their lengths
@@ -27,6 +28,7 @@ haplotypes and reports that it's a 100% match to haplotype H0015 (containing
 5 S. lewini samples).
 
 Dependencies:
+
 - BioPython (for sequence alignment)
 - pandas (for data management)
 - pathlib (for file operations)

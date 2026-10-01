@@ -1,6 +1,6 @@
 """One assignment status per unique input record.
 
-Statuses, in order of precedence:
+Statuses, in order of precedence::
 
     no_sequence               no sequence in the input
     failed_qc                 failed pre-alignment QC (the reason is kept)

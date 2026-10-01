@@ -6,6 +6,7 @@ identifying Exact Sequence Variants (ESVs) from aligned regions and
 flagging potentially suspect haplotypes based on distance and ORF quality.
 
 The haplotype-first workflow:
+
 1. Extract COI sequences from BOLD TSV file
 2. Perform multiple sequence alignment using MAFFT
 3. Mask gappy columns (>50% gaps) to remove insertion artifacts
@@ -21,6 +22,7 @@ re-assignment. This avoids false "tie" detections that occur when ESV haplotypes
 differ by <0.3% (typical tie threshold), which is common with 1-2 bp differences.
 
 Some Definitions for Context:
+
 - **Haplotype (ESV)**: Exact Sequence Variant - unique sequence in core region
   Unlike clustering-based approaches, ESVs preserve all biological variation
   without arbitrary distance thresholds. Porter & Hajibabaei (2020) recommend ESVs for high-resolution COI barcoding.
@@ -31,6 +33,7 @@ Some Definitions for Context:
   core region extraction to prevent insertion artifacts from fragmenting coverage.
 
 - **Suspect Haplotype Flagging**: Singletons are flagged as suspect if:
+
   * Distance to nearest neighbor > threshold (default: 5%)
   * OR ORF validation failed (low coverage, internal stops)
   * OR suspect COI sequence (contamination indicator)
@@ -40,6 +43,7 @@ Some Definitions for Context:
 
 
 Dependencies:
+
 - MAFFT v7+ for multiple sequence alignment
 - numpy for distance calculations
 - Biopython for sequence handling

@@ -6,6 +6,7 @@ sequence orientation normalization, ORF validation, dynamic filtering, and a
 report of label conflicts within haplotypes.
 
 Key Features:
+
 - COI orientation normalization (forward/reverse complement detection)
 - Open reading frame (ORF) validation and quality checking
 - Dynamic QC filtering with median-based thresholds
@@ -15,6 +16,7 @@ Key Features:
 - Depositor-note keyword hits (raw notes plus the keywords matched)
 
 Workflow:
+
 1. Orientation Normalization: Check ORF in both orientations, correct if needed
 2. ORF Validation: Check coverage and internal stop codons
 3. Dynamic QC: Apply absolute and median-based length/quality filters

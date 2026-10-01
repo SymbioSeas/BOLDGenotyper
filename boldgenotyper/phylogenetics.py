@@ -11,15 +11,18 @@ This module implements a biologically appropriate phylogenetic workflow that
 addresses a critical issue in consensus-based phylogenetics:
 
 Problem:
+
 - Consensus sequences from small clusters (1-5 sequences) are highly incomplete
 - These short sequences (33-40% complete) create alignments with 60-70% gaps
 - High gap percentages compromise phylogenetic inference:
+
   * Ambiguous positional homology
   * Reduced phylogenetic signal
   * Unreliable bootstrap support
   * Distorted evolutionary distances
 
 Solution:
+
 - Filter consensus sequences BEFORE tree building
 - Only use high-quality sequences (≥600 bp, ≥5 sequences per cluster)
 - Trim gappy alignment columns with trimAl
@@ -31,39 +34,46 @@ complete taxonomic coverage for genotyping.
 Phylogenetic Analysis Modes:
 
 Mode 1: No phylogeny (default)
+
 - Genotype identification only
 - Fastest analysis option
 - Suitable for exploratory analysis
 
 Mode 2: --phylogeny flag
+
 - Build filtered, quality-controlled phylogenetic tree
 - Midpoint rooted
 - No outgroup required
 - Good for visualizing relationships among haplotypes
 
 Mode 3: --phylogeny --outgroup <fasta>
+
 - User provides outgroup sequences
 - Proper phylogenetic rooting
 - Requires taxonomic expertise for outgroup selection
 - Best for publication-quality phylogenies
 
 Quality-Filtered Workflow:
+
 1. Filter consensus sequences (≥600 bp, ≥5 sequences per cluster)
 2. Align filtered sequences using MAFFT (--auto mode)
 3. Trim gappy columns with trimAl (gappyout method)
 4. Build maximum likelihood tree with FastTree
+
    - Model: GTR+CAT (General Time Reversible with CAT approximation)
    - Bootstrap: 1000 replicates (or user-specified)
 5. Midpoint root (if no outgroup provided)
 6. Export tree in Newick format
 
 Dependencies:
+
 - MAFFT v7+ for alignment
 - trimAl 1.4+ for alignment trimming
 - FastTree 2.1+ for tree building
 - Biopython for tree parsing
 
 Output Files:
+
 - {organism}_filtered.fasta : Quality-filtered consensus sequences
 - {organism}_aligned.fasta : MAFFT alignment
 - {organism}_aligned_trimmed.fasta : trimAl-trimmed alignment
