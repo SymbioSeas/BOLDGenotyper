@@ -52,9 +52,11 @@ def _assignments():
 def test_species_diversity_has_one_metric_and_a_note(tmp_path):
     div = sa.calculate_species_diversity(_assignments(), output_dir=tmp_path)
     assert list(div.columns) == sa.SPECIES_DIVERSITY_COLUMNS
-    assert sa.SPECIES_DIVERSITY_COLUMNS == ["species", "n_samples", "n_haplotypes",
-                                           "haplotype_diversity", "note"]
+    assert sa.SPECIES_DIVERSITY_COLUMNS == ["species", "n_samples", "n_haplotypes", "haplotype_diversity",
+                                           "dominant_haplotype", "dominant_haplotype_freq", "note"]
     alpha = div.set_index("species").loc["Genus alpha"]
+    assert alpha.dominant_haplotype == "H0001"
+    assert alpha.dominant_haplotype_freq == pytest.approx(0.75)
     # Nei's h = n/(n-1) * (1 - sum p^2) = 4/3 * (1 - (9/16 + 1/16)) = 0.5
     assert alpha.haplotype_diversity == pytest.approx(0.5)
     assert set(div["note"]) == {"label-based, sampling-dependent"}

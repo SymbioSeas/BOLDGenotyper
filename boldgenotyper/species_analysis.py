@@ -130,7 +130,8 @@ def aggregate_samples_by_species(
     return species_assignments, species_summary
 
 
-SPECIES_DIVERSITY_COLUMNS = ["species", "n_samples", "n_haplotypes", "haplotype_diversity", "note"]
+SPECIES_DIVERSITY_COLUMNS = ["species", "n_samples", "n_haplotypes", "haplotype_diversity",
+                             "dominant_haplotype", "dominant_haplotype_freq", "note"]
 SPECIES_DIVERSITY_NOTE = "label-based, sampling-dependent"
 
 
@@ -192,6 +193,8 @@ def calculate_species_diversity(
             'n_samples': n_samples,
             'n_haplotypes': n_haplotypes,
             'haplotype_diversity': h,
+            'dominant_haplotype': haplotype_counts.index[0],
+            'dominant_haplotype_freq': haplotype_freqs.iloc[0],
             'note': SPECIES_DIVERSITY_NOTE,
         })
 
