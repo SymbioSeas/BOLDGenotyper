@@ -969,11 +969,12 @@ def run_pipeline(
                 output_dir=dirs['species_analysis']
             )
 
-            logger.info("6.5.2: Calculating species-level diversity metrics...")
-            species_diversity = species_analysis.calculate_species_diversity(
-                species_assignments=species_assignments,
-                output_dir=dirs['species_analysis']
-            )
+            if cfg.extended:
+                logger.info("6.5.2: Calculating haplotype diversity per species label...")
+                species_analysis.calculate_species_diversity(
+                    species_assignments=species_assignments,
+                    output_dir=dirs['species_analysis']
+                )
 
             logger.info("6.5.3: Generating species-level geographic summary...")
             species_geographic = species_analysis.generate_species_geographic_summary(

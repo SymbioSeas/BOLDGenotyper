@@ -128,12 +128,16 @@ def aggregate_samples_by_species(
     return species_assignments, species_summary
 
 
+SPECIES_DIVERSITY_COLUMNS = ["species", "n_samples", "n_haplotypes", "haplotype_diversity", "note"]
+SPECIES_DIVERSITY_NOTE = "label-based, sampling-dependent"
+
+
 def calculate_species_diversity(
     species_assignments: pd.DataFrame,
     output_dir: Optional[Path] = None
 ) -> pd.DataFrame:
     """
-    Calculate haplotype diversity metrics per species.
+    Haplotype diversity per species label (--extended).
 
     Parameters
     ----------
@@ -145,16 +149,14 @@ def calculate_species_diversity(
     Returns
     -------
     pd.DataFrame
-        Species diversity metrics (nucleotide diversity, haplotype diversity, etc.)
+        Columns SPECIES_DIVERSITY_COLUMNS
 
     Notes
     -----
-    Metrics calculated:
-    - n_haplotypes: Number of unique haplotypes per species
-    - n_samples: Number of samples per species
-    - haplotype_diversity (h): Probability that two randomly chosen samples
-      have different haplotypes
-    - simpson_index: 1 - sum(p_i^2) where p_i is frequency of haplotype i
+    haplotype_diversity is Nei's h = n/(n-1) * (1 - sum(p_i^2)), the
+    probability that two records of the species label differ in haplotype.
+    It depends on the species labels and on which specimens were sampled,
+    which the `note` column states (P1-10).
     """
     logger.info("Calculating species-level diversity metrics...")
 
@@ -183,20 +185,15 @@ def calculate_species_diversity(
         else:
             h = 0.0
 
-        # Simpson's diversity index
-        simpson = 1 - sum_p_squared
-
         diversity_metrics.append({
             'species': species,
             'n_samples': n_samples,
             'n_haplotypes': n_haplotypes,
             'haplotype_diversity': h,
-            'simpson_index': simpson,
-            'dominant_haplotype': haplotype_counts.index[0],
-            'dominant_haplotype_freq': haplotype_freqs.iloc[0]
+            'note': SPECIES_DIVERSITY_NOTE,
         })
 
-    diversity_df = pd.DataFrame(diversity_metrics)
+    diversity_df = pd.DataFrame(diversity_metrics, columns=SPECIES_DIVERSITY_COLUMNS)
     diversity_df = diversity_df.sort_values('n_samples', ascending=False)
 
     if output_dir:
@@ -232,7 +229,9 @@ def generate_species_geographic_summary(
     Summarizes:
     - Number of samples per species per ocean basin
     - Number of samples per species per country
-    - Geographic range extent per species
+
+    v1 also wrote species_geographic_range.csv (latitude/longitude bounding
+    boxes); it is no longer written (P1-9).
     """
     logger.info("Generating species-level geographic summary...")
 
@@ -263,48 +262,6 @@ def generate_species_geographic_summary(
             country_file = output_dir / 'species_country_distribution.csv'
             country_summary.to_csv(country_file, index=False)
             logger.info(f"  Saved species country distribution: {country_file}")
-
-    # Geographic range extent (for species with coordinates)
-    if 'coord' in confident.columns:
-        range_metrics = []
-        for species, group in confident.groupby('primary_species'):
-            # Parse coordinates
-            coords_with_data = group[group['coord'].notna()].copy()
-            if len(coords_with_data) == 0:
-                continue
-
-            try:
-                # Extract lat/lon from coord string [lat, lon]
-                coords = coords_with_data['coord'].str.strip('[]').str.split(', ', expand=True)
-                if len(coords.columns) >= 2:
-                    lats = pd.to_numeric(coords[0], errors='coerce')
-                    lons = pd.to_numeric(coords[1], errors='coerce')
-
-                    valid = ~(lats.isna() | lons.isna())
-                    if valid.sum() > 0:
-                        lat_range = lats[valid].max() - lats[valid].min()
-                        lon_range = lons[valid].max() - lons[valid].min()
-
-                        range_metrics.append({
-                            'species': species,
-                            'n_samples_with_coords': valid.sum(),
-                            'lat_min': lats[valid].min(),
-                            'lat_max': lats[valid].max(),
-                            'lon_min': lons[valid].min(),
-                            'lon_max': lons[valid].max(),
-                            'lat_range': lat_range,
-                            'lon_range': lon_range
-                        })
-            except Exception as e:
-                logger.debug(f"Could not parse coordinates for {species}: {e}")
-                continue
-
-        if range_metrics and output_dir:
-            range_df = pd.DataFrame(range_metrics)
-            output_dir = Path(output_dir)
-            range_file = output_dir / 'species_geographic_range.csv'
-            range_df.to_csv(range_file, index=False)
-            logger.info(f"  Saved species geographic range: {range_file}")
 
     # Return basin summary as primary output
     return basin_summary if 'basin_summary' in locals() else pd.DataFrame()

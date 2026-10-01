@@ -116,19 +116,6 @@ def assess_geographic_coverage(
         pct_region = (has_region / n_total * 100) if n_total > 0 else 0
         pct_country = (has_country / n_total * 100) if n_total > 0 else 0
 
-        # Assess representativeness
-        if pct_region > 50:
-            representativeness = 'excellent'
-        elif pct_region >= 25:
-            representativeness = 'good'
-        elif pct_region >= 10 or pct_lat_lon >= 50:
-            representativeness = 'moderate'
-        elif pct_lat_lon >= 10:
-            representativeness = 'poor'
-        else:
-            representativeness = 'very_poor'
-
-        geo_label = geo_category.replace('_', ' ')
         coverage_data.append({
             'genotype': group,
             'species': species,
@@ -139,7 +126,6 @@ def assess_geographic_coverage(
             'pct_with_region': pct_region,
             'with_country': has_country,
             'pct_with_country': pct_country,
-            'representativeness': representativeness
         })
 
     return pd.DataFrame(coverage_data)
@@ -325,7 +311,6 @@ By Genotype:
         n_coords = row['with_lat_lon']
         n_region = row.get(region_col, row.get('with_ocean_basin', 0))
         n_country = row['with_country']
-        representativeness = row['representativeness']
 
         pct_with_region = row.get('pct_with_region', row.get('pct_with_basin', 0))
 
@@ -344,8 +329,6 @@ By Genotype:
             report += f"  ~ Country Only: {n_country} ({row['pct_with_country']:.1f}%)\n"
         else:
             report += f"  - Country Only: 0 (0.0%)\n"
-
-        report += f"  -> Representativeness: {representativeness.upper()}\n"
 
     # Add limitations section
     report += f"""
@@ -410,12 +393,12 @@ def print_geographic_warnings(
     geo_category: str = "ocean_basin"
 ) -> None:
     """
-    Print geographic coverage warnings to console.
+    Print the share of records with coordinates and with a region (P1-9).
 
     Parameters
     ----------
     coverage_df : pd.DataFrame
-        Coverage statistics
+        Coverage statistics (unused; kept for the v1 signature)
     overall_pct_basin : float
         Overall percentage with geographic regions
     overall_pct_coords : float
@@ -423,35 +406,14 @@ def print_geographic_warnings(
     geo_category : str
         Geographic category name (default: 'ocean_basin')
     """
-    if overall_pct_basin < 25 or overall_pct_coords < 50:
-        print("\n" + "="*70)
-        print("⚠️  GEOGRAPHIC DATA WARNING")
-        print("="*70)
-
-        if overall_pct_basin < 25:
-            print(f"\nOnly {overall_pct_basin:.1f}% of samples have {geo_category.replace('_', ' ')} assignments")
-
-        if overall_pct_coords < 50:
-            print(f"Only {overall_pct_coords:.1f}% have precise coordinates")
-
-        print("\nThis may limit biogeographic conclusions.")
-        print("Consider:")
-        print("1. Focusing interpretation on samples with coordinates")
-        print(f"2. Presenting {geo_category.replace('_', ' ')} analysis as preliminary")
-        print("3. Acknowledging limitations in manuscript")
-
-        # Identify problematic genotypes
-        poor_genotypes = coverage_df[
-            coverage_df['representativeness'].isin(['poor', 'very_poor'])
-        ]
-
-        if len(poor_genotypes) > 0:
-            print(f"\n⚠️  {len(poor_genotypes)} genotype(s) with poor geographic coverage:")
-            for _, row in poor_genotypes.head(5).iterrows():
-                print(f"  - {row['genotype']}: {row['pct_with_region']:.1f}% with {geo_category.replace('_', ' ')}")
-
-        print("\nSee: geographic_analysis/geographic_coverage.csv for per-haplotype details")
-        print("="*70 + "\n")
+    geo_label = geo_category.replace('_', ' ')
+    print("\n" + "=" * 70)
+    print("GEOGRAPHIC DATA COVERAGE")
+    print("=" * 70)
+    print(f"Records with coordinates: {overall_pct_coords:.1f}%")
+    print(f"Records with a {geo_label} assignment: {overall_pct_basin:.1f}%")
+    print("Per-haplotype percentages: geographic_analysis/geographic_coverage.csv")
+    print("=" * 70 + "\n")
 
 
 def enhance_geographic_analysis(
@@ -527,11 +489,12 @@ def enhance_geographic_analysis(
 
 ## Overview
 
-Enhanced geographic analysis with coverage assessment and quality metrics.
+Geographic data coverage per haplotype and region-assignment confidence.
 
 ## Files
 
-- `geographic_coverage.csv` - Coverage statistics per haplotype
+- `geographic_coverage.csv` - Per haplotype: records with coordinates, with a
+  region assignment and with a country (counts and percentages)
 - Enhanced annotated CSV includes `basin_confidence` column
 
 ## Coverage Summary
@@ -547,20 +510,11 @@ Enhanced geographic analysis with coverage assessment and quality metrics.
 - `low`: <10 km from boundary (uncertain assignment)
 - `none`: No coordinates available
 
-## Representativeness Scores
-
-**Per-Haplotype Geographic Coverage:**
-- `excellent`: >50% with region assignment
-- `good`: 25-50% with region assignment
-- `moderate`: 10-25% with region OR >50% with coords
-- `poor`: <10% with region AND <25% with coords
-- `very_poor`: <10% with any geographic data
-
 ## Interpretation
 
-Geographic patterns should be interpreted cautiously when coverage is
-poor or moderate. High-confidence region assignments are preferred for
-biogeographic conclusions.
+Region assignments are made only for records with geographic-quality
+coordinates. The percentages describe which records carry location data;
+they are not a measure of how well a haplotype's range has been sampled.
 """
 
     with open(readme_path, 'w') as f:

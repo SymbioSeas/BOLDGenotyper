@@ -293,3 +293,12 @@ def test_extended_metadata_outputs(extended_run):
     assert (md / f"{ORGANISM}_temporal_trends.csv").exists()
     readme = (md / "README.md").read_text()
     assert "sampling" in readme and "emergence" not in readme.lower()
+
+
+def test_species_diversity_only_with_extended(synthetic_run, extended_run):
+    """P1-9, P1-10."""
+    assert not (synthetic_run / "species_analysis" / "species_diversity.csv").exists()
+    for run in (synthetic_run, extended_run):
+        assert not (run / "species_analysis" / "species_geographic_range.csv").exists()
+    div = pd.read_csv(extended_run / "species_analysis" / "species_diversity.csv")
+    assert "simpson_index" not in div.columns and set(div["note"]) == {"label-based, sampling-dependent"}
