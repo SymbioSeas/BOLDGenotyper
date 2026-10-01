@@ -49,6 +49,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - Log lines are plain text (P3).
 - The sweep's `recommendations.txt` reports the elbow with the stability table instead of an "acceptable range" (P3).
 - The conda environment installs pymsaviz for MSA plots.
+- Documentation: README, API reference, parameter-sweep, popgen-export and full-dataset guides, the Sphinx sources (one page per module) and the tutorial notebooks describe 2.0.0; the benchmarking protocol notes what changed since the 1.0.0 benchmarks.
 
 ### Deprecated
 - `--similarity-threshold`, `--tie-margin` (pipeline), `--tie-threshold`: no effect in the haplotype workflow; they warn (P0-1).
