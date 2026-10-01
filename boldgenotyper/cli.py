@@ -1223,7 +1223,9 @@ def run_pipeline(
                 consensus_fasta=str(haplotype_fasta),
                 taxonomy_csv=str(taxonomy_csv_path),
                 output_dir=dirs['divergence_analysis'],
-                organism=organism
+                organism=organism,
+                extended=cfg.extended,
+                records=df_final,
             )
 
             logger.info(f"  ✓ Divergence analysis complete: {dirs['divergence_analysis']}")
@@ -1235,7 +1237,9 @@ def run_pipeline(
             logger.info("9.2: Calculating species-level divergence...")
             species_summary_csv = dirs['species_analysis'] / 'species_summary.csv'
 
-            if species_summary_csv.exists() and 'divergence_matrix' in divergence_results:
+            if not cfg.extended:
+                logger.info("  ⊘ Species-level divergence summary written only with --extended")
+            elif species_summary_csv.exists() and 'divergence_matrix' in divergence_results:
                 try:
                     # Load divergence matrix
                     div_matrix_path = divergence_results['divergence_matrix']

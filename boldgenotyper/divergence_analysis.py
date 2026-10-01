@@ -306,6 +306,11 @@ def analyze_barcoding_gap(
     taxonomy_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
+    Deprecated (P1-2): within/between divergence of haplotype majority labels.
+
+    Superseded by compute_label_based_gap (record labels, label-conflict
+    records excluded), which the pipeline writes only with --extended.
+
     Analyze within-species vs between-species divergence (barcoding gap).
 
     Parameters
@@ -651,14 +656,87 @@ def create_barcoding_gap_plot(
     logger.info(f"  Barcoding gap plot saved to {output_path}")
 
 
+LABEL_GAP_COLUMNS = ["label", "n_records", "n_haplotypes", "max_within", "min_between",
+                     "nearest_other_label", "label_based_gap"]
+
+
+def compute_label_based_gap(distance_by_id: pd.DataFrame, records: pd.DataFrame) -> pd.DataFrame:
+    """Within- and between-label divergence from record labels (P1-2, --extended).
+
+    For each species-level record label: the haplotypes of records carrying it
+    (label-conflict records excluded when a label_conflict column is present),
+    the largest p-distance among those haplotypes (max_within; 0 for one
+    haplotype), the smallest p-distance to a haplotype of any other label
+    (min_between) and that label, and label_based_gap = min_between >
+    max_within. Distances between records are the distances between their
+    haplotypes. The result depends on the labels deposited in BOLD and on
+    sampling; it is not a species-delimitation test.
+    """
+    from .taxon_labels import label_level
+
+    rec = records[records["haplotype_id"].notna()].copy()
+    rec["label"] = rec["label"].fillna("")
+    rec = rec[rec["label"].map(label_level) == "species"]
+    if "label_conflict" in rec.columns:
+        rec = rec[~rec["label_conflict"].astype(str).str.lower().eq("true")]
+    rec = rec[rec["haplotype_id"].isin(distance_by_id.index)]
+    haps = rec.groupby("label")["haplotype_id"].agg(lambda s: sorted(set(s)))
+    n_records = rec.groupby("label").size()
+    rows = []
+    for label, h in haps.items():
+        within = float(distance_by_id.loc[h, h].to_numpy().max()) if len(h) > 1 else 0.0
+        best, best_label = np.inf, None
+        for other, g in haps.items():
+            if other == label:
+                continue
+            d = float(distance_by_id.loc[h, g].to_numpy().min())
+            if d < best:
+                best, best_label = d, other
+        min_between = best if np.isfinite(best) else np.nan
+        rows.append({
+            "label": label, "n_records": int(n_records[label]), "n_haplotypes": len(h),
+            "max_within": within, "min_between": min_between, "nearest_other_label": best_label,
+            "label_based_gap": (min_between > within) if np.isfinite(best) else np.nan,
+        })
+    return pd.DataFrame(rows, columns=LABEL_GAP_COLUMNS)
+
+
+def create_label_gap_plot(gap_df: pd.DataFrame, output_path: Path) -> None:
+    """Scatter of max_within against min_between per label, with the 1:1 line."""
+    import matplotlib.pyplot as plt
+    data = gap_df.dropna(subset=["min_between"])
+    if data.empty:
+        logger.info("  No labels with a between-label comparison; label gap plot skipped")
+        return
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.scatter(data["max_within"], data["min_between"], s=30, alpha=0.8, color="#4C72B0",
+               edgecolors="black", linewidths=0.4)
+    top = float(max(data["max_within"].max(), data["min_between"].max(), 0.01)) * 1.05
+    ax.plot([0, top], [0, top], color="gray", linestyle="-", linewidth=1)
+    ax.set_xlim(0, top)
+    ax.set_ylim(0, top)
+    ax.set_xlabel("Largest p-distance among haplotypes with the label (max_within)")
+    ax.set_ylabel("Smallest p-distance to another label (min_between)")
+    ax.set_title("Label-based within vs between divergence (one point per label)")
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def generate_divergence_analysis(
     consensus_fasta: Path,
     taxonomy_csv: Path,
     output_dir: Path,
-    organism: str
+    organism: str,
+    extended: bool = False,
+    records: Optional[pd.DataFrame] = None,
 ) -> Dict[str, Any]:
     """
     Complete divergence analysis workflow.
+
+    With extended=True and records (the annotated table with haplotype_id,
+    label and label_conflict), also writes label_based_gap.csv and its plot.
 
     Parameters
     ----------
@@ -713,16 +791,19 @@ def generate_divergence_analysis(
         results['divergence_summary'] = summary_path
         logger.info(f"  Saved divergence summary: {summary_path}")
 
-    # Analyze barcoding gap
-    gap_df = analyze_barcoding_gap(divergence_matrix, taxonomy_df)
-    if len(gap_df) > 0:
-        gap_path = output_dir / "within_vs_between_species.csv"
+    # Label-based barcoding gap: only with --extended (P1-2)
+    if extended and records is not None:
+        to_id = {}
+        if 'haplotype_sp' in taxonomy_df.columns and 'haplotype_id' in taxonomy_df.columns:
+            to_id = dict(zip(taxonomy_df['haplotype_sp'], taxonomy_df['haplotype_id']))
+        distance_by_id = divergence_matrix.rename(index=lambda x: to_id.get(x, x),
+                                                  columns=lambda x: to_id.get(x, x))
+        gap_df = compute_label_based_gap(distance_by_id, records)
+        gap_path = output_dir / "label_based_gap.csv"
         gap_df.to_csv(gap_path, index=False)
-        results['barcoding_gap'] = gap_path
-        logger.info(f"  Saved barcoding gap analysis: {gap_path}")
-
-        # Store summary stats for console output
+        results['label_based_gap'] = gap_path
         results['gap_stats'] = gap_df.to_dict('records')
+        logger.info(f"  Saved label-based gap table: {gap_path}")
 
     # Create visualizations
     try:
@@ -732,14 +813,27 @@ def generate_divergence_analysis(
     except Exception as e:
         logger.warning(f"Could not create divergence heatmap: {e}", extra={"step_failure": "9 divergence"})
 
-    try:
-        gap_plot_path = output_dir / "barcoding_gap.pdf"
-        create_barcoding_gap_plot(divergence_matrix, taxonomy_df, gap_plot_path)
-        results['gap_plot'] = gap_plot_path
-    except Exception as e:
-        logger.warning(f"Could not create barcoding gap plot: {e}", extra={"step_failure": "9 divergence"})
+    if 'label_based_gap' in results:
+        try:
+            gap_plot_path = output_dir / "label_based_gap.pdf"
+            create_label_gap_plot(gap_df, gap_plot_path)
+            if gap_plot_path.exists():
+                results['gap_plot'] = gap_plot_path
+        except Exception as e:
+            logger.warning(f"Could not create label gap plot: {e}", extra={"step_failure": "9 divergence"})
 
     # Create README
+    gap_files_text = ""
+    if 'label_based_gap' in results:
+        gap_files_text = (
+            "- **label_based_gap.csv** (with --extended): per species-level record label, the\n"
+            "  largest p-distance among haplotypes carrying it (`max_within`), the smallest\n"
+            "  p-distance to a haplotype of another label (`min_between`, `nearest_other_label`)\n"
+            "  and `label_based_gap` (min_between > max_within). Label-conflict records are\n"
+            "  excluded. It reflects the labels deposited in BOLD and sampling; it is not a\n"
+            "  species-delimitation test.\n"
+            "- **label_based_gap.pdf** (with --extended): max_within against min_between per label\n"
+        )
     readme_path = output_dir / "README.md"
     readme_content = f"""# Divergence Analysis for {organism}
 
@@ -751,9 +845,8 @@ This directory contains pairwise divergence analysis results for haplotype seque
 
 - **pairwise_divergence_matrix.csv**: Square matrix of uncorrected p-distances
 - **divergence_summary.csv**: Summary statistics by comparison type (mean, min, max divergence)
-- **within_vs_between_species.csv**: Barcoding gap analysis per species
 - **divergence_heatmap.pdf**: Visual heatmap of pairwise divergences
-- **barcoding_gap.pdf**: Within vs between species divergence distributions
+{gap_files_text}
 
 ## Haplotype Label Format
 
@@ -808,29 +901,11 @@ def print_divergence_summary(results: Dict[str, Any]) -> None:
     print("DIVERGENCE ANALYSIS")
     print("="*70)
 
-    for species_data in results['gap_stats']:
-        species = species_data['species']
-        mean_within = species_data['mean_within']
-        max_within = species_data['max_within']
-        mean_between = species_data.get('mean_between', np.nan)
-        min_between = species_data.get('min_between', np.nan)
-        has_gap = species_data['barcoding_gap']
-
-        print(f"\n{species}:")
-        print(f"  Within-species divergence: {mean_within:.3f} (max: {max_within:.3f})")
-
-        if not pd.isna(mean_between):
-            print(f"  Between-species divergence: {mean_between:.3f} (min: {min_between:.3f})")
-
-        # Barcoding gap status
-        if has_gap:
-            gap_size = species_data['gap_size']
-            print(f"  Barcoding gap present: {gap_size:.3f}")
-        else:
-            if not pd.isna(min_between):
-                overlap = max_within - min_between
-                print(f"  Barcoding gap absent (overlap: {overlap:.3f})")
-
+    n_gap = sum(1 for g in results['gap_stats'] if g.get('label_based_gap') is True)
+    n_compared = sum(1 for g in results['gap_stats'] if not pd.isna(g.get('min_between')))
+    print(f"Label-based gap (min_between > max_within): {n_gap} of {n_compared} labels "
+          f"with a between-label comparison")
+    print("  See divergence_analysis/label_based_gap.csv (record labels; depends on sampling)")
     print("="*70 + "\n")
 
 
@@ -872,7 +947,9 @@ def generate_species_divergence_analysis(
     Calculates:
     - Mean/max/min divergence within each species (across all haplotypes)
     - Mean/max/min divergence between species pairs
-    - Barcoding gap assessment for each species
+    (The barcoding gap is in divergence_analysis/label_based_gap.csv, from
+    record labels; this summary uses haplotype majority labels and reports
+    distances only.)
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -945,13 +1022,6 @@ def generate_species_divergence_analysis(
         else:
             mean_between = max_between = min_between = np.nan
 
-        # Barcoding gap
-        has_gap = False
-        gap_size = np.nan
-        if not pd.isna(max_within) and not pd.isna(min_between):
-            has_gap = min_between > max_within
-            gap_size = min_between - max_within if has_gap else np.nan
-
         species_divergence.append({
             'species': species,
             'n_haplotypes': len(species_haplotypes),
@@ -961,8 +1031,6 @@ def generate_species_divergence_analysis(
             'mean_between_species': mean_between,
             'max_between_species': max_between,
             'min_between_species': min_between,
-            'barcoding_gap_present': has_gap,
-            'gap_size': gap_size
         })
 
     # Create dataframe and save

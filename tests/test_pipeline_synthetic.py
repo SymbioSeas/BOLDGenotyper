@@ -248,3 +248,28 @@ def test_label_report_replaces_contamination_outputs(synthetic_run):
     ann = pd.read_csv(synthetic_run / f"{ORGANISM}_annotated.csv")
     assert {"label", "majority_label", "label_conflict", "majority_fraction"} <= set(ann.columns)
     assert "misidentification_confidence" not in ann.columns
+
+
+@pytest.fixture(scope="module")
+def extended_run(tmp_path_factory):
+    ok, out = run_synthetic(tmp_path_factory.mktemp("synthetic_extended"), extended=True)
+    assert ok
+    return out
+
+
+def test_default_run_writes_no_gap_outputs(synthetic_run):
+    """P1-2: no barcoding-gap outputs by default."""
+    for rel in ("divergence_analysis/within_vs_between_species.csv",
+                "divergence_analysis/barcoding_gap.pdf",
+                "divergence_analysis/label_based_gap.csv",
+                "species_analysis/species_divergence_summary.csv"):
+        assert not (synthetic_run / rel).exists(), rel
+
+
+def test_extended_run_writes_label_based_gap(extended_run):
+    gap = pd.read_csv(extended_run / "divergence_analysis" / "label_based_gap.csv")
+    assert set(gap["label"]) == {"Genus alpha", "Genus beta", "Genus gamma"}
+    assert "barcoding_gap" not in gap.columns and "label_based_gap" in gap.columns
+    assert not (extended_run / "divergence_analysis" / "within_vs_between_species.csv").exists()
+    d = json.loads((extended_run / "run_provenance.json").read_text())
+    assert d["config"]["extended"] is True and d["warnings"] == []
