@@ -74,7 +74,7 @@ Steps to reproduce the behavior:
 What you expected to happen.
 
 **Environment:**
-- BOLDGenotyper version: [e.g., 0.1.0]
+- BOLDGenotyper version: [e.g., 2.0.0; `boldgenotyper --version`]
 - Python version: [e.g., 3.9.7]
 - OS: [e.g., macOS 12.0, Ubuntu 20.04]
 - Installation method: [conda, pip, source]
@@ -326,8 +326,8 @@ def example_function(
 # Do: Raise specific exceptions with helpful messages
 if threshold < 0 or threshold > 1:
     raise ValueError(
-        f"Threshold must be between 0 and 1, got {threshold}. "
-        "This parameter controls the similarity cutoff for clustering."
+        f"--singleton-distance must be between 0 and 1, got {threshold}. "
+        "It is the p-distance within which singleton haplotypes are treated as errors."
     )
 
 # Don't: Generic errors or silent failures
@@ -341,17 +341,15 @@ if threshold < 0:
 
 ```
 tests/
-├── test_core.py           # Core pipeline tests
-├── test_dereplication.py  # Sequence clustering tests
-├── test_genotype_assignment.py
-├── test_visualization.py
-├── test_geographic.py
-├── test_phylogenetics.py
-├── test_error_handling.py # Error cases
-├── conftest.py            # Pytest fixtures
-└── data/                  # Test data files
-    ├── test_bold.tsv
-    └── test_sequences.fasta
+├── conftest.py                  # collection rules (script-style files are not collected)
+├── synthetic_data.py            # synthetic BOLD records with planted cases
+├── test_pipeline_synthetic.py   # end-to-end runs on the synthetic data (needs MAFFT)
+├── test_dereplication_v2.py     # haplotype discovery, IDs, error-singleton correction
+├── test_record_status.py        # record statuses
+├── test_layout_tables.py        # records.csv, haplotypes.csv, file map
+├── test_query_*.py              # boldgenotyper-query
+├── test_*.py                    # one file per module or feature
+└── data/                        # small test data files
 ```
 
 ### Writing Tests
@@ -413,7 +411,7 @@ pytest -x tests/
 ### Test Coverage Goals
 
 - **Target**: >80% code coverage
-- **Critical modules**: >90% coverage (core, dereplication, genotype_assignment)
+- **Critical modules**: >90% coverage (dereplication, record_status, layout, query_assignment)
 - **Test types**:
   - Unit tests for individual functions
   - Integration tests for multi-step processes
