@@ -29,6 +29,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - `boldgenotyper-query`: overlap alignment over the whole query, `differences`, `n_mismatches`, `n_gaps`; equivalence sets with `--max-mismatch-delta`; species support from pooled member labels with `--min-species-support`; `--min-query-coverage`; the reference run's provenance md5 in every output; `--search-records` over `records_qc_passed.fasta` (Q1-Q10).
 - `boldgenotyper-sweep`: per-pair share of records whose haplotype changes between adjacent thresholds; `md5_<threshold>` columns in `group_membership_tracking.csv` (P3).
 - `boldgenotyper-sweep --genetic-code`, so a sweep checks reading frames with the same code as the final run (v1 sweeps always used code 2).
+- A log warning when `--geo-category` has the name of an input field (e.g. BOLD's `ecoregion`), which the region column replaces.
 - `docs/guides/MIGRATION_v1_to_v2.md`.
 - A `docs` extra (`pip install -e ".[docs]"`) and Sphinx in `environment.yml`; `sphinx-build -b html docs/source docs/build/html` builds the API pages without warnings.
 

@@ -285,6 +285,18 @@ def _print_geo_failure_to_stderr(shapefile_path, error) -> None:
     )
 
 
+def region_column_clash(input_columns, geo_category: str) -> Optional[str]:
+    """
+    Warning text when the region column (--geo-category) has the name of an
+    input field, which it then replaces; None otherwise.
+    """
+    if geo_category not in set(input_columns):
+        return None
+    return (f"--geo-category '{geo_category}' is also the name of an input field: the region "
+            f"column replaces that field in records.csv and the metadata summary. Use another "
+            f"name (e.g. '{geo_category}_region') to keep both.")
+
+
 def run_pipeline(
     tsv_path: Path,
     organism: str,
@@ -398,6 +410,9 @@ def run_pipeline(
         df = metadata.parse_bold_tsv(tsv_path)
         prov.data_notes["n_duplicate_processids"] = prov.input["n_rows"] - len(df)
         logger.info(f"  Loaded {len(df)} samples with {len(df.columns)} columns")
+        clash = None if skip_geo else region_column_clash(df.columns, geo_category)
+        if clash:
+            logger.warning(f"  {clash}")
 
         # Save parsed metadata
         parsed_tsv = dirs['intermediate'] / "01_parsed_metadata.tsv"
@@ -2211,9 +2226,10 @@ Notes:
         dest='geo_category',
         help='Name for geographic category in outputs. Defaults to "ocean_basin" '
              'when using GOaS (no --custom-shp), or "geographic_region" when using '
-             'a custom shapefile. Examples: "ecoregion", "freshwater_basin", '
-             '"watershed", "biome". This label is used in output files, plots, '
-             'and column names.'
+             'a custom shapefile. Examples: "freshwater_basin", "biogeographic_realm", '
+             '"watershed". This label is used in output files, plots, and column '
+             'names; avoid names of BOLD fields (e.g. "realm", "biome", "ecoregion"), '
+             'which the region column would replace.'
     )
 
     parser.add_argument(

@@ -91,7 +91,7 @@ boldgenotyper data/Pieridae.tsv \
   --build-tree \
   --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
   --shp-field ECO_NAME \
-  --geo-category ecoregion \
+  --geo-category wwf_ecoregion \
   --threads 8
 ```
 

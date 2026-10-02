@@ -295,7 +295,7 @@ boldgenotyper data/Salmonidae.tsv --shp BasinATLAS_v10 --build-tree
 **Path resolution**: absolute paths and `~`/environment variables are used as given; relative paths resolve against `shapefiles_dir` if set, otherwise against the config file's own directory. Keep the config and the (large) shapefile data wherever you like.
 
 **Notes**:
-- Explicit `--shp-field` or `--geo-category` override the registered values, so you can register defaults and tweak per run: `--shp Ecoregions2017 --geo-category biome`.
+- Explicit `--shp-field` or `--geo-category` override the registered values, so you can register defaults and tweak per run: `--shp Ecoregions2017 --geo-category terrestrial_realm`.
 - `--shp` and `--custom-shp` cannot be combined.
 - GOaS is pre-registered so `--shp GOaS_v1_20211214` works uniformly; GOaS is still used automatically when no `--shp` is given.
 
@@ -324,7 +324,9 @@ boldgenotyper data/Pieridae.tsv \
 **Parameters**:
 - `--custom-shp`: Path to shapefile (.shp file)
 - `--shp-field`: Attribute field containing region labels (see field guidance below)
-- `--geo-category`: Label for the region type in outputs (e.g., `drainage_basin`, `biogeographic_realm`)
+- `--geo-category`: Label for the region type in outputs (e.g., `drainage_basin`, `biogeographic_realm`).
+  Avoid names of BOLD fields such as `realm`, `biome` or `ecoregion`: the region column would
+  replace that field (the log warns when it does)
 
 #### Choosing `--shp-field`: What BOLDGenotyper handles vs. what you decide
 
@@ -824,7 +826,7 @@ boldgenotyper --help
 | `--custom-shp` | Path | None | Custom shapefile for geographic region assignment |
 | `--shp` | String | None | Name of a registered shapefile (see `--init-shapefile-config`) |
 | `--shp-field` | String | Auto | Shapefile attribute field containing region labels |
-| `--geo-category` | String | `ocean_basin` | Name of the region column in outputs |
+| `--geo-category` | String | `ocean_basin` | Name of the region column in outputs; avoid BOLD field names (`realm`, `biome`, `ecoregion`), which it would replace |
 | `--metadata-fields` | List | See help | Metadata fields for coverage and cross-tabs |
 | `--no-normalize-sex` | Flag | False | Keep sex values as given (by default M/F → Male/Female, U → missing) |
 | `--no-metadata-summary` | Flag | False | With `--extended`, skip the metadata cross-tabs (coverage is always written) |
