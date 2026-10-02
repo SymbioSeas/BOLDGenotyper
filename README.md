@@ -935,7 +935,7 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `tsv` | Path | Required | Input BOLD TSV file |
-| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test |
+| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test (at least 4 to locate an elbow) |
 | `--output` | Path | parameter_sweep/ | Output directory |
 | `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
 | `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |

@@ -2001,6 +2001,9 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
         recommended = results.get('recommended_threshold', 'N/A')
         if isinstance(recommended, (int, float)):
             print(f"  Recommended threshold: {recommended:.3f}")
+        elif recommended is None:
+            print(f"  No elbow: sweep at least {parameter_sweep.MIN_THRESHOLDS_FOR_ELBOW} "
+                  "thresholds to locate one")
         else:
             print(f"  Recommended threshold: {recommended}")
         print(f"  Results saved to: {args.output}")

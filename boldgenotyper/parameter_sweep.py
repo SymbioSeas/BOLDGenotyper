@@ -529,7 +529,12 @@ def create_elbow_plot(
     logger.info(f"  Elbow plot saved to {output_path}")
 
 
-def find_elbow_point(summary_df: pd.DataFrame) -> float:
+# An elbow needs at least two curvature values: with three thresholds the
+# second difference has one value, so the middle threshold would always win.
+MIN_THRESHOLDS_FOR_ELBOW = 4
+
+
+def find_elbow_point(summary_df: pd.DataFrame) -> Optional[float]:
     """
     Find the elbow point in the haplotype-count curve — the threshold
     beyond which further increases produce diminishing reductions.
@@ -543,14 +548,15 @@ def find_elbow_point(summary_df: pd.DataFrame) -> float:
 
     Returns
     -------
-    float
-        Recommended threshold at elbow point
+    float or None
+        Threshold at the elbow; None when fewer than MIN_THRESHOLDS_FOR_ELBOW
+        (4) thresholds were tested
     """
     thresholds = summary_df['threshold'].values
     n_haplotypes = summary_df['n_haplotypes'].values
 
-    if len(thresholds) < 3:
-        return thresholds[len(thresholds) // 2]
+    if len(thresholds) < MIN_THRESHOLDS_FOR_ELBOW:
+        return None
 
     # First derivative (slope)
     slopes = np.diff(n_haplotypes) / np.diff(thresholds)
@@ -593,21 +599,22 @@ def generate_recommendations(
     organism: str,
     output_path: Path,
     tracking_df: Optional[pd.DataFrame] = None,
-) -> float:
+) -> Optional[float]:
     """
     Write recommendations.txt: the elbow of the haplotype-count curve and, for
     each pair of adjacent thresholds, the share of records whose haplotype
     changes (from group_membership_tracking.csv). No acceptable range is
     given (v1's covered the whole tested range).
 
-    Returns the threshold at the elbow.
+    Returns the threshold at the elbow, or None when fewer than
+    MIN_THRESHOLDS_FOR_ELBOW thresholds were tested (the file then says so).
     """
     logger.info("  Generating recommendations...")
 
     recommended_threshold = find_elbow_point(summary_df)
     rows = summary_df.to_dict('records')          # keeps integer counts as integers
-    rec_row = next(r for r in rows if r['threshold'] == recommended_threshold)
     first_row, last_row = rows[0], rows[-1]
+    rec_row = next((r for r in rows if r['threshold'] == recommended_threshold), first_row)
     lo, hi = summary_df['threshold'].min(), summary_df['threshold'].max()
 
     def fmt(value, spec):
@@ -642,6 +649,9 @@ HAPLOTYPE COUNT
     text += f"""
 The elbow (largest change in the slope of the haplotype-count curve) is at
 {recommended_threshold:.3f}: {fmt(rec_row['n_haplotypes'], 'd')} haplotypes, against {fmt(first_row['n_haplotypes'], 'd')} at {lo:.3f} and {fmt(last_row['n_haplotypes'], 'd')} at {hi:.3f}.
+""" if recommended_threshold is not None else f"""
+No elbow: locating one needs at least {MIN_THRESHOLDS_FOR_ELBOW} thresholds ({len(summary_df)} tested),
+because the elbow is where the slope of the haplotype-count curve changes most.
 """
 
     rates = adjacent_change_rates(tracking_df, summary_df['threshold'].tolist()) \
@@ -661,17 +671,22 @@ Share of records whose haplotype changes between adjacent thresholds
 Thresholds where this share is small give nearly the same haplotypes for
 nearly every record. Per-record detail: group_membership_tracking.csv.
 """
+    if recommended_threshold is not None:
+        next_step = ("1. Review elbow_plot.pdf, threshold_stability.pdf and the stability table above.\n"
+                     "   The elbow is a starting point; the choice of threshold is yours.")
+    else:
+        next_step = ("1. Review the haplotype counts above. To locate an elbow, sweep at least\n"
+                     f"   {MIN_THRESHOLDS_FOR_ELBOW} thresholds.")
     text += f"""
 NEXT STEPS
 ----------
-1. Review elbow_plot.pdf, threshold_stability.pdf and the stability table above.
-   The elbow is a starting point; the choice of threshold is yours.
+{next_step}
 
 2. Run the pipeline with the chosen threshold, passed explicitly so the run is
    reproducible (the default is 0.005):
 
        boldgenotyper your_data.tsv --organism {organism} \\
-                     --singleton-distance {recommended_threshold:.3f} [other options]
+                     --singleton-distance {f"{recommended_threshold:.3f}" if recommended_threshold is not None else "<threshold>"} [other options]
 
 3. Report the threshold and how it was chosen in your methods.
 
@@ -813,7 +828,12 @@ def run_parameter_sweep(
 
     # Create README
     readme_path = output_dir / "README.md"
-    rec_display = results.get('recommended_threshold', 'see recommendations.txt')
+    if 'recommended_threshold' not in results:
+        rec_display = 'see recommendations.txt'
+    elif results['recommended_threshold'] is None:
+        rec_display = f'no elbow (fewer than {MIN_THRESHOLDS_FOR_ELBOW} thresholds tested)'
+    else:
+        rec_display = f"{results['recommended_threshold']:.3f}"
     readme_content = f"""# Parameter Sweep Results — {organism}
 
 ## What was swept
@@ -881,7 +901,8 @@ share of records whose haplotype changes between adjacent thresholds.
     if rec_threshold is not None and isinstance(rec_threshold, (int, float)):
         logger.info(f"  Recommended min_singleton_distance: {rec_threshold:.3f}")
     else:
-        logger.info(f"  Recommended min_singleton_distance: N/A")
+        logger.info("  Recommended min_singleton_distance: no elbow "
+                    f"(needs at least {MIN_THRESHOLDS_FOR_ELBOW} thresholds)")
 
     logger.info(f"  Results: {output_dir}")
     logger.info("="*70)

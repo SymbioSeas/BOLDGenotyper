@@ -213,6 +213,10 @@ The elbow is where the haplotype count stops dropping steeply. Below it, many si
 are within reach of a larger haplotype (likely errors); above it, raising the value removes
 few further haplotypes.
 
+Locating an elbow needs at least 4 values: it is the largest change in slope, and with 3
+values there is only one change, so the middle value would always be chosen. With fewer
+than 4, `recommendations.txt` reports the counts and says there is no elbow.
+
 ### 2. Stability
 
 The stability table shows how many records change haplotype between neighboring values. A

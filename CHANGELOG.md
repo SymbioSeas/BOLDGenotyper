@@ -50,7 +50,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - `--export-format` has no default (v1: `all`) (P2).
 - PNG figures are capped at 150 dpi and 3000 px per side; MSA chunk plots are PDF only; metadata figures are PDF and PNG (P3).
 - Log lines are plain text (P3).
-- The sweep's `recommendations.txt` reports the elbow with the stability table instead of an "acceptable range" (P3).
+- The sweep's `recommendations.txt` reports the elbow with the stability table instead of an "acceptable range" (P3). With fewer than 4 thresholds it says there is no elbow (v1 named the middle value, or the only one); `parameter_sweep.find_elbow_point` then returns None.
 - The conda environment installs pymsaviz for MSA plots.
 - Documentation: README, API reference, parameter-sweep, popgen-export and full-dataset guides, the Sphinx sources (one page per module) and the tutorial notebooks describe 2.0.0; the benchmarking protocol notes what changed since the 1.0.0 benchmarks.
 - `COMPARATIVE_ANALYSIS_GUIDE.md` compares a species-level and a family-level run by matching their `records.csv` files on `processid`; the docs no longer refer to `scripts/compare_analyses.py`, which is not distributed.

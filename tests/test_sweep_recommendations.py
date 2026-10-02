@@ -1,5 +1,7 @@
 """P3: the sweep reports the elbow with the share of records whose haplotype changes."""
 
+import re
+
 import pandas as pd
 import pytest
 
@@ -32,17 +34,38 @@ def test_records_not_in_both_runs_are_left_out():
     assert rates["n_records"].tolist() == [3, 3]
 
 
+def _summary(thresholds, n_haplotypes):
+    n = len(thresholds)
+    return pd.DataFrame({"threshold": thresholds, "n_haplotypes": n_haplotypes,
+                         "n_singletons": [2] * n, "n_samples": [100] * n,
+                         "pct_assigned": [95.0] * n})
+
+
 def test_recommendations_report_elbow_and_stability(tmp_path):
-    summary = pd.DataFrame({"threshold": THRESHOLDS, "n_haplotypes": [30, 12, 11],
-                            "n_singletons": [20, 3, 2], "n_samples": [100] * 3,
-                            "pct_assigned": [90.0, 95.0, 95.0]})
+    summary = _summary(THRESHOLDS + [0.03], [30, 12, 11, 10])
     out = tmp_path / "recommendations.txt"
-    ps.generate_recommendations(summary, "Synth", out, tracking_df=_tracking())
+    elbow = ps.generate_recommendations(summary, "Synth", out, tracking_df=_tracking())
     text = out.read_text()
+    assert elbow == 0.01
     assert "ACCEPTABLE RANGE" not in text and "AVOID" not in text
-    assert "elbow" in text.lower()
+    assert re.search(r"^\s+0\.010\s.*<- elbow$", text, re.M)
     assert "0.005 -> 0.010" in text and "25.0%" in text
     assert "boldgenotyper your_data.tsv" in text and "--input" not in text
+    assert "--singleton-distance 0.010" in text
+
+
+@pytest.mark.parametrize("thresholds,counts", [([0.005], [4]), ([0.005, 0.01], [9, 4]),
+                                               ([0.005, 0.01, 0.02], [30, 12, 11])])
+def test_no_elbow_below_four_thresholds(tmp_path, thresholds, counts):
+    # With 3 thresholds the curvature has one value, so the middle one would always win
+    summary = _summary(thresholds, counts)
+    assert ps.find_elbow_point(summary) is None
+    out = tmp_path / "recommendations.txt"
+    assert ps.generate_recommendations(summary, "Synth", out) is None
+    text = out.read_text()
+    assert "<- elbow" not in text
+    assert "No elbow" in text and "at least 4 thresholds" in text
+    assert "--singleton-distance <threshold>" in text
 
 
 def test_sweep_runs_use_the_given_genetic_code(tmp_path, monkeypatch):
