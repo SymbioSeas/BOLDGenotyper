@@ -285,6 +285,30 @@ def test_regions_follow_each_record_after_an_early_duplicate(tmp_path):
     assert rec.loc[rec["coord_status"] != "ok", "hemisphere"].isna().all()
 
 
+def test_maps_draw_only_geographic_quality_coordinates(tmp_path):
+    """P0-4: centroid and zero coordinates keep lat/lon in records.csv but are not mapped."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    shp = tmp_path / "halves.shp"
+    gpd.GeoDataFrame({"half": ["west", "east"]},
+                     geometry=[box(-180, -90, 0, 90), box(0, -90, 180, 90)],
+                     crs="EPSG:4326").to_file(shp)
+    from boldgenotyper import visualization
+    with mock.patch.object(visualization, "plot_distribution_map",
+                           wraps=visualization.plot_distribution_map) as spy:
+        ok, out = run_synthetic(tmp_path, skip_geo=False, shapefile_path=shp,
+                                shapefile_field="half", geo_category="hemisphere")
+    assert ok and spy.called
+    mapped = spy.call_args.kwargs["df"].set_index("processid")
+    status = _records(out).set_index("processid")["coord_status"]
+    drawn = mapped[mapped["lat"].notna()].index
+    assert len(drawn) and (status.reindex(drawn) == "ok").all()
+    assert (status == "centroid").any()           # the fixture has centroid records ...
+    rec = _records(out)
+    assert rec.loc[rec["coord_status"] == "centroid", "lat"].notna().all()   # ... which keep lat/lon
+
+
 def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
     """P1-1: describe p-distance only; no taxonomic thresholds."""
     import re

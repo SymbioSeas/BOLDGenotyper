@@ -285,6 +285,18 @@ def _print_geo_failure_to_stderr(shapefile_path, error) -> None:
     )
 
 
+def mappable_coordinates(frame: pd.DataFrame, mappable_ids) -> pd.DataFrame:
+    """
+    Copy of frame for the maps and the plot kit: lat/lon are blanked for records
+    whose coordinates are not of geographic quality (centroid, zero, out of range;
+    P0-4). Those records keep lat/lon in records.csv but are not mapped.
+    """
+    out = frame.copy()
+    if {'processid', 'lat', 'lon'} <= set(out.columns):
+        out.loc[~out['processid'].isin(mappable_ids), ['lat', 'lon']] = np.nan
+    return out
+
+
 def region_column_clash(input_columns, geo_category: str) -> Optional[str]:
     """
     Warning text when the region column (--geo-category) has the name of an
@@ -422,6 +434,7 @@ def run_pipeline(
         # never removed here; only region assignment and maps use the flag (P0-4).
         logger.info("1.2: Parsing coordinates and marking coordinate quality...")
         df = metadata.mark_coordinate_quality(metadata.parse_coord_column(df))
+        mappable_ids = set(df.loc[df['is_geographic_quality'], 'processid'])
         prov.data_notes["coord_status"] = {
             str(k): int(v) for k, v in df['coord_status'].value_counts().items()
         }
@@ -1364,7 +1377,7 @@ def run_pipeline(
                             detail = "full"  # Main plot gets full detail
 
                         map_path, map_data = visualization.plot_distribution_map(
-                            df=df_final,
+                            df=mappable_coordinates(df_final, mappable_ids),
                             output_path=str(get_viz_path(dirs, f"{organism}_distribution_map", fmt)),
                             genotype_column='haplotype_sp',
                             latitude_col='lat',
@@ -1426,7 +1439,8 @@ def run_pipeline(
                     if species_assignments_csv.exists():
                         try:
                             # Load species assignments
-                            species_df = pd.read_csv(species_assignments_csv)
+                            species_df = mappable_coordinates(pd.read_csv(species_assignments_csv),
+                                                              mappable_ids)
 
                             # Species distribution map
                             if 'lat' in species_df.columns and 'lon' in species_df.columns and 'primary_species' in species_df.columns:
@@ -1547,7 +1561,7 @@ def run_pipeline(
                             facet_formats = cfg.visualization.facet_formats if cfg.visualization.save_individual_facets else None
 
                             visualization.plot_distribution_map_faceted(
-                                df=df_final,
+                                df=mappable_coordinates(df_final, mappable_ids),
                                 output_path=str(get_viz_path(dirs, f"{organism}_distribution_map_faceted", fmt)),
                                 genotype_column='haplotype_sp',
                                 species_column='assigned_sp',
@@ -1565,7 +1579,7 @@ def run_pipeline(
 
                             # Additional species-faceted map (explicit file name for clarity)
                             visualization.plot_distribution_map_faceted(
-                                df=df_final,
+                                df=mappable_coordinates(df_final, mappable_ids),
                                 output_path=str(get_viz_path(dirs, f"{organism}_distribution_map_species_faceted", fmt)),
                                 genotype_column='haplotype_sp',
                                 species_column='assigned_sp',
@@ -1688,7 +1702,7 @@ def run_pipeline(
             # No FASTA or tree copies: the kit reads ../haplotypes.fasta and
             # ../phylogeny/tree.nwk (P2)
             plot_export_results = plot_export.export_plots_complete(
-                df=df_final,
+                df=mappable_coordinates(df_final, mappable_ids),
                 output_dir=output_dir,
                 organism=organism,
                 color_map=haplotype_colors
