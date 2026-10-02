@@ -24,7 +24,7 @@ sweep checks the same records as the final run. The other datasets use the defau
 | Carcharhiniformes | Marine | GOaS (default) | name | ocean_basin | 0.015 | 2 (default) |
 | Panulirus | Marine | GOaS (default) | name | ocean_basin | 0.015 | 5 |
 | Salmonidae | Freshwater | BasinATLAS v10 level 3 | PFAF_ID | freshwater_basin | 0.015 | 2 (default) |
-| Pieridae | Terrestrial | Ecoregions2017 | REALM | ecoregion | 0.085 | 5 |
+| Pieridae | Terrestrial | Ecoregions2017 | REALM | biogeographic_realm | 0.085 | 5 |
 
 ## Commands
 
@@ -110,7 +110,7 @@ boldgenotyper data/Pieridae.tsv \
   --build-tree \
   --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp \
   --shp-field REALM \
-  --geo-category ecoregion \
+  --geo-category biogeographic_realm \
   --threads 8
 ```
 
@@ -119,8 +119,9 @@ boldgenotyper data/Pieridae.tsv \
 - Genetic code 5 (invertebrate mitochondrial)
 - REALM groups the ecoregions into 8 biogeographic realms (e.g., "Palearctic", "Neotropic");
   ECO_NAME would give the 847 individual ecoregions
-- The region column is named `ecoregion` (`--geo-category`); it replaces the BOLD field of
-  the same name in `records.csv`
+- The region column is `biogeographic_realm` (`--geo-category`), a name that is not a BOLD
+  field, so BOLD's own `realm` and `ecoregion` fields stay in `records.csv` (the 1.0.0
+  runs used `ecoregion`, which replaced BOLD's field)
 - Output: `output/Pieridae_full/`
 - ~31M input file, largest file size (most metadata)
 
@@ -141,7 +142,7 @@ boldgenotyper data/Panulirus.tsv --output output/Panulirus_full --organism Panul
 boldgenotyper data/Salmonidae.tsv --output output/Salmonidae_full --organism Salmonidae --singleton-distance 0.015 --build-tree --custom-shp shapefiles/BasinATLAS_Data_v10_shp/BasinATLAS_v10_shp/BasinATLAS_v10_lev03.shp --shp-field PFAF_ID --geo-category freshwater_basin --threads 8
 
 # Terrestrial dataset (Ecoregions2017)
-boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --genetic-code 5 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field REALM --geo-category ecoregion --threads 8
+boldgenotyper data/Pieridae.tsv --output output/Pieridae_full --organism Pieridae --singleton-distance 0.085 --genetic-code 5 --build-tree --custom-shp shapefiles/Ecoregions2017/Ecoregions2017.shp --shp-field REALM --geo-category biogeographic_realm --threads 8
 ```
 
 ## Expected Outputs

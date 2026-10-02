@@ -54,7 +54,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - The conda environment installs pymsaviz for MSA plots.
 - Documentation: README, API reference, parameter-sweep, popgen-export and full-dataset guides, the Sphinx sources (one page per module) and the tutorial notebooks describe 2.0.0; the benchmarking protocol notes what changed since the 1.0.0 benchmarks.
 - `COMPARATIVE_ANALYSIS_GUIDE.md` compares a species-level and a family-level run by matching their `records.csv` files on `processid`; the docs no longer refer to `scripts/compare_analyses.py`, which is not distributed.
-- `FULL_DATASET_COMMANDS.md` gives the shapefiles the case-study runs use (BasinATLAS level 3 `PFAF_ID` for Salmonidae, Ecoregions2017 `REALM` for Pieridae).
+- `FULL_DATASET_COMMANDS.md` gives the shapefiles the case-study runs use (BasinATLAS level 3 `PFAF_ID` for Salmonidae, Ecoregions2017 `REALM` for Pieridae, with the region column `biogeographic_realm` so BOLD's `ecoregion` field is kept).
 
 ### Deprecated
 - `--similarity-threshold`, `--tie-margin` (pipeline), `--tie-threshold`: no effect in the haplotype workflow; they warn (P0-1).
