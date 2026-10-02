@@ -101,8 +101,12 @@ _COORDS = [
 ]
 
 
-def make_synthetic_bold_tsv(path):
-    """Write the synthetic TSV to path and return it."""
+def make_synthetic_bold_tsv(path, duplicate_at=None):
+    """
+    Write the synthetic TSV to path and return it. The first record is repeated
+    at the end, or at row duplicate_at (which leaves a gap in the row index
+    after duplicates are removed).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
@@ -124,7 +128,8 @@ def make_synthetic_bold_tsv(path):
             "collection_date_start": f"20{10 + i % 8:02d}-06-15",
             "nuc": seq,
         })
-    rows.append(dict(rows[0]))  # duplicate processid, as in real portal exports
+    # duplicate processid, as in real portal exports
+    rows.insert(len(rows) if duplicate_at is None else duplicate_at, dict(rows[0]))
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS, delimiter="\t")
         writer.writeheader()

@@ -74,7 +74,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - Records removed by QC, core coverage or the error filter were reported as `no_sequence`, and the assignment summary reported 100% assigned (P0-2, P0-3).
 - The main distribution map was not written (a gridline style error) and step failures were silent (P0-6).
 - The tree silently dropped haplotypes with fewer than three members (P0-7).
-- Most coordinates were not parsed, so most records had an `Unknown` region (P0-4); country counts were zero (P0-5).
+- Coordinates and regions were attached to the wrong records (P0-4). `lat`, `lon` and the region were merged back by row position instead of by `processid`, so when the input contained duplicate processids (common in BOLD portal exports) every record after the first duplicate received the coordinates and region of another record, or none: in a 500-record Sphyrnidae subsample with 14 duplicates, 61 of the 101 records with `lat`/`lon` had no coordinate of their own. The geographic-quality flag also checked columns that do not exist, so records without coordinates counted as geographic quality. Region assignments, maps and region counts from 1.0.0 runs on inputs with duplicate processids are unreliable; re-run them. Country counts were zero (P0-5).
 - Species counts were computed differently in different files (P0-9).
 - The query tool's local alignment dropped mismatches at the ends of a query and reported 100% identity (Q2).
 - Species-level divergence summaries and per-species matrices were never written (haplotype-ID mismatch).

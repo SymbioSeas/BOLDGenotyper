@@ -42,6 +42,8 @@ Contents
   geographic-quality coordinates (`coord_status` ok) are assigned a region and
   mapped; country- and province-centroid coordinates keep `lat`/`lon` but get
   no region. A record without a region has an empty value, never `Unknown`.
+  v1 attached coordinates and regions to the wrong records when the input had
+  duplicate processids (see 5.4): re-run rather than reuse v1 regions.
 - **Labels, not contamination.** Label conflicts are reported with their
   evidence; "contamination", "confidence" and automatic depositor categories
   are gone. Members without a species label are left out of majority
@@ -381,8 +383,15 @@ headers carried an organism prefix in some files.
 `out_of_range`. Only `ok` records are assigned a region and mapped.
 Country- and province-centroid coordinates keep `lat`/`lon` but are not
 assigned a region or mapped. A record without a region has an empty value; v1
-wrote `Unknown`. v1 left most current BOLD portal coordinates unparsed, so v2
-assigns regions to many more records.
+wrote `Unknown`.
+
+v1 merged `lat`, `lon` and the region back onto the records by row position
+instead of by `processid`. When the input had duplicate processids (common in
+BOLD portal exports), every record after the first duplicate received the
+coordinates and region of another record, or none; v1 also treated records
+without coordinates as geographic quality. v1 regions, maps and region counts
+from such inputs are unreliable, so compare v2 results with a v2 re-run, not
+record by record with v1.
 
 ### 5.5 Countries
 

@@ -20,10 +20,11 @@ ORGANISM = "Synth"
 
 
 def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_kit=False,
-                  export_formats=None, report=False, **cfg_updates):
+                  export_formats=None, report=False, duplicate_at=None, shapefile_path=None,
+                  shapefile_field=None, geo_category="ocean_basin", **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
-    tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv")
+    tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv", duplicate_at=duplicate_at)
     out = workdir / "out"
     utils.setup_logging(log_level="INFO", log_file=str(out / f"{ORGANISM}_pipeline.log"))
     settings = dict(output_dir=out, n_threads=1, phylogenetic__build_tree=False)
@@ -33,7 +34,8 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_ki
         tsv_path=tsv, organism=ORGANISM, output_dir=out, cfg=cfg,
         no_report=not report, skip_geo=skip_geo, export_plot_data=plot_kit,
         export_popgen_formats=export_formats, metadata_summary_enabled=metadata_summary_enabled,
-        temporal_analysis=True,
+        temporal_analysis=True, shapefile_path=shapefile_path, shapefile_field=shapefile_field,
+        geo_category=geo_category,
     )
     return ok, out
 
@@ -256,6 +258,31 @@ def test_goas_regions_only_for_geographic_quality(tmp_path):
             "extended/geography/species_distribution_map.pdf"} <= _files(out)
     # P0-5: country counts come from country/ocean
     assert pd.read_csv(out / "haplotypes.csv")["n_with_country"].sum() > 0
+
+
+def test_regions_follow_each_record_after_an_early_duplicate(tmp_path):
+    """
+    P0-4: lat/lon and the region belong to each record's own coordinate. A duplicate
+    processid near the top leaves a gap in the row index; v1.0.0 then assigned every
+    later record the coordinates and region of another record.
+    """
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    shp = tmp_path / "halves.shp"
+    gpd.GeoDataFrame({"half": ["west", "east"]},
+                     geometry=[box(-180, -90, 0, 90), box(0, -90, 180, 90)],
+                     crs="EPSG:4326").to_file(shp)
+    ok, out = run_synthetic(tmp_path, skip_geo=False, duplicate_at=1, shapefile_path=shp,
+                            shapefile_field="half", geo_category="hemisphere")
+    assert ok
+    rec = _records(out)
+    good = rec[rec["coord_status"] == "ok"]
+    assert len(good) >= 2 and set(good["hemisphere"]) == {"west", "east"}
+    own = good["coord"].str.strip("[]").str.split(",", expand=True).astype(float)
+    assert (own[0] == good["lat"]).all() and (own[1] == good["lon"]).all()
+    assert (good["hemisphere"] == good["lon"].map(lambda x: "west" if x < 0 else "east")).all()
+    assert rec.loc[rec["coord_status"] != "ok", "hemisphere"].isna().all()
 
 
 def test_divergence_readme_has_no_threshold_interpretations(synthetic_run):
