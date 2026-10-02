@@ -478,6 +478,20 @@ def _save_individual_facet(
     return saved_files
 
 
+def _point_sizes(counts: pd.Series, min_size: float, max_size: float,
+                 equal_size: Optional[float] = None) -> pd.Series:
+    """
+    Marker sizes scaled linearly from min_size (smallest count) to max_size
+    (largest). When every count is the same there is nothing to scale: all
+    markers get equal_size (default min_size). Scaling then divided by zero,
+    and the NaN sizes broke the legend when the figure was saved.
+    """
+    lo, hi = counts.min(), counts.max()
+    if hi > lo:
+        return min_size + (counts - lo) / (hi - lo) * (max_size - min_size)
+    return pd.Series(min_size if equal_size is None else equal_size, index=counts.index, dtype=float)
+
+
 def plot_distribution_map(
     df: pd.DataFrame,
     output_path: str,
@@ -547,10 +561,7 @@ def plot_distribution_map(
     d['_count'] = d.groupby([latitude_col, longitude_col, genotype_column])[genotype_column].transform('count')
     # Scale point sizes: min 20, max 200, proportional to count
     min_size, max_size = 50, 500
-    if d['_count'].max() > 1:
-        d['_size'] = min_size + (d['_count'] - d['_count'].min()) / (d['_count'].max() - d['_count'].min()) * (max_size - min_size)
-    else:
-        d['_size'] = 50  # default size if all counts are 1
+    d['_size'] = _point_sizes(d['_count'], min_size, max_size)
 
     # Order genotypes by abundance (descending) for consistent color assignment
     genos = _get_genotype_order_by_abundance(d, genotype_column)
@@ -1098,10 +1109,7 @@ def plot_distribution_map_faceted(
 
         # Scale point sizes for this facet
         min_size, max_size = 20, 200
-        if facet_data['_count'].max() > 1:
-            facet_data['_size'] = min_size + (facet_data['_count'] - facet_data['_count'].min()) / (facet_data['_count'].max() - facet_data['_count'].min()) * (max_size - min_size)
-        else:
-            facet_data['_size'] = 50
+        facet_data['_size'] = _point_sizes(facet_data['_count'], min_size, max_size, equal_size=50)
 
         # Calculate map extent with buffer
         lon_min, lon_max, lat_min, lat_max = calculate_map_extent_with_buffer(
