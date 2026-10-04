@@ -187,15 +187,6 @@ def setup_directories(base_output: Path) -> dict:
         'divergence_analysis': stage / 'divergence_analysis',
         'geographic_analysis': stage / 'geographic_analysis',
         'phylogenetic': stage / 'phylogenetic',
-        'visualization': stage / 'visualization',
-        'visualization_pdf': stage / 'visualization' / 'pdf',
-        'visualization_svg': stage / 'visualization' / 'svg',
-        'visualization_json': stage / 'visualization' / 'json',
-        'haplotype_plots': stage / 'visualization' / 'haplotype_plots',
-        'metadata_viz_pdf': stage / 'visualization' / 'metadata' / 'pdf',
-        'metadata_viz_svg': stage / 'visualization' / 'metadata' / 'svg',
-        'metadata_viz_png': stage / 'visualization' / 'metadata' / 'png',
-        'metadata_viz_json': stage / 'visualization' / 'metadata' / 'json',
         'reports': stage / 'reports',
     }
 
@@ -203,45 +194,6 @@ def setup_directories(base_output: Path) -> dict:
         dir_path.mkdir(parents=True, exist_ok=True)
 
     return dirs
-
-
-def get_viz_path(dirs: dict, filename: str, fmt: str, is_metadata: bool = False) -> Path:
-    """
-    Get the appropriate visualization output path based on format.
-
-    Parameters
-    ----------
-    dirs : dict
-        Directory dictionary from setup_directories
-    filename : str
-        Base filename without extension
-    fmt : str
-        Format (pdf, svg, png, etc.)
-    is_metadata : bool
-        If True, use metadata visualization subdirectory
-
-    Returns
-    -------
-    Path
-        Full path for the output file
-    """
-    if is_metadata:
-        if fmt == 'pdf':
-            return dirs['metadata_viz_pdf'] / f"{filename}.{fmt}"
-        elif fmt == 'svg':
-            return dirs['metadata_viz_svg'] / f"{filename}.{fmt}"
-        elif fmt == 'png':
-            return dirs['metadata_viz_png'] / f"{filename}.{fmt}"
-        else:
-            return dirs['metadata_viz_pdf'] / f"{filename}.{fmt}"
-    else:
-        if fmt == 'pdf':
-            return dirs['visualization_pdf'] / f"{filename}.{fmt}"
-        elif fmt == 'svg':
-            return dirs['visualization_svg'] / f"{filename}.{fmt}"
-        else:
-            # PNG and other formats go to pdf directory
-            return dirs['visualization_pdf'] / f"{filename}.{fmt}"
 
 
 def validate_shapefile_field(shapefile_path: Path, shapefile_field: Optional[str]) -> None:

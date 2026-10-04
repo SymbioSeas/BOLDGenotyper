@@ -252,57 +252,6 @@ class TestTemporalAnalysis(unittest.TestCase):
         self.assertIn('pct_of_period', temporal_df.columns)
 
 
-class TestVisualization(unittest.TestCase):
-    """Tests for visualization functions."""
-
-    def setUp(self):
-        """Create test data and temp directory."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.df = pd.DataFrame({
-            'processid': list('ABCDEFGHIJ'),
-            'haplotype_sp': ['h1', 'h1', 'h1', 'h2', 'h2', 'h2', 'h2', 'h3', 'h3', 'h3'],
-            'sex': ['M', 'M', 'F', 'M', 'F', 'F', 'F', 'M', 'M', 'F'],
-        })
-
-    def tearDown(self):
-        """Clean up temp directory."""
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    def test_get_haplotype_colors(self):
-        """Test haplotype color generation."""
-        colors = metadata_analysis.get_haplotype_colors(self.df, 'haplotype_sp')
-
-        self.assertIsInstance(colors, dict)
-        self.assertEqual(len(colors), 3)  # 3 haplotypes
-        for hap, color in colors.items():
-            self.assertTrue(color.startswith('#'))
-
-    def test_plot_metadata_coverage(self):
-        """Test coverage plot generation."""
-        coverage_stats = metadata_analysis.analyze_metadata_coverage(
-            self.df, ['sex']
-        )
-
-        output_path = Path(self.temp_dir) / 'coverage'
-        metadata_analysis.plot_metadata_coverage(coverage_stats, output_path)
-
-        # Check that files were created
-        # the PDF is written next to the given path (the PNG to a sibling png/ folder)
-        self.assertTrue((Path(self.temp_dir) / 'coverage.pdf').exists())
-
-    def test_plot_categorical_by_haplotype(self):
-        """Test categorical plot generation."""
-        output_path = Path(self.temp_dir) / 'categorical'
-        colors = metadata_analysis.get_haplotype_colors(self.df, 'haplotype_sp')
-
-        metadata_analysis.plot_categorical_by_haplotype(
-            self.df, 'sex', output_path, colors, 'haplotype_sp'
-        )
-
-        # Check that files were created
-        self.assertTrue((Path(self.temp_dir) / 'categorical.pdf').exists())
-
-
 class TestExport(unittest.TestCase):
     """Tests for export functions."""
 
