@@ -89,6 +89,21 @@ def test_run_folder_curated_taxa_are_inherited(tmp_path, run_dir):
     assert "curated_taxa_disagree" in row["flags"]
 
 
+def test_reference_curation_is_recorded(tmp_path):
+    from tests.test_pipeline_synthetic import run_synthetic as run
+    ok, base = run(tmp_path / "base")
+    haps = pd.read_csv(base / "haplotypes.csv").set_index("haplotype_id")
+    cur = tmp_path / "cur.csv"
+    cur.write_text(f"seq_md5,taxon,reason\n{haps.loc['H0002', 'seq_md5']},Genus alpha,test\n")
+    ok, ref = run(tmp_path / "ref", taxon_curation=cur)
+    s, out = _query(tmp_path, ref, {"window": WINDOW})
+    assert s.loc["window", "call_basis"] == "haplotype taxa"
+    prov = json.loads((out / "query_provenance.json").read_text())
+    md5 = hashlib.md5(cur.read_bytes()).hexdigest()
+    assert prov["reference_taxon_curation"]["md5"] == md5
+    assert f"md5 {md5}" in (out / "README.md").read_text()
+
+
 def test_query_time_curation(tmp_path, run_dir):
     haps = pd.read_csv(run_dir / "haplotypes.csv").set_index("haplotype_id")
     cur = tmp_path / "cur.csv"

@@ -296,6 +296,7 @@ def build_query_provenance(argv, query_path, n_queries: int, reference_fasta,
         "alignment": ALIGNMENT_SCORING,
         "note": POOLED_LABELS_NOTE,
         "taxon_curation": taxon_curation,
+        "reference_taxon_curation": None,
         "query_metadata": None,
         "figures": {},
         "warnings": [],
@@ -448,10 +449,16 @@ def methods_sentence(provenance: dict) -> str:
         text += (f" A species was called when one species held at least "
                  f"{p.get('min_species_support', 0):.2f} of the pooled labels of the member "
                  f"records of the set's haplotypes")
+        sources = []
+        ref_cur = provenance.get("reference_taxon_curation")
+        if ref_cur:
+            sources.append(f"curation file md5 {ref_cur.get('md5')}, applied in the reference run")
         cur = provenance.get("taxon_curation")
         if cur:
-            text += (f", or, when a haplotype in the set had a curated taxon (curation file md5 "
-                     f"{cur.get('md5')}), when the set's haplotypes shared one species")
+            sources.append(f"curation file md5 {cur.get('md5')}, applied to this query run")
+        if sources:
+            text += (f", or, when a haplotype in the set had a curated taxon ({'; '.join(sources)}), "
+                     f"when the set's haplotypes shared one species")
         text += "."
     return text
 

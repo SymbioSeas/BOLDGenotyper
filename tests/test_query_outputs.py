@@ -73,3 +73,14 @@ def test_methods_sentence_states_the_values():
         assert value in text
     prov["reference_run"] = None
     assert "species" not in qo.methods_sentence(prov).lower()
+
+
+def test_methods_sentence_names_the_reference_runs_curation():
+    prov = {"query": {"n_sequences": 2}, "reference_fasta": {"n_haplotypes": 10},
+            "reference_run": {"boldgenotyper_version": "2.0.0", "provenance_md5": "abc"},
+            "parameters": {"assign_identity": 0.97, "min_query_coverage": 0.95,
+                           "max_mismatch_delta": 0, "min_species_support": 0.7},
+            "taxon_curation": None,
+            "reference_taxon_curation": {"md5": "ghi", "n_applied": 1}}
+    text = qo.methods_sentence(prov)
+    assert "curated taxon" in text and "md5 ghi" in text and "reference run" in text

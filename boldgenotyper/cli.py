@@ -2983,6 +2983,11 @@ For more information:
 
         # Place the queries in the reference run (v2 run folders)
         reference = query_overlays.load_reference(analysis_dir)
+        ref_curation = (reference.provenance.get("applied", {}).get("taxon_curation")
+                        if reference is not None else None)
+        if ref_curation:
+            qprov["reference_taxon_curation"] = {
+                k: ref_curation.get(k) for k in ("path", "md5", "n_applied", "n_not_applied")}
         if query_meta is not None:
             unmatched = query_meta.attrs.get("unmatched_ids", [])
             n_rows = query_meta.attrs.get("n_rows", len(query_meta))
