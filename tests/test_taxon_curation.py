@@ -67,3 +67,10 @@ def test_apply_sets_taxon_level_source_and_note(tmp_path):
         "curated: nested in Genus alpha clade (SS, 2026-10-04); labels: tie")
     assert out.loc["H0002", "assignment_source"] == "labels"
     assert out.loc["H0002", "assigned_sp"] == "Genus beta"
+
+
+def test_match_cleans_row_sequences():
+    cur = pd.DataFrame([{"row": 2, "seq_md5": "", "sequence": "acgt-acgtcc", "taxon": "Genus beta",
+                         "reason": "x", "curator": "", "date": ""}])
+    applied, _ = tc.match_curation(cur, HAPS, SEQS)
+    assert applied["haplotype_id"].tolist() == ["H0002"]

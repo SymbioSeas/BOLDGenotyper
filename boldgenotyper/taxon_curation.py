@@ -84,6 +84,8 @@ def match_curation(curation: pd.DataFrame, haplotypes: pd.DataFrame,
     cores = {h: _clean_sequence(s) for h, s in sequences.items()}
     matched, not_applied = [], []
     for r in curation.to_dict("records"):
+        r = {**r, "seq_md5": str(r["seq_md5"] or "").strip().lower(),
+             "sequence": _clean_sequence(r["sequence"]) if r["sequence"] else ""}
         if r["seq_md5"] and r["seq_md5"] in md5_to_id:
             hits = [md5_to_id[r["seq_md5"]]]
         elif r["sequence"]:
