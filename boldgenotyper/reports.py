@@ -3066,304 +3066,64 @@ def _encode_image_to_base64(image_path: Path) -> Optional[str]:
         return None
 
 
-def _build_visualizations_section(
-    output_dir: Path,
-    organism: str,
-    resolve=None,
-) -> str:
+# Figure folders of a run, in report order (run_figures writes a manifest.json in each)
+FIGURE_FOLDERS = [
+    ("phylogeny", "Phylogeny"),
+    ("geography", "Geography"),
+    ("extended/geography", "Regions (--extended)"),
+    ("extended/metadata/figures", "Metadata (--extended)"),
+]
+
+
+def _build_figures_section(run_dir: Path) -> str:
     """
-    Build visualizations section with embedded images.
-
-    Parameters
-    ----------
-    output_dir : Path
-        Base output directory
-    organism : str
-        Organism name
-
-    Returns
-    -------
-    str
-        HTML content for visualizations section
+    Figures listed from the run folder's manifest.json files: each figure's
+    overview (SVG shown), its PDF and its per-species or per-genus pages.
     """
-    html = '<div class="section" id="section-visualizations">\n'
-    html += '<h2>Visualizations</h2>\n'
-    resolve = resolve or _relative_link(output_dir)
-    html += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Figures are linked from the run folder (<code>geography/</code>, <code>phylogeny/</code>, <code>extended/</code>); open this report from that folder.</p>\n'
+    from html import escape
 
-    # Add global color picker container
-    html += '<div id="global-color-picker" class="plot-controls" style="margin-bottom: 20px; max-width: 600px;">\n'
-    html += '<!-- Global color picker will be populated by JavaScript -->\n'
-    html += '</div>\n'
-
-    viz_dir = output_dir / 'visualization'
-    viz_pdf_dir = viz_dir / 'pdf'
-    viz_svg_dir = viz_dir / 'svg'
-    viz_json_dir = viz_dir / 'json'
-
-    if not viz_dir.exists():
-        html += '<p class="alert alert-info">No visualizations available</p>\n'
-        html += '</div>\n'
-        return html
-
-    # Define visualization categories and their display names (in display order)
-    viz_categories = [
-        {
-            'title': 'Phylogenetic Tree',
-            'pattern': f'{organism}_tree.png',
-            'directory': 'phylogenetic',
-            'description': 'Phylogenetic tree showing relationships between haplotypes',
-            'note': f'Newick tree files: <code>phylogeny/tree.nwk</code> (haplotype IDs) and <code>phylogeny/tree_labeled.nwk</code> (haplotype labels), for opening in tree editors such as <a href="https://treeviewer.org/" target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024) for re-rooting and customization'
-        },
-        {
-            'title': 'Relative Abundance by Geographic Region',
-            'pattern': f'{organism}_distribution_bar.png',
-            'json_pattern': f'{organism}_distribution_bar_data.json',
-            'description': 'Relative abundance of haplotypes across geographic regions'
-        },
-        {
-            'title': 'Total Abundance by Geographic Region',
-            'pattern': f'{organism}_totaldistribution_bar.png',
-            'json_pattern': f'{organism}_totaldistribution_bar_data.json',
-            'description': 'Total sample counts of haplotypes across geographic regions'
-        },
-        {
-            'title': 'Haplotype Abundance by Region',
-            'pattern': f'{organism}_distribution_bar_faceted.png',
-            'json_pattern': f'{organism}_distribution_bar_faceted_data.json',
-            'description': 'Total sample counts faceted by haplotype across geographic regions'
-        },
-        {
-            'title': 'Species Abundance by Region',
-            'pattern': f'{organism}_distribution_bar_species_faceted.png',
-            'json_pattern': f'{organism}_distribution_bar_species_faceted_data.json',
-            'description': 'Total sample counts faceted by assigned species with haplotypes stacked across geographic regions'
-        },
-        {
-            'title': 'Distribution Map',
-            'pattern': f'{organism}_distribution_map.png',
-            'json_pattern': f'{organism}_distribution_map_data.json',
-            'description': 'Geographic distribution of samples'
-        },
-        {
-            'title': 'Distribution Map (Species-Faceted)',
-            'pattern': f'{organism}_distribution_map_species_faceted.png',
-            'description': 'Geographic distribution faceted by assigned species'
-        },
-        {
-            'title': 'Distribution Map (Haplotype-Faceted)',
-            'pattern': f'{organism}_distribution_map_faceted.png',
-            'description': 'Geographic distribution faceted by haplotype'
-        }
-    ]
-
-    # Filter to available visualizations
-    available_viz = []
-    for viz in viz_categories:
-        # Determine which directory to look in
-        base_search_dir = output_dir / viz.get('directory', 'visualization')
-
-        # Allow SVG/PNG fallbacks (ESV workflow exports SVG)
-        # Check both new structure (pdf/svg subdirs) and legacy (flat structure)
-        # Note: PDFs are excluded because they cannot be embedded in HTML <img> tags
-        base_pattern = viz['pattern']
-        base_name = Path(base_pattern).stem
-        candidate_paths = [
-            # New structure (PNG and SVG only — embeddable in HTML)
-            viz_pdf_dir / Path(base_pattern).with_suffix('.png').name,
-            viz_svg_dir / Path(base_pattern).with_suffix('.svg').name,
-            # Legacy flat structure
-            viz_dir / base_pattern,
-            viz_dir / Path(base_pattern).with_suffix('.svg'),
-            viz_dir / Path(base_pattern).with_suffix('.png'),
-            # Non-visualization directories (e.g., phylogenetic)
-            base_search_dir / base_pattern,
-            base_search_dir / Path(base_pattern).with_suffix('.svg'),
-            base_search_dir / Path(base_pattern).with_suffix('.png'),
-        ]
-        # Link to the first candidate that the run folder keeps (not embedded)
-        image_path, image_src = next(((p, resolve(p)) for p in candidate_paths
-                                      if p.exists() and resolve(p)), (None, None))
-
-        if image_path:
-            files = []
-            for ext in ('.pdf', '.svg'):
-                name = Path(base_pattern).with_suffix(ext).name
-                staged = next((d / name for d in (viz_pdf_dir, viz_svg_dir, viz_dir, base_search_dir)
-                               if (d / name).exists() and resolve(d / name)), None)
-                if staged is not None:
-                    files.append(resolve(staged))
-            if image_src:
-                viz_data = {**viz, 'image_src': image_src, 'files': files}
-
-                # Load JSON data if available (for interactive plots)
-                if 'json_pattern' in viz:
-                    # Check both new and legacy locations
-                    json_candidates = [
-                        viz_json_dir / viz['json_pattern'],
-                        viz_dir / viz['json_pattern'],
-                    ]
-                    json_path = next((p for p in json_candidates if p.exists()), None)
-                    if json_path:
-                        try:
-                            with open(json_path, 'r') as f:
-                                plot_data = json.load(f)
-                            viz_data['plot_data'] = plot_data
-                            logger.debug(f"Loaded plot data for {viz['title']}: {json_path}")
-                        except Exception as e:
-                            logger.warning(f"Failed to load plot data from {json_path}: {e}", extra={"step_failure": "12 HTML report"})
-
-                available_viz.append(viz_data)
-
-    if not available_viz:
-        html += '<p class="alert alert-info">No visualization images found</p>\n'
-        html += '</div>\n'
-        return html
-
-    # Create subtabs for visualizations
-    html += '<div class="subtabs">\n'
-    for idx, viz in enumerate(available_viz):
-        active_class = ' active' if idx == 0 else ''
-        tab_id = f"viz-tab-{idx}"
-        html += f'<button class="subtab-button{active_class}" onclick="switchSubtab(\'{tab_id}\')">{viz["title"]}</button>\n'
-    html += '</div>\n'
-
-    # Create subtab content
-    for idx, viz in enumerate(available_viz):
-        active_class = ' active' if idx == 0 else ''
-        tab_id = f"viz-tab-{idx}"
-        html += f'<div id="{tab_id}" class="subtab-content{active_class}">\n'
-        html += '<div class="viz-container">\n'
-        html += f'<h3>{viz["title"]}</h3>\n'
-        html += f'<p class="viz-description">{viz["description"]}</p>\n'
-        links = ', '.join(f'<a href="{f}"><code>{f}</code></a>' for f in viz['files'])
-        html += f'<p style="color: #666; font-size: 0.85em; margin-bottom: 10px;">Files: {links}</p>\n'
-        # Add optional note if present
-        if 'note' in viz:
-            html += f'<p style="color: #2563eb; font-size: 0.85em; margin-bottom: 10px; padding: 8px; background-color: #eff6ff; border-left: 3px solid #2563eb; border-radius: 3px;">{viz["note"]}</p>\n'
-
-        # Add interactive controls for plots with JSON data (except faceted plots)
-        if 'plot_data' in viz and viz['plot_data'].get('plot_type') != 'faceted_abundance':
-            data_id = f"plot-data-{idx}"
-            plot_id = f"plot-{idx}"
-            controls_id = f"controls-{idx}"
-
-            # Toggle button between static and interactive
-            html += '<div class="plot-mode-toggle">\n'
-            html += f'<button class="toggle-btn active" onclick="showStaticPlot(\'{plot_id}\', {idx})">Static Image</button>\n'
-            html += f'<button class="toggle-btn" onclick="showInteractivePlot(\'{plot_id}\', {idx})">Interactive Plot</button>\n'
-            html += '</div>\n'
-
-            # Static plot (shown by default)
-            html += f'<div id="{plot_id}-static" class="plot-view active">\n'
-            html += f'<img src="{viz["image_src"]}" alt="{viz["title"]}" class="viz-image">\n'
-            html += '</div>\n'
-
-            # Interactive plot container (hidden by default)
-            html += f'<div id="{plot_id}-interactive" class="plot-view" style="display: none;">\n'
-
-            # Filter controls
-            html += f'<div id="{controls_id}" class="plot-controls">\n'
-
-            # Summary Statistics Panel
-            html += f'<div id="stats-panel-{idx}" class="stats-panel">\n'
-            html += '<div class="stats-grid">\n'
-            html += '<div class="stat-item">\n'
-            html += '<div class="stat-label">Genotypes Shown</div>\n'
-            html += f'<div class="stat-value" id="stat-genotypes-{idx}">--</div>\n'
-            html += '</div>\n'
-            html += '<div class="stat-item">\n'
-            html += '<div class="stat-label">Total Samples</div>\n'
-            html += f'<div class="stat-value" id="stat-samples-{idx}">--</div>\n'
-            html += '</div>\n'
-            html += '<div class="stat-item">\n'
-            html += '<div class="stat-label">% of Total Data</div>\n'
-            html += f'<div class="stat-value" id="stat-percentage-{idx}">--</div>\n'
-            html += '</div>\n'
-            html += '</div>\n'
-            html += '</div>\n'
-
-            html += '<div class="controls-section">\n'
-            html += '<h4>Filter Options</h4>\n'
-
-            # Threshold slider
-            html += '<div class="control-group">\n'
-            html += '<label for="threshold-{0}">Minimum Sample Count: <span id="threshold-value-{0}">0</span></label>\n'.format(idx)
-            html += '<input type="range" id="threshold-{0}" class="threshold-slider" min="0" max="50" value="0" \n'.format(idx)
-            html += f'oninput="updateThreshold({idx}); updatePlot({idx})">\n'
-            html += '</div>\n'
-
-            # Wrap basin filter and genotype checkboxes in flex container
-            html += '<div class="controls-flex-container">\n'
-
-            # Ocean basin filter (only for distribution maps with ocean basin data)
-            if viz['plot_data'].get('plot_type') == 'distribution_map' and viz['plot_data'].get('ocean_basins'):
-                html += '<div class="control-group">\n'
-                html += '<label>Filter by Ocean Basin:</label>\n'
-                html += f'<div class="checkbox-controls">\n'
-                html += f'<button class="btn-small" onclick="selectAllBasins({idx})">Select All</button>\n'
-                html += f'<button class="btn-small" onclick="deselectAllBasins({idx})">Deselect All</button>\n'
-                html += '</div>\n'
-                html += f'<div id="basin-checkboxes-{idx}" class="genotype-checkboxes">\n'
-                html += '<!-- Basin checkboxes will be populated by JavaScript -->\n'
-                html += '</div>\n'
-                html += '</div>\n'
-
-            # Genotype checkboxes
-            html += '<div class="control-group">\n'
-            html += '<label>Select Genotypes:</label>\n'
-            html += f'<div class="checkbox-controls">\n'
-            html += f'<button class="btn-small" onclick="selectAllGenotypes({idx})">Select All</button>\n'
-            html += f'<button class="btn-small" onclick="deselectAllGenotypes({idx})">Deselect All</button>\n'
-            html += '</div>\n'
-            html += f'<div id="genotype-checkboxes-{idx}" class="genotype-checkboxes">\n'
-            html += '<!-- Checkboxes will be populated by JavaScript -->\n'
-            html += '</div>\n'
-            html += '</div>\n'
-
-            html += '</div>\n'  # Close controls-flex-container
-
-            # Download options
-            html += '<div class="control-group">\n'
-            html += '<label>Export Options:</label>\n'
-            html += '<div class="download-options">\n'
-            html += f'<button class="btn-download" onclick="downloadPlot({idx}, \'png\')">📥 PNG</button>\n'
-            html += f'<button class="btn-download" onclick="downloadPlot({idx}, \'svg\')">📥 SVG</button>\n'
-            html += f'<button class="btn-download" onclick="downloadCSV({idx})">📥 CSV Data</button>\n'
-            html += '</div>\n'
-            html += '<div class="resolution-control">\n'
-            html += '<label for="resolution-{0}" class="small-label">Image Resolution:</label>\n'.format(idx)
-            html += '<select id="resolution-{0}" class="resolution-select">\n'.format(idx)
-            html += '<option value="800x600">Standard (800×600)</option>\n'
-            html += '<option value="1200x900" selected>High (1200×900)</option>\n'
-            html += '<option value="1600x1200">Print (1600×1200)</option>\n'
-            html += '<option value="2400x1800">Publication (2400×1800)</option>\n'
-            html += '</select>\n'
-            html += '</div>\n'
-            html += '</div>\n'
-
-            html += '</div>\n'  # controls-section
-            html += '</div>\n'  # plot-controls
-
-            # Plotly chart container
-            html += f'<div id="{plot_id}" class="plotly-chart"></div>\n'
-
-            html += '</div>\n'  # plot-view interactive
-
-            # Embed plot data as JSON
-            json_str = json.dumps(viz['plot_data'])
-            html += f'<script type="application/json" id="{data_id}">\n'
-            html += json_str
-            html += '\n</script>\n'
-        else:
-            # No interactive data or faceted plot - just show static image
-            html += f'<img src="{viz["image_src"]}" alt="{viz["title"]}" class="viz-image">\n'
-
-        html += '</div>\n'  # viz-container
-        html += '</div>\n'  # subtab-content
-
-    html += '</div>\n'
-    return html
+    run_dir = Path(run_dir)
+    html = '<div class="section" id="section-visualizations">\n<h2>Figures</h2>\n'
+    html += ('<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Each figure has an '
+             'overview, shown here, and for most figures one page per species or genus (a multi-page '
+             'PDF, and one SVG per page listed in the folder\'s <code>manifest.json</code>). Figures '
+             'are linked from the run folder; open this report from that folder.</p>\n')
+    found = False
+    for folder, title in FIGURE_FOLDERS:
+        path = run_dir / folder / "manifest.json"
+        if not path.exists():
+            continue
+        try:
+            manifest = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        html += f'<h3>{escape(title)}</h3>\n'
+        if folder == "phylogeny":
+            html += ('<p style="color: #666; font-size: 0.85em;">Newick tree files: '
+                     '<code>phylogeny/tree.nwk</code> (haplotype IDs) and <code>phylogeny/tree_labeled.nwk</code> '
+                     '(haplotype labels), for tree editors such as <a href="https://treeviewer.org/" '
+                     'target="_blank">TreeViewer</a> (Bianchini &amp; Sánchez-Baracaldo, 2024).</p>\n')
+        for name, entry in manifest.items():
+            overview = entry.get("overview") or []
+            svg = next((f for f in overview if f.endswith(".svg")), None)
+            pdf = next((f for f in overview if f.endswith(".pdf")), None)
+            links = []
+            if pdf and (run_dir / folder / pdf).exists():
+                links.append(f'<a href="{escape(folder)}/{escape(pdf)}">PDF</a>')
+            pages = entry.get("pages") or {}
+            if entry.get("pages_pdf") and (run_dir / folder / entry["pages_pdf"]).exists():
+                links.append(f'<a href="{escape(folder)}/{escape(entry["pages_pdf"])}">'
+                             f'{len(pages)} page{"" if len(pages) == 1 else "s"} (PDF)</a>')
+            html += f'<h4>{escape(name.replace("_", " "))}</h4>\n'
+            if svg and (run_dir / folder / svg).exists():
+                html += (f'<img src="{escape(folder)}/{escape(svg)}" alt="{escape(name)}" '
+                         f'class="viz-image" style="max-width: 100%;">\n')
+            if links:
+                html += f'<p style="font-size: 0.85em;">{" | ".join(links)}</p>\n'
+            found = True
+    if not found:
+        html += '<p class="alert alert-info">No figures in this run.</p>\n'
+    return html + '</div>\n'
 
 
 def _build_methods_section(output_dir: Path, organism: str, version: str,
@@ -3691,7 +3451,7 @@ def generate_html_report(
         builder.add_section(_build_executive_summary_section(assignment_summary, annotated_df))
         builder.add_section(_build_parameters_section(run_dir, organism, provenance))
         resolve = _link_resolver(links) if links is not None else None
-        builder.add_section(_build_visualizations_section(output_dir, organism, resolve))
+        builder.add_section(_build_figures_section(run_dir))
         builder.add_section(_build_methods_section(run_dir, organism, version, provenance))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_quality_control_section(quality_dir))

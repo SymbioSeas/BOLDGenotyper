@@ -166,7 +166,6 @@ def test_plan_moves_default(tmp_path):
     assert moves == {
         "haplotypes/Synth_haplotypes.fasta": "haplotypes.fasta",
         "quality_control/label_conflicts.csv": "label_conflicts.csv",
-        "visualization/pdf/Synth_distribution_map.pdf": "geography/distribution_map.pdf",
         "metadata_summary/Synth_metadata_summary.csv": "metadata_coverage.csv",
     }
 
@@ -175,15 +174,13 @@ def test_plan_moves_extended(tmp_path):
     staging = _stage(tmp_path, STAGED)
     moves = {str(s.relative_to(staging)): str(d)
              for s, d in layout.plan_moves(staging, "Synth", extended=True).items()}
-    assert moves["visualization/pdf/Synth_distribution_map.pdf"] == "geography/distribution_map.pdf"
-    assert moves["visualization/pdf/Synth_distribution_bar.pdf"] == "extended/geography/distribution_bar.pdf"
     assert moves["metadata_summary/Synth_sex_tabulation.csv"] == "extended/metadata/sex_tabulation.csv"
     assert moves["phylogenetic/Synth_MSA_chunk1.pdf"] == "extended/divergence/msa/MSA_chunk1.pdf"
     assert moves["quality_control/label_composition_heatmap.pdf"] == \
         "extended/labels/label_composition_heatmap.pdf"
-    assert moves["visualization/svg/species_haplotype_maps/Genus_alpha_haplotype_distribution_map.svg"] == \
-        "extended/geography/per_species/Genus_alpha_haplotype_distribution_map.svg"
-    for dropped in ("Synth_annotated.csv", "haplotypes/Synth_haplotype_stats.csv",
+    for dropped in ("visualization/pdf/Synth_distribution_map.pdf",      # figures are drawn
+                    "visualization/pdf/Synth_distribution_bar.pdf",      # into the run folder
+                    "Synth_annotated.csv", "haplotypes/Synth_haplotype_stats.csv",
                     "quality_control/haplotype_label_summary.csv",
                     "metadata_summary/Synth_metadata_coverage.json", "phylogenetic/Synth_MSA_chunk1.png"):
         assert dropped not in moves
@@ -192,8 +189,8 @@ def test_plan_moves_extended(tmp_path):
 def test_apply_moves(tmp_path):
     staging = _stage(tmp_path, STAGED)
     placed = layout.apply_moves(layout.plan_moves(staging, "Synth"), tmp_path / "run")
-    assert (tmp_path / "run" / "geography" / "distribution_map.pdf").exists()
-    assert len(placed) == 4 and not (staging / "haplotypes" / "Synth_haplotypes.fasta").exists()
+    assert (tmp_path / "run" / "haplotypes.fasta").exists()
+    assert len(placed) == 3 and not (staging / "haplotypes" / "Synth_haplotypes.fasta").exists()
 
 
 def test_per_species_records(records, tmp_path):

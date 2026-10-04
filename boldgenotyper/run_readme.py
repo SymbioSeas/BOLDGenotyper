@@ -234,7 +234,20 @@ FILE_DOCS = [
     {"pattern": "phylogeny/excluded_tips.txt",
      "text": "Haplotypes left out of the tree, with the reason (suspect, fewer than "
              "--tree-min-members members, or shorter than the minimum length)."},
-    {"pattern": "phylogeny/tree.*", "text": "Tree figure."},
+    {"pattern": "phylogeny/tree.*",
+     "text": "The full tree: every tip, labeled by haplotype; branch values are supports of 0.70 "
+             "or more."},
+    {"pattern": "phylogeny/tree_overview.*",
+     "text": "Tree overview: the full tree for up to 40 haplotypes; above, each taxon whose "
+             "haplotypes form a clade is collapsed to one tip (haplotypes and records in "
+             "parentheses), and taxa that do not form a clade are left expanded and listed."},
+    {"pattern": "phylogeny/tree_by_genus.pdf",
+     "text": "One page per genus with two or more haplotypes: the clade at the most recent common "
+             "ancestor of the genus's haplotypes (tips of other genera inside it included)."},
+    {"pattern": "phylogeny/by_genus/*", "text": "The pages of tree_by_genus.pdf, one SVG per genus."},
+    {"pattern": "*/manifest.json",
+     "text": "The figures in this folder: for each figure, its overview files and its per-species "
+             "(or per-genus) pages."},
     {"pattern": "geography/haplotype_by_region.csv",
      "text": "Records per haplotype and region (members with a region only).",
      "columns": {
@@ -242,7 +255,13 @@ FILE_DOCS = [
          "pct_of_region": "n_records / all members in the region x 100",
      }},
     {"pattern": "geography/distribution_map.*",
-     "text": "Map of members with geographic-quality coordinates, colored by haplotype."},
+     "text": "Map of records with geographic-quality coordinates, colored by haplotype for up to "
+             "40 haplotypes and by taxon above (12 haplotypes or 15 taxa colored; the rest gray "
+             "as 'Other'); point size is records per site."},
+    {"pattern": "geography/distribution_map_by_species.pdf",
+     "text": "One page per taxon with mapped records, colored by haplotype (a haplotype keeps its "
+             "color on every page)."},
+    {"pattern": "geography/by_species/*", "text": "The pages of distribution_map_by_species.pdf, one SVG per taxon."},
     # --- extended/ ---------------------------------------------------------
     {"pattern": "extended/metadata/*_tabulation.csv",
      "text": "--extended. Records per haplotype and value of one metadata field (records with a value).",
@@ -280,7 +299,14 @@ FILE_DOCS = [
          "total_samples": "records collected that year",
          "n_haplotypes": "haplotypes among them",
      }},
-    {"pattern": "extended/metadata/figures/*", "text": "--extended. Metadata figures (PDF; PNG for the report)."},
+    {"pattern": "extended/metadata/figures/*",
+     "text": "--extended. Metadata figures (PDF and SVG): per field, records by haplotype or taxon "
+             "stacked by value, one page per taxon with two or more haplotypes "
+             "(<field>_by_haplotype.pdf) and records by region (<field>_by_region); records by "
+             "collection year (heatmap; pages by haplotype), the sampling timeline, records by "
+             "year and region, and metadata coverage. 'By region' views use the run's region "
+             "column, or country/ocean when the run has fewer than two regions (the caption "
+             "says which)."},
     {"pattern": "extended/divergence/label_based_gap.csv",
      "text": "--extended. Barcoding gap computed from record labels (label-conflict records left out); "
              "distances between records are the p-distances between their haplotypes.",
@@ -364,8 +390,9 @@ FILE_DOCS = [
      "text": "--extended. The records.csv rows of one assigned species with two or more haplotypes.",
      "same_as": "records.csv"},
     {"pattern": "extended/geography/*",
-     "text": "--extended. Region bar charts, faceted maps and per-species or per-haplotype maps "
-             "and bars (PDF and SVG)."},
+     "text": "--extended. Records per region by haplotype or taxon, as shares of each region "
+             "(region_abundance_relative) and counts (region_abundance_total), with one page per "
+             "taxon with two or more haplotypes (PDF and SVG)."},
     {"pattern": "extended/labels/depositor_keyword_hits.csv",
      "text": "--extended. Records whose depositor notes contain a keyword (whole-word match).",
      "columns": {"depositor_note": "the depositor's notes field",

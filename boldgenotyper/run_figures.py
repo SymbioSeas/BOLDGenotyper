@@ -237,3 +237,66 @@ def write_geography_figures(records: pd.DataFrame, region_col: Optional[str], ge
             if entry:
                 out["extended/geography"][name] = entry
     return {k: v for k, v in out.items() if v}
+
+
+# ---------------------------------------------------------------------------
+# All figures of a run
+# ---------------------------------------------------------------------------
+
+def write_run_figures(records: pd.DataFrame, run_dir, tree_path=None,
+                      haplotypes: Optional[pd.DataFrame] = None, region_col: Optional[str] = None,
+                      geography: bool = True, metadata_fields: Optional[List[str]] = None,
+                      extended: bool = False, cross_tabs: bool = True, temporal: bool = True,
+                      normalize_sex: bool = True, settings=None) -> Tuple[Dict[str, Path], List[str]]:
+    """
+    Draw a run's figures into run_dir, one manifest.json per figure folder.
+
+    phylogeny/ (when tree_path exists), geography/ (when geography is set),
+    and with extended extended/geography/ (needs region_col) and
+    extended/metadata/figures/. Returns (folder -> manifest path, warnings); a
+    figure group that fails adds a warning and the others are still drawn.
+    """
+    from . import metadata_figures, tree_figures
+    from .metadata_summary import DEFAULT_CATEGORICAL_FIELDS, normalize_vocabulary
+
+    settings = _settings(settings)
+    run_dir = Path(run_dir)
+    haplotypes = haplotypes if haplotypes is not None else haplotype_table(records)
+    manifests: Dict[str, Path] = {}
+    warnings: List[str] = []
+
+    def record(folder: str, entries: Dict[str, Dict]):
+        if entries:
+            manifests[folder] = fp.write_manifest(run_dir / folder, entries)
+
+    if tree_path and Path(tree_path).exists():
+        try:
+            record("phylogeny", tree_figures.write_tree_figures(
+                tree_path, haplotypes, run_dir / "phylogeny", settings.max_overview_haplotypes))
+        except Exception as e:
+            logger.debug("Tree figure error details:", exc_info=True)
+            warnings.append(f"tree figures: {e}")
+
+    if geography:
+        try:
+            out = write_geography_figures(
+                records, region_col, run_dir / "geography",
+                run_dir / "extended" / "geography" if extended else None, settings)
+            for folder, entries in out.items():
+                record(folder, entries)
+        except Exception as e:
+            logger.debug("Geography figure error details:", exc_info=True)
+            warnings.append(f"geography figures: {e}")
+
+    if extended:
+        fields = list(metadata_fields or DEFAULT_CATEGORICAL_FIELDS)
+        try:
+            present = [f for f in fields if f in records.columns]
+            normalized = normalize_vocabulary(records, present, map_sex_codes=normalize_sex)
+            record("extended/metadata/figures", metadata_figures.write_metadata_figures(
+                normalized, present, region_col, run_dir / "extended" / "metadata" / "figures",
+                cross_tabs=cross_tabs, temporal=temporal, settings=settings))
+        except Exception as e:
+            logger.debug("Metadata figure error details:", exc_info=True)
+            warnings.append(f"metadata figures: {e}")
+    return manifests, warnings

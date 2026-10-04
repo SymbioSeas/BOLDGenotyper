@@ -1894,7 +1894,7 @@ def export_metadata_summary(
     """
     Export metadata summaries.
 
-    Always writes field coverage (JSON, CSV, plot) and metadata_summary/README.md.
+    Always writes field coverage (JSON, CSV) and metadata_summary/README.md.
     With extended=True it also writes cross-tabulations on normalized
     vocabularies and the heatmap (if cross_tabs is set) and the temporal and
     first-sampled outputs (if temporal_analysis is set) (P1-3, P1-4, P1-5).
@@ -1908,7 +1908,7 @@ def export_metadata_summary(
     organism : str
         Organism name for file naming
     color_map : Dict[str, str], optional
-        Haplotype color mapping
+        Unused; kept for callers. Figures are drawn by metadata_figures.
     fields : List[str], optional
         Metadata fields to analyze (default: DEFAULT_CATEGORICAL_FIELDS)
     haplotype_col : str, optional
@@ -1931,25 +1931,9 @@ def export_metadata_summary(
     metadata_dir = output_dir / 'metadata_summary'
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
-    # Visualization directories organized by format
-    viz_pdf_dir = output_dir / 'visualization' / 'metadata' / 'pdf'
-    viz_svg_dir = output_dir / 'visualization' / 'metadata' / 'svg'
-    viz_json_dir = output_dir / 'visualization' / 'metadata' / 'json'
-    viz_pdf_dir.mkdir(parents=True, exist_ok=True)
-    viz_svg_dir.mkdir(parents=True, exist_ok=True)
-    viz_json_dir.mkdir(parents=True, exist_ok=True)
-    # Keep backward compatible reference
-    viz_dir = viz_pdf_dir
-
-    plots_data_dir = output_dir / 'plots' / 'data'
-    plots_data_dir.mkdir(parents=True, exist_ok=True)
-
+    # Figures are drawn by metadata_figures from records.csv (run_figures)
     if fields is None:
         fields = DEFAULT_CATEGORICAL_FIELDS
-
-    # Get color map if not provided
-    if color_map is None:
-        color_map = get_haplotype_colors(df, haplotype_col)
 
     outputs = {}
 
@@ -1985,11 +1969,6 @@ def export_metadata_summary(
     coverage_df.to_csv(coverage_csv_path, index=False)
     outputs['coverage_csv'] = coverage_csv_path
 
-    # Plot coverage
-    coverage_plot_path = viz_dir / f'{organism}_metadata_coverage'
-    plot_metadata_coverage(coverage_stats, coverage_plot_path)
-    outputs['coverage_plot'] = coverage_plot_path.with_suffix('.png')
-
     temporal_analysis_performed = False
     if not extended:
         outputs['readme'] = write_metadata_readme(metadata_dir, organism, outputs)
@@ -2018,18 +1997,6 @@ def export_metadata_summary(
                 analysis_df.to_csv(analysis_path, index=False)
                 outputs[f'{field}_tabulation'] = analysis_path
 
-            # Plot if enough categories
-            if field_stats.get('n_unique', 0) >= 2:
-                plot_path = viz_dir / f'{organism}_{field.replace("/", "_")}_by_haplotype'
-                plot_categorical_by_haplotype(df, field, plot_path, color_map, haplotype_col)
-                outputs[f'{field}_plot'] = plot_path.with_suffix('.png')
-
-        # 3. Metadata Heatmap
-        available_fields = [f for f in fields if f in df.columns and df[f].notna().any()]
-        if available_fields and len(df[haplotype_col].dropna().unique()) > 1:
-            heatmap_path = viz_dir / f'{organism}_metadata_heatmap'
-            plot_metadata_heatmap(df, available_fields, heatmap_path, haplotype_col)
-            outputs['heatmap'] = heatmap_path.with_suffix('.png')
 
     # 4. Temporal Analysis
     if temporal_analysis and DATE_FIELD in df.columns:
@@ -2048,10 +2015,6 @@ def export_metadata_summary(
                 first_sampled_path = metadata_dir / f'{organism}_haplotype_first_sampled.csv'
                 first_sampled_df.to_csv(first_sampled_path, index=False)
                 outputs['first_sampled_csv'] = first_sampled_path
-
-                timeline_path = viz_dir / f'{organism}_haplotype_sampling_timeline'
-                plot_haplotype_emergence_timeline(first_sampled_df, timeline_path, color_map)
-                outputs['sampling_timeline_plot'] = timeline_path.with_suffix('.png')
 
             # Temporal distribution
             temporal_df = analyze_temporal_distribution(df, haplotype_col, 'year')
@@ -2072,65 +2035,6 @@ def export_metadata_summary(
                 summary_data.columns = ['year', 'total_samples', 'n_haplotypes']
                 summary_data.to_csv(temporal_summary_path, index=False)
                 outputs['temporal_summary'] = temporal_summary_path
-
-                # Plot composition over time (all haplotypes)
-                composition_path = viz_dir / f'{organism}_temporal_composition'
-                plot_temporal_composition(temporal_df, composition_path, color_map)
-                outputs['temporal_composition_plot'] = composition_path.with_suffix('.png')
-
-            # 5. Species-Faceted Temporal Plots (if species data available)
-            species_col = 'assigned_sp'
-            if species_col in df.columns and df[species_col].notna().any():
-                n_species = df[species_col].nunique()
-                if n_species > 1:
-                    logger.info(f"Generating species-faceted temporal plots for {n_species} species...")
-
-                    # Species-faceted temporal composition
-                    species_comp_path = viz_dir / f'{organism}_temporal_composition_species_faceted'
-                    try:
-                        plot_temporal_composition_species_faceted(
-                            df, species_comp_path, color_map, haplotype_col, species_col
-                        )
-                        outputs['temporal_composition_species_faceted'] = species_comp_path.with_suffix('.png')
-                    except Exception as e:
-                        logger.warning(f"Species-faceted temporal composition failed: {e}", extra={"step_failure": "9.5 metadata summary"})
-
-                    # Species-faceted sampling timeline
-                    species_timeline_path = viz_dir / f'{organism}_sampling_timeline_species_faceted'
-                    try:
-                        plot_emergence_timeline_species_faceted(
-                            df, species_timeline_path, color_map, haplotype_col, species_col
-                        )
-                        outputs['sampling_timeline_species_faceted'] = species_timeline_path.with_suffix('.png')
-                    except Exception as e:
-                        logger.warning(f"Species-faceted sampling timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
-
-            # 6. Country/Ocean-Faceted Temporal Plots (if geographic data available)
-            country_col = 'country/ocean'
-            if country_col in df.columns and df[country_col].notna().any():
-                n_countries = df[country_col].nunique()
-                if n_countries > 1:
-                    logger.info(f"Generating country/ocean-faceted temporal plots for {n_countries} regions...")
-
-                    # Country-faceted temporal composition
-                    country_comp_path = viz_dir / f'{organism}_temporal_composition_country_faceted'
-                    try:
-                        plot_temporal_composition_country_faceted(
-                            df, country_comp_path, color_map, haplotype_col, country_col
-                        )
-                        outputs['temporal_composition_country_faceted'] = country_comp_path.with_suffix('.png')
-                    except Exception as e:
-                        logger.warning(f"Country-faceted temporal composition failed: {e}", extra={"step_failure": "9.5 metadata summary"})
-
-                    # Country-faceted sampling timeline
-                    country_timeline_path = viz_dir / f'{organism}_sampling_timeline_country_faceted'
-                    try:
-                        plot_emergence_timeline_country_faceted(
-                            df, country_timeline_path, color_map, haplotype_col, country_col
-                        )
-                        outputs['sampling_timeline_country_faceted'] = country_timeline_path.with_suffix('.png')
-                    except Exception as e:
-                        logger.warning(f"Country-faceted sampling timeline failed: {e}", extra={"step_failure": "9.5 metadata summary"})
 
     elif temporal_analysis and DATE_FIELD not in df.columns:
         logger.info(f"Temporal analysis skipped: '{DATE_FIELD}' field not found in data")

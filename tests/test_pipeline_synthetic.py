@@ -289,7 +289,7 @@ def test_goas_regions_only_for_geographic_quality(tmp_path):
     assert d["warnings"] == []
     assert {"geography/distribution_map.pdf", "geography/distribution_map.svg",
             "geography/haplotype_by_region.csv",
-            "extended/geography/species_distribution_map.pdf"} <= _files(out)
+            "extended/geography/region_abundance_total.pdf"} <= _files(out)
     # P0-5: country counts come from country/ocean
     assert pd.read_csv(out / "haplotypes.csv")["n_with_country"].sum() > 0
 
@@ -328,16 +328,14 @@ def test_maps_draw_only_geographic_quality_coordinates(tmp_path):
     gpd.GeoDataFrame({"half": ["west", "east"]},
                      geometry=[box(-180, -90, 0, 90), box(0, -90, 180, 90)],
                      crs="EPSG:4326").to_file(shp)
-    from boldgenotyper import visualization
-    with mock.patch.object(visualization, "plot_distribution_map",
-                           wraps=visualization.plot_distribution_map) as spy:
+    from boldgenotyper import run_figures
+    with mock.patch.object(run_figures, "_draw_map", wraps=run_figures._draw_map) as spy:
         ok, out = run_synthetic(tmp_path, skip_geo=False, shapefile_path=shp,
                                 shapefile_field="half", geo_category="hemisphere")
     assert ok and spy.called
-    mapped = spy.call_args.kwargs["df"].set_index("processid")
     status = _records(out).set_index("processid")["coord_status"]
-    drawn = mapped[mapped["lat"].notna()].index
-    assert len(drawn) and (status.reindex(drawn) == "ok").all()
+    drawn = {pid for call in spy.call_args_list for pid in call.args[0]["processid"]}
+    assert drawn and (status.reindex(sorted(drawn)) == "ok").all()
     assert (status == "centroid").any()           # the fixture has centroid records ...
     rec = _records(out)
     assert rec.loc[rec["coord_status"] == "centroid", "lat"].notna().all()   # ... which keep lat/lon
@@ -582,3 +580,34 @@ def test_invalid_curation_file_stops_the_run(tmp_path):
     cur.write_text("seq_md5,taxon\nabc,Genus x\n")
     ok, out = run_synthetic(tmp_path, taxon_curation=cur)
     assert not ok and not (out / "records.csv").exists()
+
+
+@needs_goas
+@needs_fasttree
+def test_run_figures_and_manifests(tmp_path):
+    ok, out = run_synthetic(tmp_path, skip_geo=False, extended=True, report=True,
+                            phylogenetic__build_tree=True)
+    assert ok
+    files = _files(out)
+    for f in ("phylogeny/tree.svg", "phylogeny/tree_overview.svg", "phylogeny/manifest.json",
+              "geography/distribution_map.svg", "geography/distribution_map_by_species.pdf",
+              "geography/manifest.json", "extended/geography/region_abundance_total.svg",
+              "extended/metadata/figures/sex.svg", "extended/metadata/figures/records_by_year.svg",
+              "extended/metadata/figures/manifest.json"):
+        assert f in files, f
+    assert not [f for f in files if f.endswith(".png") and not f.startswith("plots/")]
+    assert not [f for f in files if "faceted" in f or "geography/per_" in f]   # old figure folders
+    manifest = json.loads((out / "geography" / "manifest.json").read_text())
+    for path in manifest["distribution_map"]["pages"].values():
+        assert (out / "geography" / path).exists()
+    html = (out / "report.html").read_text()
+    assert "geography/distribution_map.svg" in html and "phylogeny/tree_overview.svg" in html
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert d["warnings"] == []
+
+
+@needs_goas
+def test_default_run_writes_tree_and_map_only(tmp_path):
+    ok, out = run_synthetic(tmp_path, skip_geo=False)
+    assert ok and "geography/distribution_map.svg" in _files(out)
+    assert not (out / "extended").exists()

@@ -31,7 +31,6 @@ import importlib.util
 import sys
 import os
 import logging
-import json
 import shlex
 import shutil
 from datetime import datetime
@@ -44,12 +43,13 @@ from Bio import Phylo, SeqIO
 # Local imports
 from . import (
     utils, config, metadata, geographic, dereplication,
-    phylogenetics, visualization, reports,
+    phylogenetics, reports,
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
     run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays, query_report,
+    run_figures,
 )
 from . import taxon_curation as taxon_curation_mod
 from . import __version__
@@ -1407,8 +1407,6 @@ def run_pipeline(
     logger.info("-" * 80)
 
     try:
-        color_map = visualization.build_genotype_colors_dict(df_final, 'haplotype_sp')
-
         metadata_summary_results = metadata_summary.run_metadata_summary(
             annotated_df=df_final,
             output_dir=dirs['base'],
@@ -1416,7 +1414,7 @@ def run_pipeline(
             fields=metadata_fields,
             normalize_sex=normalize_sex,
             temporal_analysis=temporal_analysis,
-            color_map=color_map,
+            color_map=None,
             haplotype_col='haplotype_sp',
             extended=cfg.extended,
             cross_tabs=metadata_summary_enabled
@@ -1435,332 +1433,41 @@ def run_pipeline(
         logger.debug("Metadata summarization error details:", exc_info=True)
 
     # ========================================================================
-    # PHASE 10: Visualization
+    # PHASE 10: Figures
     # ========================================================================
+    # Drawn from the records.csv table and the rooted tree, by taxon, straight
+    # into the run folder (run_figures); each figure folder gets a manifest.json.
     logger.info("")
-    logger.info("PHASE 10: Visualization")
+    logger.info("PHASE 10: Figures")
     logger.info("-" * 80)
 
+    records_df = None
     try:
-        logger.info("10.1: Generating plots...")
-
-        # Generate visualizations for each format
-        for fmt in cfg.visualization.figure_format:
-            # Geographic visualizations - only if geographic analysis was performed
-            if geo_analysis_performed:
-                # Distribution maps
-                if 'lat' in df_final.columns and 'lon' in df_final.columns and 'haplotype_sp' in df_final.columns:
-                    try:
-                        # Determine background detail: use "full" for main plots
-                        detail = "full" if cfg.visualization.map_background_detail == "full" else cfg.visualization.map_background_detail
-                        if cfg.visualization.map_background_detail == "auto":
-                            detail = "full"  # Main plot gets full detail
-
-                        map_path, map_data = visualization.plot_distribution_map(
-                            df=mappable_coordinates(df_final, mappable_ids),
-                            output_path=str(get_viz_path(dirs, f"{organism}_distribution_map", fmt)),
-                            genotype_column='haplotype_sp',
-                            latitude_col='lat',
-                            longitude_col='lon',
-                            dpi=cfg.visualization.figure_dpi,
-                            map_background_detail=detail
-                        )
-                        # Save plot data as JSON for interactive plotting in HTML report
-                        if map_data:
-                            json_path = dirs['visualization_json'] / f"{organism}_distribution_map_data.json"
-                            with open(json_path, 'w') as f:
-                                json.dump(map_data, f, indent=2)
-                            logger.debug(f"Saved plot data to: {json_path}")
-                    except Exception as e:
-                        step_warnings.record("10.1 distribution map", e)
-
-                # Bars, per-species and faceted maps: --extended only (P2)
-                if cfg.extended:
-                    # Geographic region abundance bar plot (relative)
-                    if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
-                        try:
-                            bar_path, bar_data = visualization.plot_ocean_basin_abundance(
-                                df=df_final,
-                                output_path=str(get_viz_path(dirs, f"{organism}_distribution_bar", fmt)),
-                                genotype_column='haplotype_sp',
-                                basin_column=geo_category
-                            )
-                            # Save plot data as JSON for interactive plotting in HTML report
-                            if bar_data:
-                                json_path = dirs['visualization_json'] / f"{organism}_distribution_bar_data.json"
-                                with open(json_path, 'w') as f:
-                                    json.dump(bar_data, f, indent=2)
-                                logger.debug(f"Saved plot data to: {json_path}")
-                        except Exception as e:
-                            step_warnings.record("10.1 region bar plot", e)
-                            logger.debug("Bar plot error details:", exc_info=True)
-
-                    # Geographic region abundance bar plot (total counts)
-                    if geo_category in df_final.columns and 'haplotype_sp' in df_final.columns:
-                        try:
-                            total_bar_path, total_bar_data = visualization.plot_ocean_basin_abundance_total(
-                                df=df_final,
-                                output_path=str(get_viz_path(dirs, f"{organism}_totaldistribution_bar", fmt)),
-                                genotype_column='haplotype_sp',
-                                basin_column=geo_category
-                            )
-                            # Save plot data as JSON for interactive plotting in HTML report
-                            if total_bar_data:
-                                json_path = dirs['visualization_json'] / f"{organism}_totaldistribution_bar_data.json"
-                                with open(json_path, 'w') as f:
-                                    json.dump(total_bar_data, f, indent=2)
-                                logger.debug(f"Saved plot data to: {json_path}")
-                        except Exception as e:
-                            step_warnings.record("10.1 region bar plot", f"total counts: {e}")
-                            logger.debug("Total bar plot error details:", exc_info=True)
-
-                    # Species-level visualizations (if species data available)
-                    species_assignments_csv = dirs['species_analysis'] / 'species_assignments.csv'
-                    if species_assignments_csv.exists():
-                        try:
-                            # Load species assignments
-                            species_df = mappable_coordinates(pd.read_csv(species_assignments_csv),
-                                                              mappable_ids)
-
-                            # Species distribution map
-                            if 'lat' in species_df.columns and 'lon' in species_df.columns and 'primary_species' in species_df.columns:
-                                try:
-                                    # Use full detail for species-level main plots
-                                    detail = "full" if cfg.visualization.map_background_detail == "full" else cfg.visualization.map_background_detail
-                                    if cfg.visualization.map_background_detail == "auto":
-                                        detail = "full"
-
-                                    species_map_path, species_map_data = visualization.plot_species_distribution_map(
-                                        df=species_df,
-                                        output_path=str(get_viz_path(dirs, f"{organism}_species_distribution_map", fmt)),
-                                        species_column='primary_species',
-                                        latitude_col='lat',
-                                        longitude_col='lon',
-                                        dpi=cfg.visualization.figure_dpi,
-                                        map_background_detail=detail
-                                    )
-                                    if species_map_data:
-                                        json_path = dirs['visualization_json'] / f"{organism}_species_distribution_map_data.json"
-                                        with open(json_path, 'w') as f:
-                                            json.dump(species_map_data, f, indent=2)
-                                        logger.debug(f"Saved species map data to: {json_path}")
-                                except Exception as e:
-                                    step_warnings.record("10.1 species plots", f"species distribution map: {e}")
-
-                            # Species geographic region abundance (relative)
-                            if geo_category in species_df.columns and 'primary_species' in species_df.columns:
-                                try:
-                                    species_bar_path, species_bar_data = visualization.plot_species_ocean_basin_abundance(
-                                        df=species_df,
-                                        output_path=str(get_viz_path(dirs, f"{organism}_species_distribution_bar", fmt)),
-                                        species_column='primary_species',
-                                        basin_column=geo_category
-                                    )
-                                    if species_bar_data:
-                                        json_path = dirs['visualization_json'] / f"{organism}_species_distribution_bar_data.json"
-                                        with open(json_path, 'w') as f:
-                                            json.dump(species_bar_data, f, indent=2)
-                                        logger.debug(f"Saved species bar data to: {json_path}")
-                                except Exception as e:
-                                    step_warnings.record("10.1 species plots", f"species region bar plot: {e}")
-
-                            # Species geographic region abundance (total counts)
-                            if geo_category in species_df.columns and 'primary_species' in species_df.columns:
-                                try:
-                                    species_total_bar_path, species_total_bar_data = visualization.plot_species_ocean_basin_abundance_total(
-                                        df=species_df,
-                                        output_path=str(get_viz_path(dirs, f"{organism}_species_totaldistribution_bar", fmt)),
-                                        species_column='primary_species',
-                                        basin_column=geo_category
-                                    )
-                                    if species_total_bar_data:
-                                        json_path = dirs['visualization_json'] / f"{organism}_species_totaldistribution_bar_data.json"
-                                        with open(json_path, 'w') as f:
-                                            json.dump(species_total_bar_data, f, indent=2)
-                                        logger.debug(f"Saved species total bar data to: {json_path}")
-                                except Exception as e:
-                                    step_warnings.record("10.1 species plots", f"species region total bar plot: {e}")
-
-                            # Species-faceted haplotype visualizations
-                            # (separate plots for each species showing haplotypes)
-                            try:
-                                logger.info("  Generating species-faceted haplotype distribution maps...")
-                                # Use simplified background for species-faceted plots (many maps)
-                                detail = "simple" if cfg.visualization.map_background_detail == "auto" else cfg.visualization.map_background_detail
-
-                                # For species-faceted plots, use format-specific subdirectory
-                                species_facet_dir = dirs['visualization_pdf'] if fmt == 'pdf' else (
-                                    dirs['visualization_svg'] if fmt == 'svg' else dirs['visualization_pdf']
-                                )
-                                species_maps_results = visualization.plot_haplotypes_by_species_maps(
-                                    species_assignments=species_df,
-                                    output_dir=species_facet_dir,
-                                    species_column='primary_species',
-                                    haplotype_column='haplotype_sp',
-                                    latitude_col='lat',
-                                    longitude_col='lon',
-                                    min_haplotypes=2,
-                                    figure_format=fmt,
-                                    dpi=cfg.visualization.facet_dpi,
-                                    map_background_detail=detail
-                                )
-                                logger.info(f"  Created {len(species_maps_results)} species-faceted haplotype maps")
-                            except Exception as e:
-                                step_warnings.record("10.1 species plots", f"species-faceted haplotype maps: {e}")
-
-                            try:
-                                logger.info("  Generating species-faceted haplotype basin charts...")
-                                # For species-faceted plots, use format-specific subdirectory
-                                species_bar_facet_dir = dirs['visualization_pdf'] if fmt == 'pdf' else (
-                                    dirs['visualization_svg'] if fmt == 'svg' else dirs['visualization_pdf']
-                                )
-                                species_bars_results = visualization.plot_haplotypes_by_species_basin_bars(
-                                    species_assignments=species_df,
-                                    output_dir=species_bar_facet_dir,
-                                    species_column='primary_species',
-                                    haplotype_column='haplotype_sp',
-                                    basin_column=geo_category,
-                                    min_haplotypes=2,
-                                    figure_format=fmt
-                                )
-                                logger.info(f"  Created {len(species_bars_results)} species-faceted haplotype bar charts")
-                            except Exception as e:
-                                step_warnings.record("10.1 species plots", f"species-faceted haplotype bar charts: {e}")
-
-                        except Exception as e:
-                            step_warnings.record("10.1 species plots", f"species-level visualizations: {e}")
-
-                    # Faceted distribution map by haplotype_sp
-                    if ('lat' in df_final.columns and 'lon' in df_final.columns and
-                        'haplotype_sp' in df_final.columns and 'haplotype_id' in df_final.columns):
-                        try:
-                            # Use simplified background for faceted plots (better performance)
-                            detail = "simple" if cfg.visualization.map_background_detail == "auto" else cfg.visualization.map_background_detail
-
-                            # Only save individual facets if enabled (off by default for performance)
-                            facet_formats = cfg.visualization.facet_formats if cfg.visualization.save_individual_facets else None
-
-                            visualization.plot_distribution_map_faceted(
-                                df=mappable_coordinates(df_final, mappable_ids),
-                                output_path=str(get_viz_path(dirs, f"{organism}_distribution_map_faceted", fmt)),
-                                genotype_column='haplotype_sp',
-                                species_column='assigned_sp',
-                                latitude_col='lat',
-                                longitude_col='lon',
-                                dpi=cfg.visualization.facet_dpi,
-                                facet_by='genotype',
-                                map_buffer_degrees=cfg.visualization.map_buffer_degrees,
-                                show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
-                                show_scale_bar=cfg.visualization.show_scale_bar,
-                                genotype_plots_dir=dirs['haplotype_plots'],
-                                formats=facet_formats,
-                                map_background_detail=detail
-                            )
-
-                            # Additional species-faceted map (explicit file name for clarity)
-                            visualization.plot_distribution_map_faceted(
-                                df=mappable_coordinates(df_final, mappable_ids),
-                                output_path=str(get_viz_path(dirs, f"{organism}_distribution_map_species_faceted", fmt)),
-                                genotype_column='haplotype_sp',
-                                species_column='assigned_sp',
-                                latitude_col='lat',
-                                longitude_col='lon',
-                                dpi=cfg.visualization.facet_dpi,
-                                facet_by='species',
-                                map_buffer_degrees=cfg.visualization.map_buffer_degrees,
-                                show_unknown_annotation=cfg.visualization.show_unknown_geography_annotation,
-                                show_scale_bar=cfg.visualization.show_scale_bar,
-                                genotype_plots_dir=dirs['haplotype_plots'],
-                                formats=facet_formats,
-                                map_background_detail=detail
-                            )
-                        except Exception as e:
-                            step_warnings.record("10.1 faceted plots", f"faceted distribution maps: {e}")
-                            logger.debug("Faceted map error details:", exc_info=True)
-
-                    # Faceted geographic region bar plot by haplotype_sp
-                    if (geo_category in df_final.columns and 'haplotype_sp' in df_final.columns and
-                        'haplotype_id' in df_final.columns):
-                        try:
-                            # Only save individual facets if enabled (off by default for performance)
-                            facet_formats = cfg.visualization.facet_formats if cfg.visualization.save_individual_facets else None
-
-                            faceted_bar_path, faceted_bar_data = visualization.plot_ocean_basin_abundance_faceted(
-                                df=df_final,
-                                output_path=str(get_viz_path(dirs, f"{organism}_distribution_bar_faceted", fmt)),
-                                genotype_column='haplotype_id',
-                                species_column='assigned_sp',
-                                basin_column=geo_category,
-                                dpi=cfg.visualization.facet_dpi,
-                                facet_by='genotype',
-                                genotype_plots_dir=dirs['haplotype_plots'],
-                                formats=facet_formats
-                            )
-                            # Save plot data as JSON for interactive plotting in HTML report
-                            if faceted_bar_data:
-                                json_path = dirs['visualization_json'] / f"{organism}_distribution_bar_faceted_data.json"
-                                with open(json_path, 'w') as f:
-                                    json.dump(faceted_bar_data, f, indent=2)
-                                logger.debug(f"Saved plot data to: {json_path}")
-
-                            # Species-faceted version (explicit filename for clarity)
-                            species_bar_path, species_bar_data = visualization.plot_ocean_basin_abundance_faceted(
-                                df=df_final,
-                                output_path=str(get_viz_path(dirs, f"{organism}_distribution_bar_species_faceted", fmt)),
-                                genotype_column='haplotype_id',
-                                species_column='assigned_sp',
-                                basin_column=geo_category,
-                                dpi=cfg.visualization.facet_dpi,
-                                facet_by='species',
-                                genotype_plots_dir=dirs['haplotype_plots'],
-                                formats=facet_formats
-                            )
-                            if species_bar_data:
-                                json_path = dirs['visualization_json'] / f"{organism}_distribution_bar_species_faceted_data.json"
-                                with open(json_path, 'w') as f:
-                                    json.dump(species_bar_data, f, indent=2)
-                                logger.debug(f"Saved species-faceted plot data to: {json_path}")
-                        except Exception as e:
-                            step_warnings.record("10.1 faceted plots", f"faceted region bar plots: {e}")
-            else:
-                logger.info("  Skipping geographic visualizations (geographic analysis not performed)")
-
-            # Phylogenetic tree
-            if tree_path and Path(tree_path).exists():
-                try:
-                    # Use relabeled tree if it exists (so tips show haplotype_sp labels)
-                    relabeled_tree_path = tree_path.replace("_tree.nwk", "_tree_relabeled.nwk")
-                    if Path(relabeled_tree_path).exists():
-                        tree_to_plot = relabeled_tree_path
-                        logger.info(f"Using relabeled tree for visualization: {relabeled_tree_path}")
-                    else:
-                        tree_to_plot = tree_path
-
-                    # Load color map if it exists
-                    color_map_path = dirs['assignments'] / f"{organism}_haplotype_color_map.csv"
-                    haplotype_colors = None
-                    if color_map_path.exists():
-                        color_df = pd.read_csv(color_map_path)
-                        haplotype_colors = dict(zip(color_df['haplotype_sp'], color_df['color']))
-
-                    visualization.plot_phylogenetic_tree(
-                        tree_file=str(tree_to_plot),
-                        output_path=str(dirs['phylogenetic'] / f"{organism}_tree.{fmt}"),
-                        genotype_colors=haplotype_colors,
-                        show_bootstrap=True,
-                        bootstrap_threshold=cfg.visualization.show_bootstrap_threshold,
-                        figsize=None,  # Auto-scale based on tree size
-                        dpi=cfg.visualization.figure_dpi
-                    )
-                    logger.info(f"  Generated phylogenetic tree plot: {organism}_tree.{fmt}")
-                except Exception as e:
-                    step_warnings.record("10.1 tree plot", e)
-                    logger.debug("Full traceback:", exc_info=True)
-
-        logger.info(f"  Generated visualization plots")
-
+        confidence_cols = [c for c in ('processid', 'basin_confidence', 'distance_to_boundary_km')
+                           if c in df_final.columns]
+        records_df = layout.build_records_table(
+            df_with_basins, status_df, df_qc_all, assign_table, geo_category,
+            region_confidence=df_final[confidence_cols] if len(confidence_cols) > 1 else None,
+        )
+        manifests, figure_warnings = run_figures.write_run_figures(
+            records_df, output_dir,
+            tree_path=tree_path,
+            region_col=geo_category if geo_analysis_performed else None,
+            geography=geo_analysis_performed,
+            metadata_fields=metadata_fields,
+            extended=cfg.extended,
+            cross_tabs=metadata_summary_enabled,
+            temporal=temporal_analysis,
+            normalize_sex=normalize_sex,
+            settings=cfg.visualization,
+        )
+        for folder in manifests:
+            logger.info(f"  Figures: {folder}/ (manifest.json)")
+        for w in figure_warnings:
+            step_warnings.record("10 figures", w)
     except Exception as e:
-        step_warnings.record("10 visualization", e)
+        step_warnings.record("10 figures", e)
+        logger.debug("Figure error details:", exc_info=True)
 
     # ========================================================================
     # PHASE 10.5: Plot Data Export (Optional)
@@ -1866,12 +1573,13 @@ def run_pipeline(
     records_csv = output_dir / "records.csv"
     moves = {}
     try:
-        confidence_cols = [c for c in ('processid', 'basin_confidence', 'distance_to_boundary_km')
-                           if c in df_final.columns]
-        records_df = layout.build_records_table(
-            df_with_basins, status_df, df_qc_all, assign_table, geo_category,
-            region_confidence=df_final[confidence_cols] if len(confidence_cols) > 1 else None,
-        )
+        if records_df is None:                      # Phase 10 builds it; rebuilt if that failed
+            confidence_cols = [c for c in ('processid', 'basin_confidence', 'distance_to_boundary_km')
+                               if c in df_final.columns]
+            records_df = layout.build_records_table(
+                df_with_basins, status_df, df_qc_all, assign_table, geo_category,
+                region_confidence=df_final[confidence_cols] if len(confidence_cols) > 1 else None,
+            )
         records_df.to_csv(records_csv, index=False)
         logger.info(f"  records.csv: {len(records_df)} records")
 
