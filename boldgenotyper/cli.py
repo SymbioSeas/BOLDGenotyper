@@ -49,7 +49,7 @@ from . import (
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
-    run_readme, haplotype_ids, taxon_evidence,
+    run_readme, haplotype_ids, taxon_evidence, query_outputs,
 )
 from . import taxon_curation as taxon_curation_mod
 from . import __version__
@@ -2682,12 +2682,12 @@ Examples:
                        --max-length 1500
 
 Output Files:
-  - query_summary.csv: one row per query (call, equivalence set, pooled member
-    labels, species support, flags); '#' header lines record the reference run
-    and parameters (read with pandas.read_csv(path, comment='#'))
-  - query_results.csv: top matches per query with their numbers
-  - query_results.json: structured results, reference run and parameters
-  - query_results_detailed.txt: report with alignments
+  - query_calls.csv: one row per query (call, equivalence set, species call and
+    its basis, pooled member labels, flags): the result to report
+  - query_candidates.csv: the top --top-n haplotypes per query with their numbers
+  - query_alignments.txt: each query's call and its best alignment
+  - query_provenance.json: reference run, parameters, curation file, outputs
+  - query_results.json: everything as one JSON document (--json only)
 
 How queries are called:
   Each query is aligned over its whole overlap with every haplotype. A match is
@@ -2784,6 +2784,13 @@ For more information:
     )
 
     parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Also write query_results.json (calls, candidates, reference run and '
+             'parameters as one JSON document).'
+    )
+
+    parser.add_argument(
         '--search-records',
         action='store_true',
         help='Also search every QC-passed reference record (records_qc_passed.fasta in a '
@@ -2859,7 +2866,7 @@ For more information:
 
         # Haplotype taxa of the reference run, with query-time curation
         haplotype_taxa = query_assignment.load_haplotype_taxa(analysis_dir)
-        curation_parameters = {}
+        curation_parameters, curation_provenance = {}, None
         if args.taxon_curation:
             if haplotype_taxa is None:
                 print("Error: --taxon-curation needs a v2 run folder as --haplotypes "
@@ -2882,11 +2889,14 @@ For more information:
             for r in not_applied_rows.to_dict("records"):
                 logger.warning(f"Curation row {r['row']} ({r['taxon']}) not applied: "
                                f"{r['reason_not_applied']}")
-            curation_parameters = {
-                "taxon_curation": str(args.taxon_curation),
-                "taxon_curation_md5": provenance.file_md5(args.taxon_curation),
-                "taxon_curation_applied": len(applied_rows),
-                "taxon_curation_not_applied": len(not_applied_rows),
+            curation_parameters = {"taxon_curation": str(args.taxon_curation)}
+            curation_provenance = {
+                "path": str(args.taxon_curation),
+                "md5": provenance.file_md5(args.taxon_curation),
+                "n_applied": len(applied_rows),
+                "n_not_applied": len(not_applied_rows),
+                "not_applied": not_applied_rows[["row", "taxon", "reason_not_applied"]]
+                .to_dict("records"),
             }
 
         query_records = haplotype_query.load_query_sequences(
@@ -2934,31 +2944,32 @@ For more information:
             **curation_parameters,
         }
 
-        # Write results
+        # Write results (query_outputs); provenance last, so it lists every file
         logger.info("Writing results...")
-        haplotype_query.write_results(
-            results=results,
-            output_dir=output_dir,
-            metadata=metadata,
-            haplotype_file=reference_fasta,
-            analysis_dir=analysis_dir,
-            verdicts=verdicts,
-            parameters=parameters,
-            reference_run=reference_run,
-            record_matches=record_matches,
-        )
+        n_reference = (verdicts[0].n_reference_haplotypes if verdicts
+                       else sum(1 for _ in SeqIO.parse(str(reference_fasta), "fasta")))
+        qprov = query_outputs.build_query_provenance(
+            argv if argv is not None else sys.argv, args.query, len(query_records),
+            reference_fasta, n_reference, reference_run, parameters, curation_provenance)
+        calls = query_outputs.calls_table(verdicts, reference_run, record_matches)
+        query_outputs.write_calls(calls, output_dir)
+        query_outputs.write_candidates(query_outputs.candidates_table(
+            results, verdicts, haplotypes=metadata, haplotype_taxa=haplotype_taxa,
+            min_identity=args.assign_identity, min_query_coverage=args.min_query_coverage),
+            output_dir)
+        query_outputs.write_alignments(results, verdicts, output_dir, reference_run=reference_run,
+                                       haplotypes=metadata, haplotype_file=reference_fasta)
+        if args.json:
+            query_outputs.write_json(results, verdicts, output_dir, parameters=parameters,
+                                     reference_run=reference_run, haplotypes=metadata)
+        query_outputs.write_query_provenance(qprov, output_dir)
 
         logger.info("")
         logger.info("=" * 80)
         logger.info("Query Analysis Complete!")
         logger.info("=" * 80)
         logger.info(f"Results written to: {output_dir}")
-        logger.info("")
-        logger.info("Output files:")
-        logger.info(f"  - {output_dir / 'query_results.csv'}")
-        logger.info(f"  - {output_dir / 'query_summary.csv'}")
-        logger.info(f"  - {output_dir / 'query_results.json'}")
-        logger.info(f"  - {output_dir / 'query_results_detailed.txt'}")
+        logger.info(f"  Calls to report: {output_dir / 'query_calls.csv'}")
         logger.info("")
 
         return 0

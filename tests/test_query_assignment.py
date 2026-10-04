@@ -136,22 +136,6 @@ def test_resolve_reference_directory_multiple_fastas_errors(tmp_path):
         qa.resolve_reference(tmp_path, None)
 
 
-# ---------------------------------------------------------------------------
-# Task 3: query_summary.csv output
-# ---------------------------------------------------------------------------
-
-def test_write_query_summary_roundtrip(tmp_path):
-    import pandas as pd
-    from boldgenotyper import haplotype_query
-    v = _call([_m("H0002"), _m("H0001")])
-    out = haplotype_query.write_query_summary([v], tmp_path, parameters={"max_mismatch_delta": 0})
-    df = pd.read_csv(out, comment="#")
-    assert list(df["query_id"]) == ["q1"]
-    assert df.loc[0, "equivalence_set"] == "H0001;H0002"
-    assert df.loc[0, "species_call"] == "Genus alpha"
-    assert list(df.columns) == haplotype_query.QUERY_SUMMARY_COLUMNS
-
-
 # --- Curated haplotype taxa (Phase 9) ----------------------------------------
 
 def test_pooled_call_has_pooled_basis():

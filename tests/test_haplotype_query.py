@@ -139,55 +139,6 @@ class TestRealData:
 class TestOutputFormatting:
     """Test output formatting functions."""
 
-    def test_results_to_dataframe(self):
-        """Test converting results to DataFrame."""
-        # Create mock results
-        result1 = haplotype_query.AlignmentResult(
-            query_id="query1",
-            haplotype_id="hap1",
-            score=100.0,
-            identity_pct=98.5,
-            matches=197,
-            aligned_length=200,
-            query_length=200,
-            haplotype_length=200,
-            divergence=0.015,
-            aligned_query="A" * 200,
-            aligned_haplotype="A" * 200
-        )
-
-        result2 = haplotype_query.AlignmentResult(
-            query_id="query1",
-            haplotype_id="hap2",
-            score=95.0,
-            identity_pct=95.0,
-            matches=190,
-            aligned_length=200,
-            query_length=200,
-            haplotype_length=200,
-            divergence=0.05,
-            aligned_query="A" * 200,
-            aligned_haplotype="A" * 200
-        )
-
-        results = [result1, result2]
-
-        # Convert to DataFrame
-        df = haplotype_query.results_to_dataframe(results)
-
-        # Verify structure
-        assert len(df) == 2
-        assert 'query_id' in df.columns
-        assert 'haplotype_id' in df.columns
-        assert 'rank' in df.columns
-        assert 'identity_pct' in df.columns
-        assert 'differences' in df.columns
-        assert 'match_quality' not in df.columns
-
-        # Verify ranking
-        assert df.iloc[0]['rank'] == 1
-        assert df.iloc[1]['rank'] == 2
-
     def test_format_alignment_display(self):
         """Test alignment display formatting."""
         result = haplotype_query.AlignmentResult(
