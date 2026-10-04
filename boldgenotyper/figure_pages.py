@@ -180,3 +180,60 @@ def write_manifest(out_dir, entries: Dict[str, Dict]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2) + "\n")
     return path
+
+
+# ---------------------------------------------------------------------------
+# Drawing primitives shared by run_figures and metadata_figures
+# ---------------------------------------------------------------------------
+
+def stacked_barh(table: pd.DataFrame, colors: Dict[str, str], title: str, caption: str,
+                 xlabel: str, ylabel: str = "", relative: bool = False, sort_rows: bool = True):
+    """Horizontal bars, one per row of table, stacked by its columns (counts)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if sort_rows:
+        table = table.loc[table.sum(axis=1).sort_values().index]
+    values = table.div(table.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100 if relative else table
+    fig, ax = plt.subplots(figsize=(10, max(2.5, 0.3 * len(table) + 1.6)))
+    left = np.zeros(len(table))
+    for item in table.columns:
+        ax.barh(table.index.astype(str), values[item].values, left=left, color=colors[item],
+                edgecolor="white", linewidth=0.4, label=f"{item} ({int(table[item].sum())})")
+        left += values[item].values
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.tick_params(axis="y", labelsize=7 if len(table) > 20 else 9)
+    if relative:
+        ax.set_xlim(0, 100)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), ncol=1 if table.shape[1] <= 16 else 2,
+              frameon=False, fontsize=7, title="records in parentheses", title_fontsize=7)
+    ax.set_title(title, fontsize=11, pad=16)
+    add_caption(ax, caption)
+    return fig
+
+
+def heatmap(matrix: pd.DataFrame, title: str, caption: str, value_label: str,
+            fmt: str = "{:.0f}", vmax: Optional[float] = None):
+    """Rows x columns heatmap; cells annotated when the matrix is small."""
+    import matplotlib.pyplot as plt
+
+    n_rows, n_cols = matrix.shape
+    fig, ax = plt.subplots(figsize=(max(6.0, 0.35 * n_cols + 3.5), max(2.5, 0.28 * n_rows + 1.8)))
+    im = ax.imshow(matrix.values.astype(float), aspect="auto", cmap="Blues", vmin=0, vmax=vmax)
+    ax.set_xticks(range(n_cols))
+    ax.set_xticklabels([str(c) for c in matrix.columns], rotation=90, fontsize=7)
+    ax.set_yticks(range(n_rows))
+    ax.set_yticklabels([str(r) for r in matrix.index], fontsize=7)
+    if n_rows * n_cols <= 600:
+        top = vmax if vmax is not None else (matrix.values.max() if matrix.size else 0)
+        for i in range(n_rows):
+            for j in range(n_cols):
+                v = matrix.iat[i, j]
+                if v:
+                    ax.text(j, i, fmt.format(v), ha="center", va="center", fontsize=6,
+                            color="white" if top and v > 0.6 * top else "black")
+    fig.colorbar(im, ax=ax, label=value_label, shrink=0.8)
+    ax.set_title(title, fontsize=11, pad=16)
+    add_caption(ax, caption)
+    return fig

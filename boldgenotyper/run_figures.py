@@ -16,7 +16,6 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from . import figure_pages as fp
@@ -180,25 +179,9 @@ def distribution_map_entry(records: pd.DataFrame, out_dir, settings=None) -> Dic
 def _draw_region_bars(table: pd.DataFrame, colors: Dict[str, str], relative: bool, title: str,
                       caption: str, region_label: str):
     """table: regions x items (record counts), columns in legend order."""
-    import matplotlib.pyplot as plt
-
-    table = table.loc[table.sum(axis=1).sort_values().index]
-    values = table.div(table.sum(axis=1), axis=0) * 100 if relative else table
-    fig, ax = plt.subplots(figsize=(10, max(2.5, 0.45 * len(table) + 1.6)))
-    left = np.zeros(len(table))
-    for item in table.columns:
-        ax.barh(table.index.astype(str), values[item].values, left=left, color=colors[item],
-                edgecolor="white", linewidth=0.4, label=f"{item} ({int(table[item].sum())})")
-        left += values[item].values
-    ax.set_xlabel("share of the region's records (%)" if relative else "records")
-    ax.set_ylabel(region_label)
-    if relative:
-        ax.set_xlim(0, 100)
-    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), ncol=1 if table.shape[1] <= 16 else 2,
-              frameon=False, fontsize=7, title="records in parentheses", title_fontsize=7)
-    ax.set_title(title, fontsize=11, pad=16)
-    fp.add_caption(ax, caption)
-    return fig
+    return fp.stacked_barh(table, colors, title, caption,
+                           "share of the region's records (%)" if relative else "records",
+                           region_label, relative=relative)
 
 
 def region_abundance_entry(records: pd.DataFrame, region_col: str, out_dir, relative: bool,

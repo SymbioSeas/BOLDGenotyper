@@ -59,3 +59,31 @@ def test_small_run_overview_is_by_haplotype(tmp_path, data):
     small = records[records["assigned_sp"] == "Beta three"]
     rf.write_geography_figures(small, "ocean_basin", tmp_path, None)
     assert "Beta three H00" in (tmp_path / "distribution_map.svg").read_text()
+
+
+from boldgenotyper import metadata_figures as mf
+
+
+def test_region_facet(data):
+    records, _, _ = data
+    col, caption = mf.region_facet(records, "ocean_basin")
+    n = records["ocean_basin"].notna().sum()
+    assert col == "ocean_basin" and f"{n} of {len(records)} assigned records" in caption
+    one = records.assign(ocean_basin="North Basin")
+    assert mf.region_facet(one, "ocean_basin")[0] == "country/ocean"
+    col, caption = mf.region_facet(records, None)
+    assert col == "country/ocean" and "no region analysis" in caption
+
+
+def test_metadata_figures(tmp_path, data):
+    records, _, _ = data
+    out = mf.write_metadata_figures(records, ["sex", "habitat"], "ocean_basin", tmp_path)
+    assert {"sex", "sex_by_region", "habitat", "records_by_year", "sampling_timeline",
+            "records_by_year_by_region", "metadata_coverage"} <= set(out)
+    assert out["sex"]["pages_pdf"] == "sex_by_haplotype.pdf"
+    assert set(out["records_by_year"]["pages"]) == {"Alpha one", "Alpha two", "Beta three", "Gamma"}
+    assert "assigned records have an ocean_basin value" in (tmp_path / "sex_by_region.svg").read_text()
+    assert not list(tmp_path.rglob("*.png"))
+    none = mf.write_metadata_figures(records, ["sex"], "ocean_basin", tmp_path / "t",
+                                     cross_tabs=False, temporal=False)
+    assert set(none) == {"metadata_coverage"}
