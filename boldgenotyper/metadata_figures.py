@@ -171,6 +171,7 @@ def _year_entries(rec, haps, facet, settings, out_dir) -> Dict[str, Dict]:
         ax.set_yticks(range(len(spans)))
         ax.set_yticklabels([f"{r} ({int(n)})" for r, n in zip(spans.index, spans["size"])],
                            fontsize=7 if len(spans) > 20 else 9)
+        ax.set_ylim(len(spans) - 0.4, -0.6)            # earliest first, no empty margin
         ax.set_xlabel("collection date")
         ax.set_title(title, fontsize=11, pad=16)
         fp.add_caption(ax, caption)

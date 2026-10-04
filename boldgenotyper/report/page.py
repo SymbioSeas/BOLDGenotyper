@@ -24,7 +24,8 @@ header h1 { margin: 0; font-size: 1.6em; }
 header p { margin: 4px 0 0; color: var(--muted); }
 nav { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
       padding: 8px 16px; overflow-x: auto; white-space: nowrap; }
-nav a { color: var(--accent); text-decoration: none; margin-right: 16px; font-size: 0.95em; }
+a { color: var(--accent); }
+nav a { text-decoration: none; margin-right: 16px; font-size: 0.95em; }
 main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .section { padding-top: 12px; }
 .section h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 28px; }

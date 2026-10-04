@@ -45,9 +45,10 @@ def article(word) -> str:
 
 
 def add_caption(ax, text: str) -> None:
-    """A small caption between the title and the panel."""
-    ax.text(0.0, 1.01, text, transform=ax.transAxes, fontsize=7, color="#444444",
-            ha="left", va="bottom")
+    """A small caption between the title and the panel (a fixed 4 points above
+    the panel, so tall figures keep it below the title)."""
+    ax.annotate(text, xy=(0.0, 1.0), xycoords="axes fraction", xytext=(0, 4),
+                textcoords="offset points", fontsize=7, color="#444444", ha="left", va="bottom")
 
 
 def is_other(label) -> bool:
