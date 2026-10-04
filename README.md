@@ -774,19 +774,42 @@ least `--min-query-coverage` (0.95) of the shorter of query and haplotype and re
 `--assign-identity` (0.97). The equivalence set is every eligible haplotype within
 `--max-mismatch-delta` (0) differences of the best one.
 
-**Query Output Files**:
-- `query_summary.csv`: one row per query (read with `pandas.read_csv(path, comment="#")`;
-  the `#` lines record the parameters and the reference run)
-- `query_results.csv`: the top-N matches per query with their numbers
-- `query_results.json`: structured results, reference run and parameters
-- `query_results_detailed.txt`: report with alignments
-- `query_record_matches.csv` (with `--search-records`): records that contain the query
-  unchanged, with their label, haplotype and status
+**With sample metadata** (adds the queries' locations, regions and dates to the figures):
+```bash
+boldgenotyper-query --query new_samples.fasta --haplotypes results/Sphyrna_analysis \
+  --query-metadata samples.csv --output query_results/
+```
+`samples.csv` (CSV, or TSV for `.tsv`/`.txt`) has a `query_id` column matching the FASTA
+IDs and any of `lat`/`lon` or `coord` (`[lat, lon]`), `collection_date`, `country/ocean` and
+`region`. A query's region is its `region` value; otherwise its coordinates are placed with
+the reference run's own shapefile and field, when that shapefile is still at the path the
+reference run recorded.
 
-**Reading `query_summary.csv`**:
+**Query output files**:
+- `query_calls.csv`: one row per query; **the result to report**
+- `query_candidates.csv`: the top `--top-n` haplotypes per query with the numbers behind the
+  call, and each haplotype's taxon, `assignment_source` and `n_members`
+- `query_alignments.txt`: each query's call and its best alignment
+- `query_report.html`: the calls, one evidence card per query, the figures and the methods
+- `query_figures/`: the queries placed in the reference run (v2 run folders): the reference
+  tree pruned to each called genus with the queries beside their haplotypes (when the
+  reference built a tree), a map per called taxon, reference records per region with the
+  queries marked (`query_regions.csv`), and sampling years with the query dates; each as a
+  multi-page PDF plus one SVG per page
+- `query_provenance.json`: the reference run, parameters, curation and metadata files (with
+  md5), figures, warnings and the files written
+- `README.md`: which file to report, a methods paragraph with the run's values, and every
+  file and column
+- `query_record_matches.csv` (`--search-records`): records that contain the query
+  unchanged, with their label, haplotype and status
+- `query_results.json` (`--json`): everything as one JSON document
+
+The CSVs have no comment lines, so spreadsheets open them directly.
+
+**Reading `query_calls.csv`**:
 - `call_level`: `haplotype` (one haplotype in the equivalence set), `haplotype_set`
-  (several, listed in `equivalence_set`; `set_identical_over_region` says whether they are
-  identical over the query's overlap) or `none` (no eligible match)
+  (several, listed in `equivalence_set`; the flag `set_not_identical` says they differ over
+  the query's region) or `none` (no eligible match)
 - `pooled_member_labels`: the labels of every record of the set's haplotypes, with counts
 - `species_call` and `species_support`: the leading species and its share of the counted
   labels (genus-only labels of the leading genus are compatible); `species_call` is empty
@@ -796,7 +819,11 @@ least `--min-query-coverage` (0.95) of the shorter of query and haplotype and re
   call (flag `curated_taxa_disagree`) when the set's taxa differ or one is not at species
   level
 - `flags`: e.g. `label_conflict_in_set`, `indel_in_query`, `no_reference_labels`
-- `reference_run_id`: the md5 of the reference run's `run_provenance.json`
+- `reference_run`: the md5 of the reference run's `run_provenance.json`
+
+**Repeat queries**: keep one reference run per reference dataset and query the full set of
+samples each time; a query run takes seconds. Every output records the reference run's md5,
+so results from different dates can be compared.
 
 **Important Notes**:
 - Query sequences must be COI regions comparable to the reference (not whole genomes)
@@ -943,6 +970,8 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 | `--min-species-support` | Float | 0.70 | Minimum share of counted labels for a species call |
 | `--search-records` | Flag | False | Also search QC-passed records (`records_qc_passed.fasta`) |
 | `--taxon-curation` | Path | None | Curation file applied to the reference run's haplotype taxa for this query (needs a v2 run folder) |
+| `--query-metadata` | Path | None | CSV/TSV of query locations, dates and regions for the figures |
+| `--json` | Flag | False | Also write `query_results.json` |
 | `--min-length`, `--max-length` | Integer | 100, 2000 | Query length limits |
 
 #### `boldgenotyper-sweep` Parameters
@@ -1060,7 +1089,7 @@ right.
 The full resolved configuration (including `--singleton-distance`), the values the run
 applied (core length, cutoffs, tree tips), tool versions, seeds, the input path, md5 and
 row count, `--download-date`, warnings and the run status. `boldgenotyper-query` reports
-its md5 as `reference_run_id`.
+its md5 as `reference_run`.
 
 #### `report.html`
 

@@ -76,6 +76,9 @@ API Reference
    api/plot_regeneration
    api/haplotype_query
    api/query_assignment
+   api/query_outputs
+   api/query_overlays
+   api/query_report
    api/parameter_sweep
    api/popgen_export
    api/reports

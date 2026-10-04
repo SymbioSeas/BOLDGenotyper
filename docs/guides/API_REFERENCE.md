@@ -211,12 +211,15 @@ Pass only records with `coord_status == "ok"` to the region functions, as the pi
 
 PNG output is capped at 150 dpi and 3000 px per side (`utils.save_capped_png`).
 
-### Query — `haplotype_query`, `query_assignment`
+### Query — `haplotype_query`, `query_assignment`, `query_outputs`, `query_overlays`, `query_report`
 
 - `haplotype_query.align_query_to_haplotype(query_seq, query_id, haplotype_seq, haplotype_id)` → `AlignmentResult` (`differences`, `n_mismatches`, `n_gaps`, `identity_pct`, `query_coverage`, `overlap_coverage`, ...)
 - `haplotype_query.query_against_haplotypes(query_fasta, haplotype_fasta, analysis_dir=None, top_n=10, min_identity=0.97, min_query_coverage=0.95, max_mismatch_delta=0, min_species_support=0.70, haplotype_taxa=None)` → `(results, metadata, verdicts)`; `haplotype_taxa` defaults to the run folder's (`load_haplotype_taxa`)
 - `query_assignment.assign_query(query_id, matches, member_labels, ..., haplotype_taxa=None)` → `QueryVerdict` (`species_call`, `call_basis`, `flags`, ...)
 - `query_assignment.load_haplotype_taxa(run_dir)` → `{haplotype_id: HaplotypeTaxon(taxon, level, source)}` from `haplotypes.csv`
+- `query_outputs.calls_table(verdicts, reference_run=None, record_matches=None)` → `query_calls.csv` rows (`CALL_COLUMNS`); `candidates_table(results, verdicts, haplotypes=None, haplotype_taxa=None, ...)` → `query_candidates.csv` rows (`CANDIDATE_COLUMNS`); `write_calls`, `write_candidates`, `write_alignments`, `write_json`, `build_query_provenance`, `write_query_provenance`, `write_query_readme(output_dir, provenance)` → `(path, undocumented)`, `methods_sentence(provenance)`
+- `query_overlays.load_reference(run_dir)` → `ReferenceRun` (records, haplotypes, provenance, region column, tree path) or None; `load_query_metadata(path, query_ids)` (raises `QueryMetadataError`); `assign_query_regions(meta, reference)`; `query_regions_table(calls, meta, reference)`; `plot_query_tree`, `plot_query_map`, `plot_query_regions`, `plot_query_timeline` → written paths; `write_query_figures(calls, meta, reference, out_dir)` → `(figures, warnings)`
+- `query_report.generate_query_report(output_dir, calls, candidates, provenance, figures, alignments)` → `query_report.html`
 - `query_assignment.resolve_reference(haplotypes_arg, analysis_dir_arg)` → `(fasta_path, run_dir)` for a v2 or v1 run folder or a FASTA
 - `query_assignment.load_reference_run(path)` → the `reference_run` block of a v2 run folder
 

@@ -483,6 +483,8 @@ A removed flag stops the command with one line naming what to use instead (exit 
 | `--min-species-support` | new, default 0.70 |
 | `--search-records` | new: search QC-passed records (`records_qc_passed.fasta`) |
 | `--taxon-curation` | new: apply a curation file to the reference run's haplotype taxa for this query |
+| `--query-metadata` | new: query locations, dates and regions for the figures |
+| `--json` | new: write `query_results.json` (written by default in v1) |
 | `--haplotypes` | accepts a v2 run folder (`haplotypes.fasta` at the root), a v1 run folder (`haplotypes/*_haplotypes.fasta`; haplotype matching only) or a FASTA file |
 
 ---
@@ -493,27 +495,39 @@ Queries are aligned over their whole overlap with each haplotype (global
 alignment with free end gaps), so mismatches at a query's ends are counted;
 v1's local alignment dropped them.
 
-`query_summary.csv` (read with `comment="#"`; the `#` lines record the
-parameters and the reference run):
+Output files:
 
 | v1 | v2 |
+|---|---|
+| `query_summary.csv` | `query_calls.csv` (no `#` comment lines; what they held is in `query_provenance.json`) |
+| `query_results.csv` | `query_candidates.csv` |
+| `query_results_detailed.txt` | `query_alignments.txt` |
+| `query_results.json` | only with `--json` |
+| — | `query_provenance.json`, `README.md` (which file to report, methods paragraph, every column), `query_report.html`, `query_figures/` (tree, map, regions, timeline; `--query-metadata` adds the queries' own locations and dates) |
+
+`query_calls.csv` columns:
+
+| v1 (`query_summary.csv`) | v2 (`query_calls.csv`) |
 |---|---|
 | `haplotype_call` | `call_level` (`haplotype`, `haplotype_set` or `none`) |
 | `assigned_haplotypes` | `equivalence_set` (`;`-joined) |
 | `n_tied` | `n_equivalent` |
-| `best_identity` | same |
+| `best_identity` | `identity_pct` |
 | `species_call` | same (empty unless species support reaches `--min-species-support`) |
 | `assigned_species`, `candidate_species` | `pooled_member_labels` (every member label with its count), `species_support` |
 | `reason` | `flags` |
-| `assign_identity`, `tie_margin` | in the `#` header lines |
-| — | `query_length`, `aligned_length`, `query_coverage`, `n_mismatches`, `n_gaps`, `set_identical_over_region`, `n_exact_record_matches`, `reference_run_id` |
+| `assign_identity`, `tie_margin` | `query_provenance.json` (`parameters`) |
+| — | `query_length`, `query_coverage`, `differences`, `n_mismatches`, `n_gaps`, `n_exact_record_matches`, `reference_run` (md5 of the reference `run_provenance.json`) |
 | — | `call_basis`: `pooled labels`, or `haplotype taxa` when a haplotype in the set has a curated taxon (no call, flag `curated_taxa_disagree`, when the set's taxa differ) |
 
-`query_results.csv`: `match_quality` removed; new `differences`,
-`n_mismatches`, `n_gaps`, `indel_in_query`, `query_coverage`,
-`overlap_coverage`. `query_results.json` gains a `reference_run` block
-(md5 of `run_provenance.json`, version, number of haplotypes, run date, input
-md5, download date). With `--search-records`, `query_record_matches.csv`
+Development versions of 2.0.0 wrote `query_summary.csv` with `#` header lines,
+`reference_run_id`, `aligned_length` and `set_identical_over_region`; in 2.0.0 these are
+`reference_run`, `aligned_length` in `query_candidates.csv`, and the `set_not_identical` flag.
+
+`query_candidates.csv` (v1 `query_results.csv`): `match_quality` removed; new
+`differences`, `n_mismatches`, `n_gaps`, `indel_in_query`, `query_coverage`,
+`overlap_coverage`, `in_equivalence_set`, `eligible`, and the haplotype's
+`assignment_source`. With `--search-records`, `query_record_matches.csv`
 (`query_id, processid, match_type, label, haplotype_id, status, record_length`).
 
 ---
@@ -550,6 +564,7 @@ of the final run.
 | `divergence_analysis.analyze_barcoding_gap` | removed; `compute_label_based_gap` (`--extended`) |
 | `haplotype_assignment` (identity-based assignment), `config.GenotypeAssignmentConfig` | removed: records are mapped directly from haplotype discovery |
 | `visualization.plot_identity_distribution`, `plot_identity_by_status`, `plot_assignment_status`; `reports.generate_taxonomy_conflicts_report`, `generate_consensus_characterization`, `generate_sequence_quality_metrics` | removed (identity scores and the v1 files they read no longer exist) |
+| `haplotype_query.write_results`, `results_to_dataframe`, `write_json_results`, `write_text_report`, `write_query_summary` | `query_outputs` (`calls_table`, `candidates_table`, `write_calls`, `write_candidates`, `write_alignments`, `write_json`, `write_query_provenance`, `write_query_readme`) |
 | `reports.generate_html_report(organism, output_dir, version)` | adds `staging_dir`, `report_path`, `links`, `provenance`; writes `report.html` |
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |
 | `utils.assign_consensus_taxonomy` | label-based rule (5.6) |

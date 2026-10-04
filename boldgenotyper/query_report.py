@@ -85,7 +85,7 @@ def generate_query_report(output_dir: Path, calls: pd.DataFrame, candidates: pd.
         return Path(os.path.relpath(Path(p) if Path(p).is_absolute() else output_dir / p,
                                     output_dir)).as_posix()
 
-    parts = [f"<h1>Query report</h1>",
+    parts = ["<h1>Query report</h1>",
              f'<p class="meta">{_cell(query.get("n_sequences"))} query sequence(s) from '
              f'<code>{_cell(query.get("path"))}</code>; BOLDGenotyper '
              f'{_cell(provenance.get("boldgenotyper_version"))}, {_cell(provenance.get("run_date"))}</p>',
