@@ -2519,11 +2519,11 @@ def _dataframe_to_html(df: pd.DataFrame, max_rows: int = 100) -> str:
     if df.empty:
         return '<p class="alert alert-info">No data available</p>'
 
-    # Truncate if too long
-    truncated = False
-    if len(df) > max_rows:
+    # Truncate if too long (count the rows first: the notice gives the true total)
+    n_total = len(df)
+    truncated = n_total > max_rows
+    if truncated:
         df = df.head(max_rows)
-        truncated = True
 
     # Convert to HTML
     html = '<div class="table-container">\n'
@@ -2531,7 +2531,8 @@ def _dataframe_to_html(df: pd.DataFrame, max_rows: int = 100) -> str:
     html += '</div>\n'
 
     if truncated:
-        html += f'<p style="color: #888; font-size: 0.9em; margin-top: 10px;">Showing first {max_rows} rows of {len(df)} total</p>\n'
+        html += (f'<p style="color: #888; font-size: 0.9em; margin-top: 10px;">'
+                 f'Showing first {max_rows} rows of {n_total} total</p>\n')
 
     return html
 
