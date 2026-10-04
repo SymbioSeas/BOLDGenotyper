@@ -598,6 +598,10 @@ The run folder's `README.md` defines every output; this section describes the st
 - Every non-suspect haplotype with at least `--tree-min-members` members (default 1) is a
   tip; excluded haplotypes are listed in `phylogeny/excluded_tips.txt`
 - MAFFT alignment (trimmed with trimAl when installed) and a FastTree tree (GTR+Gamma)
+- Rooted on the outgroup when one is given (`--phylo-outgroup-fasta`, `--phylo-outgroup-label`
+  or `--phylo-outgroup-taxon`), otherwise at the midpoint of the longest path between two
+  tips; support values stay on their branches when the tree is rooted. Set
+  `phylogenetic.midpoint_root: false` in a config file to keep FastTree's unrooted tree
 - `tree.nwk` (haplotype IDs) and `tree_labeled.nwk` (haplotype labels) for tree editors
   such as [TreeViewer](https://treeviewer.org/), FigTree or iTOL
 
@@ -1268,8 +1272,8 @@ reports evidence that does not depend on the haplotype's own majority, for every
 - **Tree**: `tree_sister_taxon` and `tree_sister_support`. Walking from the haplotype's tip
   toward the root, the first clade that holds another species-level haplotype; its taxon
   when those haplotypes share one. A clade with support below 0.70 is not counted as
-  evidence. The tree is unrooted unless you set an outgroup, so a clade next to the root is
-  approximate.
+  evidence. The tree is midpoint-rooted unless you set an outgroup, so the sister clade of a
+  haplotype next to the root depends on where the root falls.
 - **Label sources**: `label_sources` counts the records, BOLD projects (processid prefix;
   GenBank accession prefix for records mined from GenBank) and institutions behind each
   label. Many records from one project may be one identification repeated. The counts are
@@ -1381,8 +1385,8 @@ Understanding these assumptions is critical for interpreting results and plannin
 - **Workaround**: Use `--export-format all` to export to Arlequin, DnaSP, and PopART formats
 
 #### 6. Tree Rooting
-- **Current**: Trees are unrooted as written by FastTree unless an outgroup is given (`--phylo-outgroup-fasta`, `--phylo-outgroup-label` or `--phylo-outgroup-taxon`)
-- **Workaround**: Re-root in TreeViewer, FigTree, iTOL, or R (ape package)
+- **Current**: Trees are midpoint-rooted unless an outgroup is given (`--phylo-outgroup-fasta`, `--phylo-outgroup-label` or `--phylo-outgroup-taxon`). A midpoint root assumes roughly clock-like rates; it is a drawing convention, not an inferred root
+- **Workaround**: Give an outgroup, or re-root in TreeViewer, FigTree, iTOL, or R (ape package)
 
 #### 7. Performance on Very Large Datasets
 - **Tested**: Up to ~10,000 sequences

@@ -8,6 +8,7 @@ characterizations.
 
 import logging
 import json
+from html import escape as html_escape
 from pathlib import Path
 from typing import Dict, Optional
 import pandas as pd
@@ -3396,6 +3397,17 @@ def _build_methods_section(output_dir: Path, organism: str, version: str,
     code = coi.get('mitochondrial_code')
     code_name = {2: "vertebrate mitochondrial", 5: "invertebrate mitochondrial"}.get(code, "NCBI genetic code")
     tree_built = applied.get('n_tree_tips') is not None
+    rooting = applied.get('tree_rooting') or {}
+    outgroup = html_escape(str(rooting.get('outgroup', '')))
+    kept = '; support values kept on their branches'
+    rooting_text = {
+        'midpoint': 'Midpoint: the middle of the longest path between two tips' + kept,
+        'outgroup_label': f'On the outgroup tip {outgroup}' + kept,
+        'outgroup_taxon': f'On the clade of haplotypes assigned to {outgroup}' + kept,
+        'outgroup_fasta': f'On the outgroup sequences in {outgroup}' + kept,
+        'none': 'Unrooted, as written by FastTree',
+    }.get(rooting.get('method'), 'not recorded')
+    curation = applied.get('taxon_curation') or {}
     geo = applied.get('geographic_analysis', False)
     geo_cat = applied.get('geo_category') or 'ocean_basin'
     custom_shp = applied.get('custom_shapefile')
@@ -3475,11 +3487,14 @@ def _build_methods_section(output_dir: Path, organism: str, version: str,
                                'counted labels (members with a species-level label, plus genus-only or open labels '
                                'of another genus; members without a species label are left out; ties not resolved); '
                                'otherwise the most common genus'),
-        row('Label conflicts', 'Members whose species-level label differs from the haplotype’s majority label; '
-                               'listed with their evidence in label_conflicts.csv'),
+        row('Label conflicts', 'Members whose species-level label differs from the haplotype’s majority label '
+                               '(or from its curated taxon); listed with their evidence in label_conflicts.csv'),
         row('Divergence', 'Uncorrected p-distance between aligned haplotype sequences, skipping gaps and Ns; '
                           'no taxonomic thresholds are applied'),
-    ]))
+    ] + ([row('Curated taxa', f'{v(curation.get("n_applied"))} haplotype(s) given the taxon in the curation file '
+                              f'<code>{html_escape(str(curation.get("path", "")))}</code> (md5 {v(curation.get("md5"))}); '
+                              f'{v(curation.get("n_not_applied"))} row(s) not applied (run_provenance.json)')]
+         if curation else [])))
 
     if tree_built:
         body = table([
@@ -3490,8 +3505,7 @@ def _build_methods_section(output_dir: Path, organism: str, version: str,
                 if phy.get('trim_alignment') else 'MAFFT'),
             row('Inference', f'FastTree {v(tools.get("fasttree"), "v{}", "")} <code>-nt -gtr -gamma</code>, '
                              f'seed {v(prov.get("seeds", {}).get("fasttree"))}; support values are FastTree local support'),
-            row('Rooting', 'Rerooted on the given outgroup' if (phy.get('outgroup_label') or phy.get('outgroup_taxon'))
-                else 'Unrooted, as written by FastTree'),
+            row('Rooting', rooting_text),
         ])
     else:
         body = '<p class="alert alert-info">No tree was built in this run (--build-tree not given).</p>\n'
@@ -3530,7 +3544,9 @@ def _build_methods_section(output_dir: Path, organism: str, version: str,
             f"records ({v(summary.get('pct_assigned'), missing='[X]')}% of QC-passed records) were assigned to "
             f"{v(applied.get('n_haplotypes'), '{:,}', '[M]')} haplotypes. ")
     if tree_built:
-        text += ("A tree of the haplotypes was inferred with FastTree (Price et al., 2010) under the GTR+Gamma model. ")
+        text += ("A tree of the haplotypes was inferred with FastTree (Price et al., 2010) under the GTR+Gamma model"
+                 + {'midpoint': " and rooted at its midpoint. ", 'none': ". "}.get(
+                     rooting.get('method'), " and rooted on an outgroup. " if rooting.get('method') else ". "))
     if geo and not custom_shp:
         text += ("Records with geographic-quality coordinates were assigned to ocean basins of the Global Oceans and "
                  "Seas dataset (Flanders Marine Institute, 2021). ")

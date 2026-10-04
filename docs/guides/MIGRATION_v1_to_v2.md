@@ -459,6 +459,8 @@ mismatch); v1's main distribution map also failed silently. v2 writes them.
 | `--metadata-fields` | default included `realm`, `biome`, `ecoregion`, `geoid`, `country_iso` | default `sex`, `life_stage`, `reproduction`, `habitat`, `country/ocean`, `province/state`; name the others to summarize them (BOLD derives `realm`, `biome` and `ecoregion` from the coordinates using terrestrial ecoregions) |
 | `--no-temporal-analysis` | skip temporal outputs | only restricts what `--extended` adds |
 | `--tree-min-members` | — (fixed minimum of 3 members) | new, default 1: every non-suspect haplotype is a tip |
+| `--phylo-outgroup-fasta` | outgroup sequences added to the tree; tree left unrooted | the tree is rooted on them |
+| (no outgroup) | tree unrooted as written by FastTree | midpoint-rooted (`phylogenetic.midpoint_root: false` keeps it unrooted); rooting keeps support values on their branches, which 1.0.0's outgroup rooting did not |
 | `--no-assign-corrected` | — | new: leave error-filtered singletons unassigned |
 | `--download-date` | — | new: recorded in `run_provenance.json` |
 | `--taxon-curation` | — | new: apply checked haplotype taxa (5.6) |

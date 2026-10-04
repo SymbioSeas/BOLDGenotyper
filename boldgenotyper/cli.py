@@ -1202,20 +1202,36 @@ def run_pipeline(
 
                 # Verify tree file was actually created
                 if tree is not None and Path(tree_path).exists():
-                    # Optional rerooting using in-tree outgroup label or taxon
-                    if cfg.phylogenetic.outgroup_label:
-                        phylogenetics.reroot_tree_by_label(
-                            tree_file=tree_path,
-                            outgroup_label=cfg.phylogenetic.outgroup_label,
-                            output_file=tree_path
-                        )
-                    elif cfg.phylogenetic.outgroup_taxon:
-                        phylogenetics.reroot_tree_by_taxon(
+                    # Root on the outgroup when one is given, else at the midpoint;
+                    # support values stay on their branches (phylogenetics.root_on_tips)
+                    phy = cfg.phylogenetic
+                    rooting, rooted = {"method": "none"}, None
+                    if phy.outgroup_label:
+                        rooting = {"method": "outgroup_label", "outgroup": phy.outgroup_label}
+                        rooted = phylogenetics.reroot_tree_by_label(
+                            tree_file=tree_path, outgroup_label=phy.outgroup_label,
+                            output_file=tree_path)
+                    elif phy.outgroup_taxon:
+                        rooting = {"method": "outgroup_taxon", "outgroup": phy.outgroup_taxon}
+                        rooted = phylogenetics.reroot_tree_by_taxon(
                             tree_file=tree_path,
                             taxonomy_csv=str(dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"),
-                            taxon_query=cfg.phylogenetic.outgroup_taxon,
-                            output_file=tree_path
-                        )
+                            taxon_query=phy.outgroup_taxon, output_file=tree_path)
+                    elif phy.outgroup_fasta:
+                        rooting = {"method": "outgroup_fasta", "outgroup": str(phy.outgroup_fasta)}
+                        rooted = phylogenetics.reroot_tree_by_tips(
+                            tree_path, [r.id for r in SeqIO.parse(str(phy.outgroup_fasta), "fasta")],
+                            output_file=tree_path, description="outgroup FASTA")
+                    if rooting["method"] != "none" and rooted is None:
+                        step_warnings.record(
+                            "8 phylogeny reroot",
+                            f"rooting on {rooting['method']} '{rooting['outgroup']}' failed"
+                            + ("; midpoint-rooted instead" if phy.midpoint_root else "; tree left unrooted"))
+                        rooting = {"method": "none"}
+                    if rooting["method"] == "none" and phy.midpoint_root:
+                        if phylogenetics.midpoint_root_tree_file(tree_path):
+                            rooting = {"method": "midpoint"}
+                    prov.applied["tree_rooting"] = rooting
 
                     logger.info(f"  Built phylogenetic tree: {tree_path}")
 

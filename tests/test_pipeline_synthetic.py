@@ -195,6 +195,39 @@ def test_tree_min_members_excludes_and_explains(tmp_path):
 
 
 @needs_fasttree
+def test_tree_is_midpoint_rooted_by_default(tmp_path):
+    from Bio import Phylo
+    ok, out = run_synthetic(tmp_path / "mid", phylogenetic__build_tree=True, report=True)
+    assert ok
+    for name in ("tree.nwk", "tree_labeled.nwk"):
+        assert len(Phylo.read(out / "phylogeny" / name, "newick").root.clades) == 2
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert d["applied"]["tree_rooting"] == {"method": "midpoint"} and d["warnings"] == []
+    assert "Midpoint" in (out / "report.html").read_text()
+
+    ok, out = run_synthetic(tmp_path / "unrooted", phylogenetic__build_tree=True,
+                            phylogenetic__midpoint_root=False)
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert d["applied"]["tree_rooting"] == {"method": "none"}
+    assert len(Phylo.read(out / "phylogeny" / "tree.nwk", "newick").root.clades) == 3
+
+
+@needs_fasttree
+def test_tree_is_rooted_on_an_outgroup_fasta(tmp_path):
+    from Bio import Phylo
+    from tests.synthetic_data import A, mutate
+    outgroup = tmp_path / "outgroup.fasta"
+    outgroup.write_text(">OUTGROUP1\n" + mutate(A, range(100, 160)) + "\n")
+    ok, out = run_synthetic(tmp_path / "run", phylogenetic__build_tree=True,
+                            phylogenetic__outgroup_fasta=str(outgroup))
+    assert ok
+    tree = Phylo.read(out / "phylogeny" / "tree.nwk", "newick")
+    assert ["OUTGROUP1"] in [[t.name for t in c.get_terminals()] for c in tree.root.clades]
+    d = json.loads((out / "run_provenance.json").read_text())
+    assert d["applied"]["tree_rooting"] == {"method": "outgroup_fasta", "outgroup": str(outgroup)}
+
+
+@needs_fasttree
 def test_msa_plots_only_with_extended_and_pdf_only(tmp_path):
     """P2, P3: MSA chunk plots go to extended/divergence/msa/, one format."""
     import importlib.util
@@ -525,8 +558,9 @@ def test_curation_file_sets_haplotype_taxon(tmp_path):
     target = pd.read_csv(base / "haplotypes.csv").iloc[0]
     cur = tmp_path / "curation.csv"
     cur.write_text(f"seq_md5,taxon,reason\n{target['seq_md5']},Genus curata,test\nffff,Genus nulla,no match\n")
-    ok, out = run_synthetic(tmp_path / "cur", taxon_curation=cur)
+    ok, out = run_synthetic(tmp_path / "cur", taxon_curation=cur, report=True)
     assert ok
+    assert "Curated taxa" in (out / "report.html").read_text()
     row = pd.read_csv(out / "haplotypes.csv").set_index("haplotype_id").loc[target["haplotype_id"]]
     assert row["assigned_sp"] == "Genus curata" and row["assignment_source"] == "curated"
     assert row["haplotype_label"] == f"Genus curata {target['haplotype_id']}"

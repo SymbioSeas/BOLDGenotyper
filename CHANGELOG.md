@@ -37,6 +37,8 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - A `docs` extra (`pip install -e ".[docs]"`) and Sphinx in `environment.yml`; `sphinx-build -b html docs/source docs/build/html` builds the API pages without warnings.
 
 ### Changed
+- Trees are rooted: on the outgroup when one is given (`--phylo-outgroup-fasta` now roots on its sequences; before, they were only added to the tree), otherwise at the midpoint of the longest path between two tips. The configuration's `midpoint_root: true` was recorded but never applied in 1.0.0. `run_provenance.json` records the rooting (`applied.tree_rooting`).
+- A haplotype's tree sister counts toward `suggested_sp` only when the clade's support is 0.70 or more.
 - Haplotype IDs are `H0001`, `H0002`, ... ordered by member count, then `seq_md5`; v1's `h1_n354` IDs carried member counts that disagreed with other files (P0-8).
 - `processid` is bare in every table and FASTA header (P0-10).
 - Coordinates are parsed for every record, including current BOLD portal `coord` strings; only geographic-quality coordinates are assigned a region and mapped; country- and province-centroid coordinates keep `lat`/`lon` but get no region; records without a region have an empty value instead of `Unknown` (P0-4).
@@ -87,6 +89,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - The report's Methods and Parameters tabs read the provenance written at the start of the run, so every count read "not recorded" and a built tree was reported as not built; they now use the run's final provenance.
 - Report tables said "Showing first N rows of N total" with the truncated count; they give the true count.
 - With pandas 3, text fields were not stripped of surrounding whitespace on input (pandas 3 reads text as the `str` dtype); all-empty ORF columns were kept.
+- Rooting on an outgroup put support values on the wrong branches (Biopython moves supports with nodes, not branches, when it reroots) and made an internal outgroup clade the root itself; rooting now keeps each support on its split and places a two-way root on the outgroup's branch. Trees rooted with `--phylo-outgroup-label` or `--phylo-outgroup-taxon` in 1.0.0 have misplaced supports along the path to the root.
 
 ## [1.0.0] - 2025
 

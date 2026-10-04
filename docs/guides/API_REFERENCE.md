@@ -190,6 +190,8 @@ Pass only records with `coord_status == "ok"` to the region functions, as the pi
 
 - `select_tree_haplotypes(records, min_members, min_length, suspect)` → `(kept_records, [(haplotype_id, reason), ...])`
 - `build_phylogeny(consensus_fasta, output_prefix, threads=1, min_consensus_length=..., min_cluster_size=..., trim_alignment=True, trim_method="gappyout", outgroup_fasta=None)` → MAFFT, optional trimAl, FastTree (GTR+Gamma)
+- `midpoint_root_tree(tree)`, `root_on_tips(tree, tip_names)` → rooted in place with support values kept on their splits (Biopython's own rerooting moves them); `root_on_tips` also returns the number of other tips in the outgroup's clade (0 when the outgroup is a clade)
+- `midpoint_root_tree_file(tree_file)`, `reroot_tree_by_tips(tree_file, tip_names)`, `reroot_tree_by_label(tree_file, label)`, `reroot_tree_by_taxon(tree_file, taxonomy_csv, taxon)` → the same on Newick files
 
 ### Divergence — `divergence_analysis`
 

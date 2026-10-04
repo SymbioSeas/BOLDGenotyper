@@ -227,7 +227,9 @@ FILE_DOCS = [
                "in haplotypes.csv."},
     {"pattern": "phylogeny/tree.nwk",
      "text": "FastTree tree of the haplotypes, tips named by haplotype ID; support values are "
-             "FastTree local support."},
+             "FastTree local support. Rooted on the outgroup when one was given, otherwise at "
+             "the midpoint of the longest path between two tips (run_provenance.json, "
+             "applied.tree_rooting); support values stay on their branches when rooting."},
     {"pattern": "phylogeny/tree_labeled.nwk", "text": "The same tree with tips named by haplotype label."},
     {"pattern": "phylogeny/excluded_tips.txt",
      "text": "Haplotypes left out of the tree, with the reason (suspect, fewer than "
@@ -492,8 +494,9 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "0.70 or more). For a haplotype neither at "
               "species level nor curated, `suggested_sp` is a taxon at least two lines name "
               "and none contradicts. A suggestion is never applied: check it, and record an "
-              "accepted call in a curation file with its reason. The tree is unrooted unless an "
-              "outgroup was set, so a sister clade next to the root is approximate.",
+              "accepted call in a curation file with its reason. The tree is midpoint-rooted "
+              "unless an outgroup was set, so a sister clade next to the root depends on where "
+              "the root falls.",
               "",
               "A label conflict is a member whose species-level label differs from the majority "
               "label, any species-level member of a haplotype whose top labels are tied, or a "

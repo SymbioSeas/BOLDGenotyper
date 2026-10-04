@@ -765,7 +765,9 @@ class PhylogeneticConfig:
         Options: "fasttree"
 
     midpoint_root : bool
-        Use midpoint rooting if no outgroup (default: True)
+        Root at the midpoint of the longest tip-to-tip path when no outgroup
+        is given (default: True); False keeps FastTree's unrooted tree.
+        Support values stay on their branches (phylogenetics.root_on_tips).
 
     min_consensus_length : int
         Minimum haplotype sequence length for phylogenetics (default: 150 bp).
@@ -788,10 +790,9 @@ class PhylogeneticConfig:
 
     Notes
     -----
-    Quality filtering defaults now favor publication-ready phylogenies:
-    - Require ≥600 bp sequences to retain COI phylogenetic signal
-    - Require clusters of ≥5 samples to avoid fragmentary consensuses
-    - Trim gappy columns with trimAl by default
+    Defaults: every non-suspect haplotype of at least 150 bp is a tip
+    (min_cluster_size 1, min_consensus_length 150); gappy columns are trimmed
+    with trimAl when it is installed.
 
     Phylogenetic analysis remains optional because:
     - Outgroup selection requires taxonomic expertise
@@ -800,8 +801,8 @@ class PhylogeneticConfig:
 
     Three modes of operation:
     1. No phylogeny (build_tree=False): Fastest, haplotype ID only
-    2. Midpoint rooting (build_tree=True, no outgroup): Visualize relationships
-    3. Outgroup rooting (build_tree=True, with outgroup): Publication quality
+    2. Midpoint rooting (build_tree=True, no outgroup; the default)
+    3. Outgroup rooting (outgroup_fasta, outgroup_label or outgroup_taxon)
     """
     build_tree: bool = True
     outgroup_fasta: Optional[Path] = None

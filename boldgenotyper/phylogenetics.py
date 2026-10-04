@@ -98,7 +98,7 @@ Geographic Analysis Note:
 Author: Steph Smith (symbioseas@outlook.com)
 """
 
-from typing import Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple
 from pathlib import Path
 import logging
 import subprocess
@@ -737,22 +737,103 @@ def run_phyml(
     pass
 
 
+def _tips_below(tree) -> Dict[int, frozenset]:
+    """id(clade) -> names of the tips below it."""
+    below = {}
+    for clade in tree.find_clades(order="postorder"):
+        if clade.is_terminal():
+            below[id(clade)] = frozenset([clade.name])
+        else:
+            below[id(clade)] = frozenset().union(*(below[id(c)] for c in clade.clades))
+    return below
+
+
+def _reroot_keeping_support(tree, reroot):
+    """
+    Apply reroot(tree) in place, keeping each support value on its split.
+
+    Newick stores a branch's support on the node below it. Rerooting reverses
+    the nodes between the old and the new root, and Biopython (1.88) leaves
+    their supports where they were, on other splits (the problem described by
+    Czech, Huerta-Cepas & Stamatakis 2017, Mol Biol Evol 34:1535). Supports are
+    read by split (the tips on either side of a branch) before rerooting and
+    written back by split after; a split the old tree did not have gets none.
+    """
+    names = [t.name for t in tree.get_terminals()]
+    if None in names or len(set(names)) != len(names):
+        raise ValueError("tree tips need unique names to keep supports on their splits")
+    all_tips, ref = frozenset(names), min(names)
+
+    def key(side):
+        return side if ref not in side else all_tips - side
+
+    below = _tips_below(tree)
+    supports = {key(below[id(c)]): c.confidence for c in tree.get_nonterminals()
+                if c is not tree.root and c.confidence is not None}
+    reroot(tree)
+    below = _tips_below(tree)
+    for clade in tree.get_nonterminals():
+        clade.confidence = None if clade is tree.root else supports.get(key(below[id(clade)]))
+    tree.rooted = True
+    return tree
+
+
 def midpoint_root_tree(tree: Phylo.BaseTree.Tree) -> Phylo.BaseTree.Tree:
     """
-    Root tree at midpoint between most distant taxa.
+    Root a tree at the midpoint of its longest tip-to-tip path, in place.
 
-    Parameters
-    ----------
-    tree : Phylo.BaseTree.Tree
-        Unrooted phylogenetic tree
-
-    Returns
-    -------
-    Phylo.BaseTree.Tree
-        Midpoint-rooted tree
+    Support values stay on their splits (_reroot_keeping_support); the two
+    branches either side of the new root share the support of the branch
+    the root divides.
     """
-    # Implementation will go here
-    pass
+    return _reroot_keeping_support(tree, lambda t: t.root_at_midpoint())
+
+
+def root_on_tips(tree: Phylo.BaseTree.Tree, tip_names) -> Tuple[Phylo.BaseTree.Tree, int]:
+    """
+    Root a tree on the smallest clade holding the named tips, in place.
+
+    The tree is first rooted on a tip outside the group, so a group that is a
+    clade of the unrooted tree is found even when the written root lies inside
+    it. The new root is placed halfway along the branch above that clade.
+    Returns (tree, number of other tips in that clade): 0 when the named
+    tips form a clade. Support values stay on their splits.
+    """
+    wanted = set(tip_names)
+    terminals = tree.get_terminals()
+    group = [t for t in terminals if t.name in wanted]
+    others = [t for t in terminals if t.name not in wanted]
+    if not group:
+        raise ValueError("none of the outgroup tips are in the tree")
+    if not others:
+        raise ValueError("every tip of the tree is in the outgroup")
+    n_extra = {}
+
+    def reroot(t):
+        t.root_with_outgroup(others[0])
+        target = group[0] if len(group) == 1 else t.common_ancestor(group)
+        n_extra["n"] = len([x for x in target.get_terminals() if x.name not in wanted])
+        # A branch length makes Biopython add a bifurcating root on the branch
+        # above the target (otherwise an internal target becomes the root itself)
+        t.root_with_outgroup(target, outgroup_branch_length=(target.branch_length or 0.0) / 2)
+
+    _reroot_keeping_support(tree, reroot)
+    return tree, n_extra["n"]
+
+
+def midpoint_root_tree_file(tree_file: str, output_file: Optional[str] = None) -> Optional[str]:
+    """Midpoint-root a Newick file (midpoint_root_tree); the output path, or None on failure."""
+    output_path = Path(output_file) if output_file else Path(tree_file)
+    try:
+        tree = Phylo.read(tree_file, "newick")
+        midpoint_root_tree(tree)
+        Phylo.write(tree, output_path, "newick")
+        logger.info(f"  Midpoint-rooted tree: {output_path}")
+        return str(output_path)
+    except Exception as e:
+        logger.warning(f"Failed to midpoint-root the tree: {e}",
+                       extra={"step_failure": "8 phylogeny reroot"})
+        return None
 
 
 def add_outgroup(
@@ -982,9 +1063,40 @@ def relabel_tree_and_alignment(
     return output_tree, output_alignment
 
 
+def reroot_tree_by_tips(tree_file: str, tip_names, output_file: Optional[str] = None,
+                        description: str = "outgroup") -> Optional[str]:
+    """
+    Root a Newick file on the clade of the named tips (root_on_tips).
+
+    A warning names the other tips when the named tips do not form a clade.
+    Returns the output path (default: overwrite the input), or None when no
+    named tip is in the tree or rooting fails.
+    """
+    tree_path = Path(tree_file)
+    if not tree_path.exists():
+        logger.warning(f"Cannot reroot: tree file not found: {tree_file}")
+        return None
+    output_path = Path(output_file) if output_file else tree_path
+    try:
+        tree = Phylo.read(tree_path, "newick")
+        tip_names = list(tip_names)
+        _, n_extra = root_on_tips(tree, tip_names)
+        if n_extra:
+            logger.warning(f"The {description} tips are not a clade of the tree; rooted on the smallest "
+                           f"clade holding them, which has {n_extra} other tip(s)",
+                           extra={"step_failure": "8 phylogeny reroot"})
+        Phylo.write(tree, output_path, "newick")
+        logger.info(f"  Rooted tree on the {description} ({len(tip_names)} tip(s)): {output_path}")
+        return str(output_path)
+    except Exception as e:
+        logger.warning(f"Failed to root the tree on the {description}: {e}",
+                       extra={"step_failure": "8 phylogeny reroot"})
+        return None
+
+
 def reroot_tree_by_label(tree_file: str, outgroup_label: str, output_file: Optional[str] = None) -> Optional[str]:
     """
-    Reroot a Newick tree on an existing tip label (e.g., an in-alignment outgroup).
+    Reroot a tree on one tip, keeping support values on their splits.
 
     Parameters
     ----------
@@ -1000,26 +1112,8 @@ def reroot_tree_by_label(tree_file: str, outgroup_label: str, output_file: Optio
     Optional[str]
         Path to rerooted tree if successful, else None
     """
-    tree_path = Path(tree_file)
-    if not tree_path.exists():
-        logger.warning(f"Cannot reroot: tree file not found: {tree_file}")
-        return None
-
-    output_path = Path(output_file) if output_file else tree_path
-    try:
-        tree = Phylo.read(tree_path, "newick")
-        tip = next((t for t in tree.get_terminals() if t.name == outgroup_label), None)
-        if tip is None:
-            logger.warning(f"Outgroup label '{outgroup_label}' not found in tree; skipping reroot")
-            return None
-
-        tree.root_with_outgroup(tip)
-        Phylo.write(tree, output_path, "newick")
-        logger.info(f"  Rerooted tree on '{outgroup_label}': {output_path}")
-        return str(output_path)
-    except Exception as e:
-        logger.warning(f"Failed to reroot tree on '{outgroup_label}': {e}", extra={"step_failure": "8 phylogeny reroot"})
-        return None
+    return reroot_tree_by_tips(tree_file, [outgroup_label], output_file,
+                               description=f"outgroup '{outgroup_label}'")
 
 
 def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, output_file: Optional[str] = None) -> Optional[str]:
@@ -1074,26 +1168,13 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
 
     try:
         tree = Phylo.read(tree_path, "newick")
-        tip_matches = []
-        for tip in tree.get_terminals():
-            base = _to_base(tip.name or "")
-            if tip.name in candidates or base in candidate_bases:
-                tip_matches.append(tip)
-
-        if not tip_matches:
-            logger.warning(f"No matching tips found in tree for outgroup taxon '{taxon_query}'")
-            return None
-
-        if len(tip_matches) == 1:
-            tree.root_with_outgroup(tip_matches[0])
-        else:
-            lca = tree.common_ancestor(tip_matches)
-            tree.root_with_outgroup(lca)
-
-        output_path = Path(output_file) if output_file else tree_path
-        Phylo.write(tree, output_path, "newick")
-        logger.info(f"  Rerooted tree on taxon '{taxon_query}' (n={len(tip_matches)} tips): {output_path}")
-        return str(output_path)
+        tip_matches = [tip.name for tip in tree.get_terminals()
+                       if tip.name in candidates or _to_base(tip.name or "") in candidate_bases]
     except Exception as e:
         logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}", extra={"step_failure": "8 phylogeny reroot"})
         return None
+    if not tip_matches:
+        logger.warning(f"No matching tips found in tree for outgroup taxon '{taxon_query}'")
+        return None
+    return reroot_tree_by_tips(tree_file, tip_matches, output_file,
+                               description=f"outgroup taxon '{taxon_query}'")
