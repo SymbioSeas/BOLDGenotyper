@@ -135,3 +135,71 @@ def make_synthetic_bold_tsv(path, duplicate_at=None):
         writer.writeheader()
         writer.writerows(rows)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Figure dataset (Phase 11): tables and a tree, no pipeline run
+# ---------------------------------------------------------------------------
+
+FIGURE_GROUPS = [("Alpha one", 12), ("Alpha two", 10), ("Beta three", 14), ("Beta four", 1),
+                 ("Gamma", 9)]
+
+
+def figure_dataset():
+    """
+    (records, haplotypes, newick) for figure tests: 46 haplotypes H0001-H0046.
+
+    Alpha one (12) and Beta three (14) are clades; Alpha two (10) is split in
+    two clades of 5, one nested beside Beta three, so it is not monophyletic;
+    Beta four has one haplotype; Gamma (9) is a genus-level group. Alpha
+    records lie in 'North Basin', Beta in 'South Basin', Gamma in both; a
+    haplotype's fourth member has no coordinates. Years 2005-2020.
+    """
+    import pandas as pd
+
+    ids, hap_rows = {}, []
+    k = 0
+    for taxon, n in FIGURE_GROUPS:
+        ids[taxon] = []
+        for _ in range(n):
+            k += 1
+            hid = f"H{k:04d}"
+            ids[taxon].append(hid)
+            hap_rows.append({"haplotype_id": hid, "haplotype_label": f"{taxon} {hid}",
+                             "assigned_sp": taxon,
+                             "assignment_level": "genus" if " " not in taxon else "species",
+                             "n_members": 1 + (k - 1) % 4})
+    haplotypes = pd.DataFrame(hap_rows)
+
+    rows, counter = [], 0
+    for h in hap_rows:
+        for j in range(h["n_members"]):
+            counter += 1
+            taxon = h["assigned_sp"]
+            north = taxon.startswith("Alpha") or (taxon == "Gamma" and counter % 2 == 0)
+            has_coords = j != 3
+            lat = (10 + counter % 10) if north else (-20 + counter % 10)
+            rows.append({
+                "processid": f"FIG{counter:04d}", "haplotype_id": h["haplotype_id"],
+                "haplotype_label": h["haplotype_label"], "assigned_sp": taxon,
+                "lat": float(lat) if has_coords else float("nan"),
+                "lon": float(-60 + counter % 30) if has_coords else float("nan"),
+                "coord_status": "ok" if has_coords else "missing",
+                "ocean_basin": ("North Basin" if north else "South Basin") if has_coords else None,
+                "sex": ["Male", "Female", ""][counter % 3],
+                "life_stage": ["Adult", "Juvenile"][counter % 2],
+                "habitat": ["reef", "pelagic", "estuary"][counter % 3],
+                "country/ocean": ["Atlantis", "Lemuria"][counter % 2],
+                "collection_date_start": f"{2005 + counter % 16}-06-15",
+            })
+    records = pd.DataFrame(rows)
+
+    def clade(hids, support, length=0.01):
+        return "(" + ",".join(f"{h}:0.004" for h in hids) + f"){support}:{length}"
+
+    a2 = ids["Alpha two"]
+    alpha = f"({clade(ids['Alpha one'], 0.95)},{clade(a2[:5], 0.9)})0.8:0.03"
+    beta = (f"(({clade(ids['Beta three'], 0.97)},{clade(a2[5:], 0.85)})0.6:0.02,"
+            f"{ids['Beta four'][0]}:0.03)0.9:0.03")
+    newick = f"({alpha},{beta},{clade(ids['Gamma'], 0.99, 0.1)});"
+    return records, haplotypes, newick

@@ -134,25 +134,27 @@ def write_paged_figure(name: str, out_dir, overview: Callable, page: Callable,
     pages: Dict[str, str] = {}
     pdf_path = out_dir / f"{pages_name}.pdf"
     pdf = None
-    try:
-        for group, ids in groups.items():
-            fig = page(group, ids)
-            if fig is None:
-                continue
-            if pdf is None:
-                pdf = PdfPages(pdf_path)
-            try:
-                with matplotlib.rc_context({"pdf.fonttype": 42}):
+    # Fonts are embedded when the PDF is closed: the font type must be set
+    # for the whole life of the file, not only while each page is added
+    with matplotlib.rc_context({"svg.fonttype": "none", "pdf.fonttype": 42}):
+        try:
+            for group, ids in groups.items():
+                fig = page(group, ids)
+                if fig is None:
+                    continue
+                if pdf is None:
+                    pdf = PdfPages(pdf_path)
+                try:
                     pdf.savefig(fig, bbox_inches="tight")
-                svg_dir.mkdir(parents=True, exist_ok=True)
-                svg = svg_dir / f"{slug(group)}.svg"
-                _savefig(fig, svg)
-                pages[group] = svg.relative_to(out_dir).as_posix()
-            finally:
-                plt.close(fig)
-    finally:
-        if pdf is not None:
-            pdf.close()
+                    svg_dir.mkdir(parents=True, exist_ok=True)
+                    svg = svg_dir / f"{slug(group)}.svg"
+                    fig.savefig(svg, bbox_inches="tight")
+                    pages[group] = svg.relative_to(out_dir).as_posix()
+                finally:
+                    plt.close(fig)
+        finally:
+            if pdf is not None:
+                pdf.close()
     if pages:
         entry["pages_pdf"] = pdf_path.name
         entry["pages"] = pages
