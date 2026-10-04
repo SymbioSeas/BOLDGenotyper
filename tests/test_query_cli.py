@@ -113,6 +113,16 @@ def test_query_time_curation_needs_a_run_folder(tmp_path, run_dir):
     assert code == 1
 
 
+def test_query_readme_documents_every_file_and_column(tmp_path, run_dir):
+    s, out = _query(tmp_path, run_dir, {"window": WINDOW}, "--search-records", "--json")
+    readme = (out / "README.md").read_text()
+    assert "## Which file to report" in readme and "query_calls.csv" in readme
+    md5 = hashlib.md5((run_dir / "run_provenance.json").read_bytes()).hexdigest()
+    assert md5 in readme
+    from boldgenotyper import query_outputs as qo
+    assert qo.write_query_readme(out, json.loads((out / "query_provenance.json").read_text()))[1] == []
+
+
 def test_bare_fasta_reference_has_no_species_support(tmp_path, run_dir):
     fasta = run_dir / "haplotypes.fasta"
     s, _ = _query(tmp_path, fasta, {"window": WINDOW})

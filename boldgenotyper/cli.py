@@ -2963,6 +2963,8 @@ For more information:
             query_outputs.write_json(results, verdicts, output_dir, parameters=parameters,
                                      reference_run=reference_run, haplotypes=metadata)
         query_outputs.write_query_provenance(qprov, output_dir)
+        query_outputs.write_query_readme(output_dir, qprov)
+        query_outputs.write_query_provenance(qprov, output_dir)      # now lists README.md too
 
         logger.info("")
         logger.info("=" * 80)

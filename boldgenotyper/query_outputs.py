@@ -313,3 +313,202 @@ def write_query_provenance(provenance: dict, output_dir) -> Path:
         json.dump(provenance, f, indent=2, default=str)
     logger.info(f"Wrote query provenance: {path}")
     return path
+
+
+# ---------------------------------------------------------------------------
+# README
+# ---------------------------------------------------------------------------
+
+_CALL_DOCS = {
+    "query_id": "query sequence ID (first word of the FASTA header)",
+    "query_length": "query length in bp, gaps removed",
+    "call_level": "haplotype (one haplotype in the equivalence set), haplotype_set (several "
+                  "haplotypes the query cannot tell apart) or none (no eligible match)",
+    "equivalence_set": "the eligible haplotypes within --max-mismatch-delta differences of the "
+                       "best match, ';'-joined",
+    "n_equivalent": "haplotypes in equivalence_set",
+    "species_call": "the species called for the query; empty when none (see call_basis)",
+    "call_basis": "pooled labels (the leading species of the set's pooled member labels, at "
+                  "--min-species-support or more), haplotype taxa (a haplotype in the set has a "
+                  "curated taxon: the taxon the set's haplotypes share), or empty (no call)",
+    "species_support": "the leading species' share of the counted pooled member labels",
+    "pooled_member_labels": "labels of every member record of the set's haplotypes, with counts",
+    "differences": "mismatches plus gap columns between the query and its best match, over "
+                   "their overlap",
+    "n_mismatches": "mismatches with the best match",
+    "n_gaps": "gap columns inside the overlap with the best match",
+    "identity_pct": "identity with the best match over the columns with a base in both (%)",
+    "query_coverage": "share of the query's bases in the overlap with the best match",
+    "flags": "';'-joined: indel_in_query (a gap run not a multiple of 3), low_coverage, "
+             "below_identity, set_not_identical (the set's haplotypes differ over the query's "
+             "region), label_conflict_in_set, species_support_below_threshold, "
+             "no_species_labels, no_reference_labels (a FASTA reference or v1 run folder), "
+             "curated_taxa_disagree",
+    "n_exact_record_matches": "QC-passed reference records that contain the query unchanged or "
+                              "are contained in it (--search-records); empty otherwise",
+    "reference_run": "md5 of the reference run's run_provenance.json; empty for a FASTA reference",
+}
+_CANDIDATE_DOCS = {
+    "query_id": "query sequence ID",
+    "rank": "order of the match for this query: eligible first, then fewer differences, higher "
+            "coverage, higher identity, longer alignment, haplotype ID",
+    "haplotype_id": "reference haplotype",
+    "haplotype_label": "its label in the reference run",
+    "assigned_sp": "the haplotype's taxon (with --taxon-curation, as curated for this query)",
+    "assignment_level": "species or genus",
+    "assignment_source": "labels or curated",
+    "n_members": "records assigned to the haplotype in the reference run",
+    "in_equivalence_set": "the haplotype is in the query's equivalence set",
+    "eligible": "the alignment covers --min-query-coverage of the shorter sequence at "
+                "--assign-identity or more",
+    "differences": "mismatches plus gap columns over the overlap",
+    "n_mismatches": "mismatches",
+    "n_gaps": "gap columns inside the overlap",
+    "indel_in_query": "a gap run whose length is not a multiple of 3",
+    "identity_pct": "identity over the columns with a base in both (%)",
+    "query_coverage": "share of the query's bases in the overlap",
+    "overlap_coverage": "query bases in the overlap / the shorter of query and haplotype; "
+                        "--min-query-coverage applies to this",
+    "aligned_length": "columns with a base in both sequences",
+    "query_length": "query length in bp",
+    "haplotype_length": "haplotype length in bp",
+}
+_RECORD_MATCH_DOCS = {
+    "query_id": "query sequence ID",
+    "processid": "reference record",
+    "match_type": "query_within_record or record_within_query",
+    "label": "the record's species, or genus when the species is missing",
+    "haplotype_id": "the record's haplotype; empty when it is not assigned to one",
+    "status": "the record's status in the reference run",
+    "record_length": "record sequence length in bp",
+}
+
+QUERY_FILE_DOCS = [
+    {"pattern": "README.md", "text": "This file."},
+    {"pattern": "query_calls.csv", "text": "One row per query: the result to report.",
+     "columns": _CALL_DOCS},
+    {"pattern": "query_candidates.csv",
+     "text": "The top --top-n haplotypes per query with the numbers behind the call. Other "
+             "haplotype columns: join the reference run's haplotypes.csv on haplotype_id.",
+     "columns": _CANDIDATE_DOCS},
+    {"pattern": "query_record_matches.csv",
+     "text": "--search-records: QC-passed reference records that contain the query unchanged or "
+             "are contained in it, including records not assigned to a haplotype.",
+     "columns": _RECORD_MATCH_DOCS},
+    {"pattern": "query_alignments.txt", "text": "Each query's call and its best alignment."},
+    {"pattern": "query_provenance.json",
+     "text": "The reference run (path, version, run_provenance.json md5), the query and reference "
+             "files with their md5, parameters, the curation and query metadata files, figures, "
+             "warnings and the files written."},
+    {"pattern": "query_report.html",
+     "text": "The calls, one evidence card per query, the figures and the methods, in a browser."},
+    {"pattern": "query.log", "text": "The log of this query run."},
+    {"pattern": "query_results.json",
+     "text": "--json: the calls, candidates, reference run and parameters as one JSON document."},
+    {"pattern": "query_figures/*.pdf",
+     "text": "Figures placing the queries in the reference run, one page per taxon, genus or "
+             "equivalence set (see Figures)."},
+    {"pattern": "query_figures/*/*.svg", "text": "The same figure pages, one SVG per page."},
+]
+
+
+def methods_sentence(provenance: dict) -> str:
+    """A methods paragraph with this query run's values."""
+    p = provenance.get("parameters") or {}
+    ref = provenance.get("reference_run")
+    a = provenance.get("alignment") or ALIGNMENT_SCORING
+    n_q = (provenance.get("query") or {}).get("n_sequences")
+    fasta = provenance.get("reference_fasta") or {}
+    n_h = fasta.get("n_haplotypes")
+    if ref:
+        target = (f"the {n_h} haplotypes of a BOLDGenotyper {ref.get('boldgenotyper_version')} "
+                  f"reference run (run_provenance.json md5 {ref.get('provenance_md5')})")
+    else:
+        target = f"the {n_h} haplotypes in {Path(str(fasta.get('path', ''))).name}"
+    subject = (f"The {n_q} query sequences were each" if n_q != 1 else "The query sequence was")
+    text = (f"{subject} aligned to {target} over their whole overlap (global alignment with free "
+            f"end gaps; match {a.get('match'):+d}, mismatch {a.get('mismatch')}, gap opening "
+            f"{a.get('gap_open')}, gap extension {a.get('gap_extend')}). A haplotype was an eligible "
+            f"match when the alignment covered at least {p.get('min_query_coverage', 0):.0%} of the "
+            f"shorter sequence at {p.get('assign_identity', 0) * 100:.1f}% identity or more; the "
+            f"equivalence set was every eligible haplotype within {p.get('max_mismatch_delta')} "
+            f"difference(s) (mismatches plus gap columns) of the best match.")
+    if ref:
+        text += (f" A species was called when one species held at least "
+                 f"{p.get('min_species_support', 0):.2f} of the pooled labels of the member "
+                 f"records of the set's haplotypes")
+        cur = provenance.get("taxon_curation")
+        if cur:
+            text += (f", or, when a haplotype in the set had a curated taxon (curation file md5 "
+                     f"{cur.get('md5')}), when the set's haplotypes shared one species")
+        text += "."
+    return text
+
+
+def _doc_for(rel: str) -> Optional[dict]:
+    from fnmatch import fnmatch
+    return next((d for d in QUERY_FILE_DOCS if fnmatch(rel, d["pattern"])), None)
+
+
+def write_query_readme(output_dir, provenance: dict):
+    """
+    Write README.md for a query run folder: which file to report, the methods
+    sentence, the reference run, and every file present with its columns.
+    Returns (path, undocumented files or columns).
+    """
+    output_dir = Path(output_dir)
+    path = output_dir / "README.md"
+    files = sorted({str(p.relative_to(output_dir).as_posix())
+                    for p in output_dir.rglob("*") if p.is_file()} | {"README.md"})
+    undocumented, sections, seen = [], [], set()
+    for rel in files:
+        doc = _doc_for(rel)
+        if doc is None:
+            undocumented.append(rel)
+            continue
+        columns = doc.get("columns")
+        if columns and rel.endswith(".csv") and (output_dir / rel).exists():
+            header = list(pd.read_csv(output_dir / rel, nrows=0).columns)
+            undocumented += [f"{rel}: {c}" for c in header if c not in columns]
+        if doc["pattern"] in seen:
+            continue
+        seen.add(doc["pattern"])
+        lines = [f"### `{doc['pattern']}`", "", doc["text"], ""]
+        if columns:
+            lines += ["| Column | Meaning |", "|---|---|"]
+            lines += [f"| `{c}` | {m} |" for c, m in columns.items()]
+            lines.append("")
+        sections.append("\n".join(lines))
+
+    ref = provenance.get("reference_run")
+    query = provenance.get("query") or {}
+    if ref:
+        ref_lines = [f"- Path: `{ref.get('path')}`",
+                     f"- BOLDGenotyper {ref.get('boldgenotyper_version')}, run {ref.get('run_date')}",
+                     f"- run_provenance.json md5: `{ref.get('provenance_md5')}`",
+                     f"- Input md5: `{ref.get('input_md5')}`; BOLD download date: "
+                     f"{ref.get('download_date') or 'not recorded'}"]
+    else:
+        ref_lines = [f"- A haplotype FASTA (`{(provenance.get('reference_fasta') or {}).get('path')}`), "
+                     "not a v2 run folder: haplotype matching only, no species calls."]
+    text = "\n".join([
+        "# Query results", "",
+        f"{query.get('n_sequences')} query sequence(s) from `{query.get('path')}`, "
+        f"BOLDGenotyper {provenance.get('boldgenotyper_version')}, {provenance.get('run_date')}.", "",
+        "## Which file to report", "",
+        "`query_calls.csv`: one row per query. Report `call_level`, `equivalence_set` and "
+        "`species_call` with its `call_basis`, and cite the reference run by `reference_run` "
+        "(the md5 of its run_provenance.json). `query_candidates.csv` holds the evidence.", "",
+        "## Methods", "", methods_sentence(provenance), "",
+        "## Reference run", "", *ref_lines, "",
+        "## Repeat queries", "",
+        "Keep one reference run per reference dataset and query the full set of samples each "
+        "time (a query run takes seconds). Every output records the reference run's md5, so "
+        "results from different dates can be compared; a different md5 means a different "
+        "reference.", "",
+        "## Files", "", *sections,
+    ])
+    path.write_text(text.rstrip() + "\n")
+    if undocumented:
+        logger.warning(f"README does not describe: {', '.join(undocumented)}")
+    return path, undocumented

@@ -59,3 +59,17 @@ def test_query_provenance(tmp_path):
     assert d["reference_run"]["provenance_md5"] == "abc" and d["reference_fasta"]["n_haplotypes"] == 1
     assert d["parameters"]["max_mismatch_delta"] == 0 and d["alignment"]["gap_open"] == -6
     assert "query_calls.csv" in d["outputs"] and d["warnings"] == []
+
+
+def test_methods_sentence_states_the_values():
+    prov = {"query": {"n_sequences": 3}, "reference_fasta": {"n_haplotypes": 34},
+            "reference_run": {"boldgenotyper_version": "2.0.0", "provenance_md5": "abc"},
+            "parameters": {"assign_identity": 0.97, "min_query_coverage": 0.95,
+                           "max_mismatch_delta": 0, "min_species_support": 0.7},
+            "taxon_curation": {"md5": "def", "n_applied": 1}}
+    text = qo.methods_sentence(prov)
+    for value in ("3 query sequences", "34 haplotypes", "md5 abc", "95%", "97.0%",
+                  "0 difference", "0.70", "md5 def"):
+        assert value in text
+    prov["reference_run"] = None
+    assert "species" not in qo.methods_sentence(prov).lower()
