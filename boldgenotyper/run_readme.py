@@ -143,7 +143,10 @@ FILE_DOCS = [
          "is_singleton": "n_members == 1",
          "assignment_level": "species, genus or unassigned (see Taxonomy)",
          "assignment_notes": "how assigned_sp was chosen: the majority and its counted labels, or "
-                             "why it fell back to genus",
+                             "why it fell back to genus; for a curated taxon, the curation "
+                             "reason followed by the label rule's note",
+         "assignment_source": "labels (the label rule) or curated (a row of the --taxon-curation "
+                              "file; see Taxonomy)",
          "labels": "every member label with its count, most common first; "
                    "'(no species label)' counts members without one",
          "n_missing_label": "members without a species or genus",
@@ -444,6 +447,13 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "`assigned_sp` is `majority_label` when `majority_fraction` is more than the majority "
               "threshold (0.70 by default; run_provenance.json); otherwise, or when the top labels "
               "are tied, the most common genus (`assignment_level` genus).",
+              "",
+              "With `--taxon-curation FILE`, a row of that file replaces the label rule's taxon for "
+              "the haplotype it names (`assignment_source` curated); `assignment_notes` keeps the "
+              "reason and the label rule's note. A row names a haplotype by `seq_md5`, or by a "
+              "sequence equal to, containing or contained in its core sequence; rows that match no "
+              "haplotype or several, or that disagree for one haplotype, are not applied. "
+              "run_provenance.json records the file's md5 and every row not applied, with why.",
               "",
               "A label conflict is a member whose species-level label differs from the majority "
               "label, any species-level member of a haplotype whose top labels are tied, or a "

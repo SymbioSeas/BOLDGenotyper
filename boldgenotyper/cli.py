@@ -49,8 +49,9 @@ from . import (
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
-    run_readme,
+    run_readme, haplotype_ids,
 )
+from . import taxon_curation as taxon_curation_mod
 from . import __version__
 
 logger = logging.getLogger(__name__)
@@ -354,6 +355,7 @@ def run_pipeline(
     geo_category: str = 'ocean_basin',
     argv: Optional[list] = None,
     download_date: Optional[str] = None,
+    taxon_curation: Optional[Path] = None,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -388,6 +390,9 @@ def run_pipeline(
         Command line recorded in run_provenance.json (default: sys.argv)
     download_date : str, optional
         BOLD download date (YYYY-MM-DD) recorded in run_provenance.json
+    taxon_curation : Path, optional
+        Curation file of accepted haplotype taxa (see taxon_curation), applied
+        after the label rule
 
     Returns
     -------
@@ -400,6 +405,15 @@ def run_pipeline(
     logger.info(f"Input TSV: {tsv_path}")
     logger.info(f"Output directory: {output_dir}")
     logger.info("")
+
+    # A curation file that cannot be used stops the run before it writes anything
+    curation = None
+    if taxon_curation:
+        try:
+            curation = taxon_curation_mod.load_curation(taxon_curation)
+        except taxon_curation_mod.CurationError as e:
+            logger.error(f"Taxon curation file: {e}")
+            return False
 
     # Look for an earlier run before this run creates any folders
     previous_run = provenance.find_previous_run(output_dir)
@@ -845,6 +859,27 @@ def run_pipeline(
             majority_threshold=cfg.taxonomy.majority_species_threshold,
             all_groups=all_haplotype_ids or None
         )
+        assign_table["assignment_source"] = "labels"
+        if curation is not None:
+            hap_meta = pd.DataFrame({
+                "haplotype_id": [r.id for r in haplotype_records],
+                "seq_md5": [haplotype_ids.seq_md5(str(r.seq)) for r in haplotype_records]})
+            applied_rows, not_applied_rows = taxon_curation_mod.match_curation(
+                curation, hap_meta, {r.id: str(r.seq) for r in haplotype_records})
+            assign_table = taxon_curation_mod.apply_curation(assign_table, applied_rows)
+            prov.applied["taxon_curation"] = {
+                "path": str(taxon_curation),
+                "md5": provenance.file_md5(taxon_curation),
+                "n_rows": len(curation),
+                "n_applied": len(applied_rows),
+                "n_not_applied": len(not_applied_rows),
+                "not_applied": not_applied_rows[["row", "taxon", "reason_not_applied"]]
+                .to_dict("records"),
+            }
+            logger.info(f"  Curated taxa applied to {len(applied_rows)} haplotype(s)")
+            for r in not_applied_rows.to_dict("records"):
+                logger.warning(f"  Curation row {r['row']} ({r['taxon']}) not applied: "
+                               f"{r['reason_not_applied']}")
 
         # Build haplotype_sp labels (e.g., "Species name H0001")
         def _join_label(row):
@@ -864,7 +899,8 @@ def run_pipeline(
 
         # Merge taxonomy back into main dataframe
         df_with_haplotypes = df_with_haplotypes.merge(
-            assign_table[["haplotype_id", "assigned_sp", "haplotype_sp", "assignment_level", "assignment_notes", "majority_fraction"]],
+            assign_table[["haplotype_id", "assigned_sp", "haplotype_sp", "assignment_level",
+                          "assignment_notes", "assignment_source", "majority_fraction"]],
             on="haplotype_id",
             how="left",
             validate="many_to_one"
@@ -2380,6 +2416,16 @@ Notes:
     )
 
     parser.add_argument(
+        '--taxon-curation',
+        type=Path,
+        default=None,
+        metavar='FILE',
+        help='CSV/TSV of accepted haplotype taxa (seq_md5 or sequence, taxon, reason; '
+             'optional curator, date), applied after the label rule. Each row is recorded '
+             'in run_provenance.json; see the run README.'
+    )
+
+    parser.add_argument(
         '--version',
         action='version',
         version=f'BOLDGenotyper {__version__}'
@@ -2547,6 +2593,7 @@ def main():
             geo_category=args.geo_category,
             argv=sys.argv,
             download_date=args.download_date,
+            taxon_curation=args.taxon_curation,
         )
 
         return 0 if success else 1

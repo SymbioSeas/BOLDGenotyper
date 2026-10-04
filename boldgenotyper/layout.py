@@ -46,7 +46,7 @@ _RECORD_REGION = ["region_confidence", "distance_to_region_boundary_km"]
 
 HAPLOTYPE_COLUMNS = [
     "haplotype_id", "haplotype_label", "seq_md5", "length", "n_members", "n_exact", "n_corrected",
-    "is_singleton", "assigned_sp", "assignment_level", "assignment_notes",
+    "is_singleton", "assigned_sp", "assignment_level", "assignment_notes", "assignment_source",
     "labels", "n_labeled", "n_missing_label", "n_species_labels", "majority_label", "n_majority",
     "majority_fraction", "n_label_conflicts", "nearest_haplotype", "nearest_distance",
     "is_suspect", "suspect_reasons", "min_orf_coverage", "max_internal_stops", "in_tree",
@@ -132,8 +132,9 @@ def build_haplotypes_table(
     """
     h = stats.rename(columns={"core_length": "length",
                               "nearest_neighbor_distance": "nearest_distance"}).copy()
-    tax = taxonomy[["haplotype_id", "assigned_sp", "assignment_level", "assignment_notes",
-                    "haplotype_sp"]].rename(columns={"haplotype_sp": "haplotype_label"})
+    tax = taxonomy.reindex(columns=["haplotype_id", "assigned_sp", "assignment_level",
+                                    "assignment_notes", "assignment_source", "haplotype_sp"])
+    tax = tax.rename(columns={"haplotype_sp": "haplotype_label"})
     h = h.merge(tax, on="haplotype_id", how="left", validate="one_to_one")
 
     members = records[records["haplotype_id"].notna()]

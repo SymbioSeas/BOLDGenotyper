@@ -21,7 +21,8 @@ ORGANISM = "Synth"
 
 def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_kit=False,
                   export_formats=None, report=False, duplicate_at=None, shapefile_path=None,
-                  shapefile_field=None, geo_category="ocean_basin", **cfg_updates):
+                  shapefile_field=None, geo_category="ocean_basin", taxon_curation=None,
+                  **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv", duplicate_at=duplicate_at)
@@ -35,7 +36,7 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_ki
         no_report=not report, skip_geo=skip_geo, export_plot_data=plot_kit,
         export_popgen_formats=export_formats, metadata_summary_enabled=metadata_summary_enabled,
         temporal_analysis=True, shapefile_path=shapefile_path, shapefile_field=shapefile_field,
-        geo_category=geo_category,
+        geo_category=geo_category, taxon_curation=taxon_curation,
     )
     return ok, out
 
@@ -503,3 +504,26 @@ def test_distance_matrix_keyed_by_haplotype_id(synthetic_run):
     ids = set(pd.read_csv(synthetic_run / "haplotypes.csv")["haplotype_id"])
     assert set(d.index) == ids and set(d.columns) == ids
     assert d.index.name == "haplotype_id"
+
+
+def test_curation_file_sets_haplotype_taxon(tmp_path):
+    ok, base = run_synthetic(tmp_path / "base")
+    assert ok
+    target = pd.read_csv(base / "haplotypes.csv").iloc[0]
+    cur = tmp_path / "curation.csv"
+    cur.write_text(f"seq_md5,taxon,reason\n{target['seq_md5']},Genus curata,test\nffff,Genus nulla,no match\n")
+    ok, out = run_synthetic(tmp_path / "cur", taxon_curation=cur)
+    assert ok
+    row = pd.read_csv(out / "haplotypes.csv").set_index("haplotype_id").loc[target["haplotype_id"]]
+    assert row["assigned_sp"] == "Genus curata" and row["assignment_source"] == "curated"
+    assert row["haplotype_label"] == f"Genus curata {target['haplotype_id']}"
+    applied = json.loads((out / "run_provenance.json").read_text())["applied"]["taxon_curation"]
+    assert applied["n_applied"] == 1 and applied["n_not_applied"] == 1
+    assert applied["md5"] and applied["not_applied"][0]["row"] == 3
+
+
+def test_invalid_curation_file_stops_the_run(tmp_path):
+    cur = tmp_path / "bad.csv"
+    cur.write_text("seq_md5,taxon\nabc,Genus x\n")
+    ok, out = run_synthetic(tmp_path, taxon_curation=cur)
+    assert not ok and not (out / "records.csv").exists()
