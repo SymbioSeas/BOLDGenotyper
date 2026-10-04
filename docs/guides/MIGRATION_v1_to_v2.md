@@ -471,7 +471,10 @@ mismatch); v1's main distribution map also failed silently. v2 writes them.
 
 Config default changed: `msa.output_formats` is `["pdf"]` (v1: PDF and PNG). The
 `genotype_assignment` config section is removed; a config file that still has it loads,
-with a warning.
+with a warning. The `visualization` section keeps `map_background_detail` and gains
+`max_overview_haplotypes` (40), `max_colored_items` (12), `max_overview_species` (15) and
+`max_heatmap_species` (30); its other options (`figure_dpi`, `figure_format`, `facet_*`,
+`map_projection`, `show_scale_bar`, ...) are removed and ignored, with a warning.
 
 A removed flag stops the command with one line naming what to use instead (exit status 2).
 

@@ -582,154 +582,52 @@ class GeographicConfig:
 @dataclass(frozen=True)
 class VisualizationConfig:
     """
-    Configuration for publication-ready figure generation.
-
-    Controls plot styling, colors, output formats, and dimensions.
+    Configuration for the run's figures (figure_pages, tree_figures,
+    run_figures, metadata_figures).
 
     Attributes
     ----------
-    color_palette : str
-        Matplotlib/seaborn color palette (default: "colorblind")
-
-    reference_colors : List[str]
-        Specific colors for first N genotypes to match reference analysis
-
-    figure_dpi : int
-        Resolution for raster outputs (default: 300)
-
-    figure_format : List[str]
-        Output formats (default: ["png", "pdf"])
-
-    map_projection : str
-        Cartopy projection for maps (default: "PlateCarree")
-
-    map_figsize : tuple
-        Figure size for maps in inches (default: (12, 6))
-
-    barplot_figsize : tuple
-        Figure size for bar plots in inches (default: (10, 6))
-
-    font_family : str
-        Font family for plots (default: "sans-serif")
-
-    font_size : int
-        Base font size in points (default: 11)
-
-    show_bootstrap_threshold : int
-        Minimum bootstrap value to display on trees (default: 70)
-
-    facet_by : str
-        Faceting mode for multi-panel plots (default: "species")
-        Options: "species" or "genotype"
-        - "species": One facet per species, multiple genotypes per facet (reduces file size)
-        - "genotype": One facet per genotype (more granular)
-
-    map_buffer_degrees : float
-        Buffer margin in degrees for faceted map zoom (default: 20.0)
-        Extends map bounds beyond data points for geographic context.
-        Automatically constrained to valid lat/lon ranges [-90,90] × [-180,180]
-
-    show_unknown_geography_annotation : bool
-        Show count of samples without coordinates on faceted maps (default: True)
-
-    show_scale_bar : bool
-        Show scale bar indicating point size → sample count on maps (default: True)
-
-    Performance and Quality Tiers
-    -----------------------------
-    facet_dpi : int
-        Resolution for individual facet plots (default: 150).
-        Lower than main plots to balance quality and render time.
-
-    facet_formats : List[str]
-        Output formats for individual facet files (default: ["svg"]).
-        SVG only by default since users typically edit these in Illustrator/Inkscape.
-
-    save_individual_facets : bool
-        Whether to save individual facet plots as separate files (default: False).
-        When False, only the combined faceted plot is saved, significantly reducing
-        file count and render time. Individual facets can be regenerated on demand
-        using exported data files.
-
     map_background_detail : str
-        Level of detail for cartopy map backgrounds (default: "auto").
-        Options:
-        - "full": Detailed land/ocean/coastline features (publication quality)
-        - "simple": Coastlines only, solid ocean color (faster, smaller files)
-        - "auto": Full detail for main plots, simple for facets
+        Cartopy map background (default: "auto"): "full" (land, ocean and
+        coastlines), "simple" (coastlines only, faster, smaller files) or
+        "auto" (full for overviews, simple for per-species pages).
+    max_overview_haplotypes : int
+        Overviews show each haplotype up to this many haplotypes, and taxa
+        above (default: 40).
+    max_colored_items : int
+        Items colored in a panel; the rest are gray as "Other (n)" (default: 12).
+    max_overview_species : int
+        Taxa colored in taxon-level overviews (default: 15).
+    max_heatmap_species : int
+        Rows (taxa or haplotypes with the most records) of the records-by-year
+        and coverage overviews (default: 30).
 
-    intermediate_dpi : int
-        Resolution for intermediate/diagnostic plots (default: 150).
-        Used for QC plots, heatmaps, and other exploratory visualizations.
-
-    Notes
-    -----
-    Reference colors are chosen for consistency with the original analysis:
-    - Purple (#9D7ABE)
-    - Teal (#5AB4AC)
-    - Yellow (#F2CC8F)
-
-    Faceting by species significantly reduces output file sizes while maintaining
-    all information (e.g., 2 species with 5 genotypes each = 2 facets, not 10).
-
-    Performance Recommendations:
-    - For fast exploratory runs: save_individual_facets=False, map_background_detail="simple"
-    - For publication: save_individual_facets=True, map_background_detail="full"
-    - Typical speedup with optimized settings: 70-85% faster visualization rendering
+    Figures are PDF and SVG; the plot kit (--plot-kit) has its own settings.
     """
-    color_palette: str = "colorblind"
-    reference_colors: List[str] = field(default_factory=lambda: [
-        "#9D7ABE",  # Purple
-        "#5AB4AC",  # Teal
-        "#F2CC8F",  # Yellow
-    ])
-    figure_dpi: int = 300
-    figure_format: List[str] = field(default_factory=lambda: ["pdf", "svg"])
-    map_projection: str = "PlateCarree"
-    map_figsize: tuple = (12, 6)
-    barplot_figsize: tuple = (10, 6)
-    font_family: str = "sans-serif"
-    font_size: int = 11
-    show_bootstrap_threshold: int = 70
-    facet_by: str = "species"
-    map_buffer_degrees: float = 20.0
-    show_unknown_geography_annotation: bool = True
-    show_scale_bar: bool = True
-
-    # Performance optimization settings (added for v2.0)
-    facet_dpi: int = 150
-    facet_formats: List[str] = field(default_factory=lambda: ["svg"])
-    save_individual_facets: bool = False
     map_background_detail: str = "auto"
-    intermediate_dpi: int = 150
-
-    # Figures that scale to large runs (figure_pages)
-    max_overview_haplotypes: int = 40   # above this, overviews show taxa instead of haplotypes
-    max_colored_items: int = 12         # colored items per panel; the rest are "Other (n)"
-    max_overview_species: int = 15      # colored taxa in species-level overviews
-    max_heatmap_species: int = 30       # rows of the records-by-year heatmap
+    max_overview_haplotypes: int = 40
+    max_colored_items: int = 12
+    max_overview_species: int = 15
+    max_heatmap_species: int = 30
 
     def __post_init__(self):
         """Validate configuration parameters."""
-        if self.figure_dpi < 72:
-            raise ValueError("figure_dpi must be at least 72")
-        if self.facet_dpi < 72:
-            raise ValueError("facet_dpi must be at least 72")
-        if self.intermediate_dpi < 72:
-            raise ValueError("intermediate_dpi must be at least 72")
-        if self.font_size < 6:
-            raise ValueError("font_size must be at least 6")
-        if self.facet_by not in ["species", "genotype"]:
-            raise ValueError("facet_by must be 'species' or 'genotype'")
-        if self.map_buffer_degrees < 0:
-            raise ValueError("map_buffer_degrees must be non-negative")
-        if self.map_buffer_degrees > 90:
-            logger.warning(
-                f"map_buffer_degrees ({self.map_buffer_degrees}) is very large. "
-                "This may result in overly zoomed-out maps."
-            )
         if self.map_background_detail not in ["full", "simple", "auto"]:
             raise ValueError("map_background_detail must be 'full', 'simple', or 'auto'")
+        for name in ("max_overview_haplotypes", "max_colored_items", "max_overview_species",
+                     "max_heatmap_species"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be at least 1")
+
+
+# Visualization options removed in 2.0.0 (no figure reads them); a config file
+# that sets one loads with a warning
+REMOVED_VISUALIZATION_OPTIONS = (
+    "color_palette", "reference_colors", "figure_dpi", "figure_format", "map_projection",
+    "map_figsize", "barplot_figsize", "font_family", "font_size", "show_bootstrap_threshold",
+    "facet_by", "map_buffer_degrees", "show_unknown_geography_annotation", "show_scale_bar",
+    "facet_dpi", "facet_formats", "save_individual_facets", "intermediate_dpi",
+)
 
 
 # ============================================================================
@@ -1052,7 +950,7 @@ class PipelineConfig:
         >>> new_config = config.update(
         ...     n_threads=4,
         ...     dereplication__mafft_algorithm="linsi",
-        ...     visualization__figure_dpi=600
+        ...     visualization__max_colored_items=10
         ... )
         """
         # Separate top-level and nested updates
@@ -1287,6 +1185,14 @@ def _dict_to_config(config_dict: Dict[str, Any]) -> PipelineConfig:
         'taxonomy': TaxonomyConfig,
         'msa': MSAConfig,
     }
+
+    visualization = config_dict.get('visualization')
+    if isinstance(visualization, dict):
+        removed = [k for k in REMOVED_VISUALIZATION_OPTIONS if k in visualization]
+        for key in removed:
+            visualization.pop(key)
+        if removed:
+            logger.warning(f"Config visualization options removed in 2.0.0 are ignored: {', '.join(removed)}")
 
     for section, cls in section_map.items():
         if section in config_dict:
