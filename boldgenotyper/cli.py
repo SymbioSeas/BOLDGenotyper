@@ -49,7 +49,7 @@ from . import (
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
-    run_readme, haplotype_ids,
+    run_readme, haplotype_ids, taxon_evidence,
 )
 from . import taxon_curation as taxon_curation_mod
 from . import __version__
@@ -1862,8 +1862,20 @@ def run_pipeline(
         tree_tips = None
         if tree_path and Path(tree_path).exists():
             tree_tips = {tip.name for tip in Phylo.read(str(tree_path), "newick").get_terminals()}
+        evidence = None
+        try:
+            evidence = taxon_evidence.compute_evidence(
+                assign_table, records_df, {r.id: str(r.seq) for r in haplotype_records},
+                tree_path if tree_path and Path(tree_path).exists() else None)
+            n_suggested = int((evidence["suggested_sp"] != "").sum())
+            logger.info(f"  Taxon evidence: {n_suggested} suggested taxa for haplotypes "
+                        f"not assigned at species level (not applied)")
+        except Exception as e:
+            step_warnings.record("13 taxon evidence", e)
+            logger.debug("Taxon evidence error details:", exc_info=True)
         haplotypes_df = layout.build_haplotypes_table(
-            haplotype_stats, assign_table, records_df, geo_category, tree_tips=tree_tips)
+            haplotype_stats, assign_table, records_df, geo_category, tree_tips=tree_tips,
+            evidence=evidence)
         haplotypes_df.to_csv(output_dir / "haplotypes.csv", index=False)
         logger.info(f"  haplotypes.csv: {len(haplotypes_df)} haplotypes")
 

@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from . import quality_control, taxon_curation
+from .taxon_evidence import EVIDENCE_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ HAPLOTYPE_COLUMNS = [
     "majority_fraction", "n_label_conflicts", "nearest_haplotype", "nearest_distance",
     "is_suspect", "suspect_reasons", "min_orf_coverage", "max_internal_stops", "in_tree",
     "n_with_coords", "n_with_region", "n_with_country",
-]
+] + EVIDENCE_COLUMNS
 
 
 def record_columns(region_col: str, input_columns: Iterable[str]) -> List[str]:
@@ -126,10 +127,13 @@ def build_haplotypes_table(
     records: pd.DataFrame,
     region_col: str,
     tree_tips: Optional[Set[str]] = None,
+    evidence: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
     One row per haplotype (haplotypes.csv), from the haplotype stats, the
     taxonomy table and records.csv. tree_tips is None when no tree was built.
+    evidence (taxon_evidence.compute_evidence) fills the evidence columns;
+    they are empty without it.
     """
     h = stats.rename(columns={"core_length": "length",
                               "nearest_neighbor_distance": "nearest_distance"}).copy()
@@ -154,6 +158,9 @@ def build_haplotypes_table(
         h["n_with_country"] = 0
     h["in_tree"] = (h["haplotype_id"].isin(tree_tips) if tree_tips is not None
                     else pd.Series(np.nan, index=h.index, dtype=object))
+    if evidence is not None and len(evidence):
+        ev_cols = ["haplotype_id"] + [c for c in EVIDENCE_COLUMNS if c in evidence.columns]
+        h = h.merge(evidence[ev_cols], on="haplotype_id", how="left", validate="one_to_one")
 
     for col in HAPLOTYPE_COLUMNS:
         if col not in h.columns:

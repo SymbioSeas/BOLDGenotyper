@@ -164,6 +164,30 @@ FILE_DOCS = [
          "n_with_coords": "members with coord_status ok",
          "n_with_region": f"members with a {REGION}",
          "n_with_country": "members with a country/ocean value",
+         "nearest_species_haplotype": "nearest other haplotype assigned at species level "
+                                      "(';'-joined when tied); evidence, see Taxonomy",
+         "nearest_species_taxon": "its assigned_sp (';'-joined when the tied haplotypes differ)",
+         "nearest_species_distance": "p-distance to nearest_species_haplotype",
+         "taxon_max_within_distance": "largest p-distance between the other species-level "
+                                      "haplotypes of nearest_species_taxon; empty when it has "
+                                      "fewer than two",
+         "within_taxon_spread": "nearest_species_distance <= taxon_max_within_distance",
+         "member_bins": "members' BOLD BINs with counts ('none': no BIN)",
+         "bin_taxon": "for the members' most common BIN: the most common species-level label "
+                      "among this run's QC-passed records in that BIN, its fraction and counts",
+         "label_sources": "per member label: records, BOLD projects (processid prefix; GenBank "
+                          "accession prefix for records mined from GenBank) and institutions. "
+                          "Approximate: one study can span several projects",
+         "tree_sister_taxon": "walking from the haplotype's tip toward the root of "
+                              "phylogeny/tree.nwk, the first clade holding another species-level "
+                              "haplotype: their shared taxon; empty when they differ or no tree "
+                              "was built",
+         "tree_sister_support": "that clade's support value (FastTree SH-like local support, "
+                                "0 to 1)",
+         "suggested_sp": "for haplotypes neither at species level nor curated: a taxon named "
+                         "by at least two evidence lines and contradicted by none (see "
+                         "Taxonomy). Never applied",
+         "suggestion_basis": "the lines that agree, or why there is no suggestion",
      }},
     {"pattern": "label_conflicts.csv",
      "text": "One row per record whose label conflicts with its haplotype's majority label, or "
@@ -458,6 +482,16 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "sequence equal to, containing or contained in its core sequence; rows that match no "
               "haplotype or several, or that disagree for one haplotype, are not applied. "
               "run_provenance.json records the file's md5 and every row not applied, with why.",
+              "",
+              "The evidence columns of haplotypes.csv weigh a haplotype's taxon against three "
+              "lines that do not use its own majority: distance (its nearest species-level "
+              "haplotype lies within that taxon's spread, `within_taxon_spread`), BIN (the "
+              "members' most common BIN has one species-level label at 0.70 or more of its "
+              "QC-passed records) and tree (`tree_sister_taxon`). For a haplotype neither at "
+              "species level nor curated, `suggested_sp` is a taxon at least two lines name "
+              "and none contradicts. A suggestion is never applied: check it, and record an "
+              "accepted call in a curation file with its reason. The tree is unrooted unless an "
+              "outgroup was set, so a sister clade next to the root is approximate.",
               "",
               "A label conflict is a member whose species-level label differs from the majority "
               "label, any species-level member of a haplotype whose top labels are tied, or a "

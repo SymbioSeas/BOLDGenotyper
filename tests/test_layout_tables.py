@@ -117,6 +117,19 @@ def test_in_tree(haplotypes):
     assert stats_only["in_tree"].isna().all()
 
 
+def test_evidence_columns_merge(records):
+    from boldgenotyper.taxon_evidence import EVIDENCE_COLUMNS
+    stats = pd.DataFrame({"haplotype_id": ["H0001", "H0002"], "seq_md5": ["m1", "m2"],
+                          "core_length": [600, 600], "n_exact": [2, 1], "n_corrected": [1, 0],
+                          "n_members": [3, 1], "is_singleton": [False, True]})
+    evidence = pd.DataFrame({"haplotype_id": ["H0002"], "suggested_sp": ["Genus alpha"],
+                             "suggestion_basis": ["distance, BIN agree"]})
+    h = layout.build_haplotypes_table(stats, TAXONOMY, records, region_col="ocean_basin",
+                                      evidence=evidence).set_index("haplotype_id")
+    assert list(h.columns[-len(EVIDENCE_COLUMNS):]) == EVIDENCE_COLUMNS
+    assert h.loc["H0002", "suggested_sp"] == "Genus alpha" and pd.isna(h.loc["H0001", "suggested_sp"])
+
+
 def test_haplotype_by_region(records):
     by_region = layout.build_haplotype_by_region(records, region_col="ocean_basin")
     assert list(by_region.columns) == ["haplotype_id", "haplotype_label", "assigned_sp", "ocean_basin",

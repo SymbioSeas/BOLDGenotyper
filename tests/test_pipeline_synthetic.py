@@ -506,6 +506,19 @@ def test_distance_matrix_keyed_by_haplotype_id(synthetic_run):
     assert d.index.name == "haplotype_id"
 
 
+def test_haplotypes_table_has_evidence_columns(synthetic_run):
+    from boldgenotyper.taxon_evidence import EVIDENCE_COLUMNS
+    haps = pd.read_csv(synthetic_run / "haplotypes.csv")
+    assert set(EVIDENCE_COLUMNS) <= set(haps.columns)
+    species_level = haps["assignment_level"] == "species"
+    assert haps.loc[species_level, "suggested_sp"].isna().all()
+    assert haps.loc[species_level, "suggestion_basis"].isna().all()
+    assert haps["nearest_species_haplotype"].notna().any() and haps["label_sources"].notna().all()
+    assert haps["tree_sister_taxon"].isna().all()          # no tree in this run
+    d = json.loads((synthetic_run / "run_provenance.json").read_text())
+    assert not [w for w in d["warnings"] if w["step"] == "13 taxon evidence"]
+
+
 def test_curation_file_sets_haplotype_taxon(tmp_path):
     ok, base = run_synthetic(tmp_path / "base")
     assert ok
