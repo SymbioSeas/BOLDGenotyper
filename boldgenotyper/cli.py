@@ -49,7 +49,7 @@ from . import (
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
-    run_readme, haplotype_ids, taxon_evidence, query_outputs,
+    run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays,
 )
 from . import taxon_curation as taxon_curation_mod
 from . import __version__
@@ -2784,6 +2784,16 @@ For more information:
     )
 
     parser.add_argument(
+        '--query-metadata',
+        type=Path,
+        default=None,
+        metavar='FILE',
+        help='CSV/TSV with query_id and any of lat/lon or coord, collection_date, '
+             'country/ocean, region. Adds the queries to the figures; a query\'s region is '
+             'its region value, else its coordinates placed with the reference run\'s shapefile.'
+    )
+
+    parser.add_argument(
         '--json',
         action='store_true',
         help='Also write query_results.json (calls, candidates, reference run and '
@@ -2903,6 +2913,14 @@ For more information:
             args.query, min_length=args.min_length, max_length=args.max_length)
         if not query_records:
             raise ValueError("No valid query sequences after length filtering")
+        query_meta = None
+        if args.query_metadata:
+            try:
+                query_meta = query_overlays.load_query_metadata(
+                    args.query_metadata, [q.id for q in query_records])
+            except query_overlays.QueryMetadataError as e:
+                print(f"Error: query metadata: {e}", file=sys.stderr)
+                return 1
 
         # Run query
         logger.info("Starting haplotype query analysis...")
@@ -2962,6 +2980,24 @@ For more information:
         if args.json:
             query_outputs.write_json(results, verdicts, output_dir, parameters=parameters,
                                      reference_run=reference_run, haplotypes=metadata)
+
+        # Place the queries in the reference run (v2 run folders)
+        reference = query_overlays.load_reference(analysis_dir)
+        if query_meta is not None:
+            unmatched = query_meta.attrs.get("unmatched_ids", [])
+            n_rows = query_meta.attrs.get("n_rows", len(query_meta))
+            query_meta = query_overlays.assign_query_regions(query_meta, reference)
+            qprov["query_metadata"] = {
+                "path": str(args.query_metadata),
+                "md5": provenance.file_md5(args.query_metadata),
+                "n_rows": n_rows,
+                "n_matched": n_rows - len(unmatched),
+                "unmatched_ids": unmatched,
+            }
+        if reference is not None:
+            query_overlays.write_query_regions(
+                query_overlays.query_regions_table(calls, query_meta, reference),
+                output_dir / "query_figures")
         query_outputs.write_query_provenance(qprov, output_dir)
         query_outputs.write_query_readme(output_dir, qprov)
         query_outputs.write_query_provenance(qprov, output_dir)      # now lists README.md too

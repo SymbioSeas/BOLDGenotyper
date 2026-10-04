@@ -405,6 +405,17 @@ QUERY_FILE_DOCS = [
     {"pattern": "query.log", "text": "The log of this query run."},
     {"pattern": "query_results.json",
      "text": "--json: the calls, candidates, reference run and parameters as one JSON document."},
+    {"pattern": "query_figures/query_regions.csv",
+     "text": "Reference records of each equivalence set's haplotypes per region of the reference "
+             "run, with the queries in each region (query regions from --query-metadata).",
+     "columns": {
+         "equivalence_set": "the queries' equivalence set (query_calls.csv)",
+         "species_call": "the set's species call",
+         "region": "a region of the reference run's region column, or a query's own region value",
+         "n_reference_records": "reference records of the set's haplotypes in the region",
+         "n_queries": "queries with this set placed in the region",
+         "query_ids": "those queries, ';'-joined",
+     }},
     {"pattern": "query_figures/*.pdf",
      "text": "Figures placing the queries in the reference run, one page per taxon, genus or "
              "equivalence set (see Figures)."},
