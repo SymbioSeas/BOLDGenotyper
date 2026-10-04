@@ -53,3 +53,9 @@ def test_no_normalize_sex_keeps_sex_codes_but_not_blanks():
     out = ms.normalize_vocabulary(pd.DataFrame({"sex": ["M", "f", " ", "U"]}), ["sex"],
                                   map_sex_codes=False)["sex"].tolist()
     assert out[0] == "M" and out[1] == "f" and pd.isna(out[2]) and out[3] == "U"
+
+
+def test_default_fields_exclude_bold_derived_geography():
+    from boldgenotyper import metadata_summary as ms
+    assert ms.DEFAULT_CATEGORICAL_FIELDS == [
+        "sex", "life_stage", "reproduction", "habitat", "country/ocean", "province/state"]

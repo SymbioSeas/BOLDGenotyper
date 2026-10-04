@@ -53,19 +53,17 @@ from .utils import save_capped_png
 
 logger = logging.getLogger(__name__)
 
-# Default metadata fields to analyze
+# Specimen and sampling fields summarized by default. BOLD's realm, biome and ecoregion
+# are derived by BOLD from the coordinates using terrestrial ecoregions (misleading for
+# marine and freshwater taxa), geoid is a numeric location code and country_iso repeats
+# country/ocean; name them in --metadata-fields to summarize them.
 DEFAULT_CATEGORICAL_FIELDS = [
     'sex',
     'life_stage',
     'reproduction',
-    'country/ocean',
-    'country_iso',
-    'province/state',
-    'realm',
-    'biome',
-    'ecoregion',
     'habitat',
-    'geoid',
+    'country/ocean',
+    'province/state',
 ]
 
 DATE_FIELD = 'collection_date_start'

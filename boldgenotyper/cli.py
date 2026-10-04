@@ -2295,8 +2295,10 @@ Notes:
         '--metadata-fields',
         nargs='+',
         default=None,
-        help='Metadata fields to tabulate. Default: sex, life_stage, reproduction, '
-             'country/ocean, country_iso, province/state, realm, biome, ecoregion, habitat, geoid'
+        help='Metadata fields to tabulate. Default: sex, life_stage, reproduction, habitat, '
+             'country/ocean, province/state. Other BOLD fields can be named, e.g. realm, '
+             'biome, ecoregion (BOLD derives these from the coordinates using terrestrial '
+             'ecoregions), geoid, country_iso'
     )
 
     parser.add_argument(

@@ -526,7 +526,8 @@ Your BOLD TSV file **must** contain these columns:
 | `genus` | Used as the record's label when the species is missing |
 | `notes` | Depositor notes (searched for keywords such as "juvenile" or "cf.") |
 | `collection_date_start` | Collection-date summaries (`--extended`) |
-| `sex`, `life_stage`, `reproduction`, `realm`, `biome`, `ecoregion`, `habitat` | Metadata coverage and cross-tabulations |
+| `sex`, `life_stage`, `reproduction`, `habitat` | Metadata coverage and cross-tabulations (default fields, with `country/ocean` and `province/state`) |
+| `realm`, `biome`, `ecoregion`, `geoid` | Summarized only when named in `--metadata-fields`: BOLD derives `realm`, `biome` and `ecoregion` from the coordinates using terrestrial ecoregions, and `geoid` is a numeric location code |
 | `bin_uri` | Barcode Index Number |
 | `marker_code` | Genetic marker (usually "COI-5P") |
 
@@ -827,7 +828,7 @@ boldgenotyper --help
 | `--shp` | String | None | Name of a registered shapefile (see `--init-shapefile-config`) |
 | `--shp-field` | String | Auto | Shapefile attribute field containing region labels |
 | `--geo-category` | String | `ocean_basin` | Name of the region column in outputs; avoid BOLD field names (`realm`, `biome`, `ecoregion`), which it would replace |
-| `--metadata-fields` | List | See help | Metadata fields for coverage and cross-tabs |
+| `--metadata-fields` | List | sex, life_stage, reproduction, habitat, country/ocean, province/state | Metadata fields for coverage and cross-tabs |
 | `--no-normalize-sex` | Flag | False | Keep sex values as given (by default M/F → Male/Female, U → missing) |
 | `--no-metadata-summary` | Flag | False | With `--extended`, skip the metadata cross-tabs (coverage is always written) |
 | `--no-temporal-analysis` | Flag | False | With `--extended`, skip the collection-date summaries |

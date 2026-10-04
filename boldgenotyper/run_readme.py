@@ -172,7 +172,10 @@ FILE_DOCS = [
          "depositor_note": "the depositor's notes field",
      }},
     {"pattern": "metadata_coverage.csv",
-     "text": "Coverage of BOLD metadata fields after normalization (see Metadata).",
+     "text": "Coverage of BOLD metadata fields after normalization (see Metadata). Default "
+             "fields: sex, life_stage, reproduction, habitat, country/ocean, province/state; "
+             "others (e.g. realm, biome, ecoregion, which BOLD derives from the coordinates "
+             "using terrestrial ecoregions) only when named in --metadata-fields.",
      "columns": {
          "field": "BOLD field",
          "n_total": "QC-passed records",
