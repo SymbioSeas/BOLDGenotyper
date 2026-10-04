@@ -1,10 +1,10 @@
-"""A run's figures, drawn from the final per-record table and the tree.
+"""A run's figures, drawn from the final per-record table and the tree::
 
-geography/                 distribution_map (overview + one page per taxon)
-extended/geography/        region_abundance_relative, region_abundance_total
-                           (overview + one page per taxon with two or more haplotypes)
-phylogeny/                 tree figures (tree_figures)
-extended/metadata/figures/ metadata views (metadata_figures)
+    geography/                 distribution_map (overview + one page per taxon)
+    extended/geography/        region_abundance_relative, region_abundance_total
+                               (overview + one page per taxon with two or more haplotypes)
+    phylogeny/                 tree figures (tree_figures)
+    extended/metadata/figures/ metadata views (metadata_figures)
 
 Overviews show haplotypes for up to max_overview_haplotypes haplotypes and taxa
 above; a panel colors at most max_colored_items items (max_overview_species in

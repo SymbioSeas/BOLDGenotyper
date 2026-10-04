@@ -1,18 +1,18 @@
-"""Metadata figures (extended/metadata/figures/), by taxon, haplotype and region.
+"""Metadata figures (extended/metadata/figures/), by taxon, haplotype and region::
 
-Per field (cross_tabs):
-  <field>                 records per haplotype or taxon, stacked by value
-  <field>_by_haplotype    one page per taxon with two or more haplotypes
-  <field>_by_region       records per region, stacked by value
-Collection dates (temporal):
-  records_by_year         heatmap of records per taxon (or haplotype) and year;
-                          pages: records per year stacked by haplotype
-  sampling_timeline       first to last collection date per taxon (or haplotype);
-                          pages: per haplotype
-  records_by_year_by_region  heatmap of records per region and year
-Always:
-  metadata_coverage       share of records with a value per field and taxon (or
-                          haplotype); pages: per haplotype
+    Per field (cross_tabs):
+      <field>                 records per haplotype or taxon, stacked by value
+      <field>_by_haplotype    one page per taxon with two or more haplotypes
+      <field>_by_region       records per region, stacked by value
+    Collection dates (temporal):
+      records_by_year         heatmap of records per taxon (or haplotype) and year;
+                              pages: records per year stacked by haplotype
+      sampling_timeline       first to last collection date per taxon (or haplotype);
+                              pages: per haplotype
+      records_by_year_by_region  heatmap of records per region and year
+    Always:
+      metadata_coverage       share of records with a value per field and taxon (or
+                              haplotype); pages: per haplotype
 
 "By region" views use the run's region column (the geography chosen for the
 run, defined for any shapefile) when it has two or more values; otherwise the

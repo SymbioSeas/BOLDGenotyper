@@ -72,6 +72,10 @@ API Reference
    api/divergence_analysis
    api/metadata_summary
    api/visualization
+   api/figure_pages
+   api/tree_figures
+   api/run_figures
+   api/metadata_figures
    api/plot_export
    api/plot_regeneration
    api/haplotype_query

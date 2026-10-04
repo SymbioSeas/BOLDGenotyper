@@ -46,7 +46,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - **Phylogeny**: optional FastTree tree (GTR+Gamma) of every non-suspect haplotype, with excluded tips listed
 - **Reproducibility**: `run_provenance.json` records the full configuration, tool versions, seeds and input checksum; the log ends with a warnings summary
 - **HTML report** with interactive plots that links to the run's figures
-- **Optional extras** with `--extended` (metadata cross-tabulations, collection-date summaries, a label-based barcoding gap, species tables, alignment plots, faceted maps), `--export-format` (Arlequin, PopART, DnaSP, generic) and `--plot-kit` (plot data and regeneration scripts)
+- **Optional extras** with `--extended` (metadata cross-tabulations, collection-date summaries, a label-based barcoding gap, species tables, alignment plots, region and metadata figures by species), `--export-format` (Arlequin, PopART, DnaSP, generic) and `--plot-kit` (plot data and regeneration scripts)
 - **Query tool** (`boldgenotyper-query`) to place new sequences on a run's haplotypes, and a **parameter sweep** (`boldgenotyper-sweep`) for `--singleton-distance`
 - **Skip geography** with `--no-geo` when no shapefile is available
 
@@ -82,7 +82,8 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - **msa_visualization.py**: Phylogeny-ordered MSA display with nucleotide coloring
 
 ### Layer 6: Visualization & Reporting
-- **visualization.py**: Distribution maps, region bar charts, faceted plots
+- **tree_figures.py**, **run_figures.py**, **metadata_figures.py**: the run's figures (tree, maps, regions, metadata views), an overview plus one page per species
+- **figure_pages.py**: color capping, per-species pages and figure manifests; **visualization.py**: shared palette and map helpers
 - **metadata_summary.py**: Metadata coverage, normalized cross-tabulations and collection-date summaries
 - **reports.py**: Assignment summary, HTML report
 - **layout.py**: `records.csv`, `haplotypes.csv` and the run-folder file map
@@ -621,7 +622,7 @@ The run folder's `README.md` defines every output; this section describes the st
 - `--extended` writes `extended/`: metadata cross-tabulations and collection-date
   summaries (these show sampling, not trends), a barcoding gap computed from record
   labels, species tables and diversity, species-level divergence, alignment plots, and
-  region bar charts and faceted maps
+  region and metadata figures (an overview plus one page per species)
 - `--export-format` writes `exports/` (Arlequin, PopART/NEXUS, DnaSP, generic CSV)
 - `--plot-kit` writes `plots/`: plot data, a YAML configuration and scripts that
   regenerate the map, bar charts and tree (see [Customizing Plots](#customizing-plots-for-publication))
@@ -1023,21 +1024,49 @@ column. This section is an overview. Upgrading from 1.0.0: see the
 │   ├── tree.nwk                  # tips named by haplotype ID
 │   ├── tree_labeled.nwk          # tips named "Genus species H0001"
 │   ├── excluded_tips.txt         # haplotypes left out, with the reason
-│   └── tree.pdf, tree.svg
+│   ├── tree.pdf, tree.svg        # every tip
+│   ├── tree_overview.pdf, .svg   # taxa that form a clade collapsed (above 40 haplotypes)
+│   ├── tree_by_genus.pdf         # one page per genus; by_genus/ has one SVG per page
+│   └── manifest.json             # the figures in this folder and their pages
 ├── geography/                    # when records have geographic-quality coordinates
 │   ├── haplotype_by_region.csv
-│   └── distribution_map.pdf, distribution_map.svg
+│   ├── distribution_map.pdf, .svg            # overview
+│   ├── distribution_map_by_species.pdf       # one page per taxon; by_species/ has the SVGs
+│   └── manifest.json
 ├── report.html                   # open from this folder (figures are linked)
 ├── extended/                     # with --extended
-│   ├── metadata/                 # cross-tabulations, first-sampled and temporal summaries, figures
+│   ├── metadata/                 # cross-tabulations, first-sampled and temporal summaries; figures/
 │   ├── divergence/               # label-based gap, species-level divergence, heatmap, msa/ plots
 │   ├── species/                  # species summary and diversity, per-species record files
-│   ├── geography/                # region bar charts, faceted and per-species maps
+│   ├── geography/                # records per region (relative, total), by species
 │   └── labels/                   # depositor keyword hits, label composition figures
 ├── exports/                      # with --export-format (arlequin/, popart/, dnasp/, generic/)
 ├── plots/                        # with --plot-kit
 └── intermediate/                 # with --keep-intermediates
 ```
+
+### Figures
+
+Figures scale to large runs. Each has an **overview** and, for most, **one page per
+species** (or genus-level group): a multi-page PDF for publication, and one SVG per page
+in `by_species/<figure>/` for the report and web use. Every figure folder has a
+`manifest.json` listing each figure's overview and pages.
+
+- Overviews show each haplotype for up to 40 haplotypes and each taxon above
+  (`visualization.max_overview_haplotypes`).
+- A panel colors at most 12 items (`max_colored_items`); the rest are gray as
+  "Other (n)". Taxon overviews color 15 taxa (`max_overview_species`). Within a taxon a
+  haplotype keeps its color on every page.
+- The tree: `tree.pdf/.svg` keeps every tip; `tree_overview` collapses each taxon whose
+  haplotypes form a clade and lists those that do not; `tree_by_genus.pdf` has the clade
+  at each genus's most recent common ancestor.
+- Captions give the denominators (for example, how many records have geographic-quality
+  coordinates or a region).
+- "By region" metadata views use the run's region column (`--geo-category`: ocean basin,
+  or the category of a custom shapefile), or `country/ocean` when the run has fewer than
+  two regions; the caption says which.
+- Default runs draw the tree and the distribution map; `--extended` adds region
+  abundance and the metadata views. No PNG files are written except by `--plot-kit`.
 
 ### Key Output Files
 
@@ -1641,7 +1670,8 @@ tail -f {organism}_output/{organism}_pipeline.log
 
 # Bottlenecks:
 # - MAFFT (for >10,000 sequences): Use --threads
-# - --extended figures (faceted and per-species maps, alignment plots)
+# - figures: one map page per taxon; with --extended, region and metadata pages per taxon
+#   and alignment plots
 # - Tree building: FastTree is already fast
 ```
 

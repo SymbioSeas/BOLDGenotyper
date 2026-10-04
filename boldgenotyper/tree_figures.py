@@ -1,13 +1,13 @@
-"""Tree figures (phylogeny/).
+"""Tree figures (phylogeny/)::
 
-tree.pdf/.svg            every tip, 0.14 in per tip, 6 pt labels, supports >= 0.70
-tree_overview.pdf/.svg   the full tree for up to 40 haplotypes; above, each taxon
-                         whose haplotypes form a clade is collapsed to one tip
-                         "Taxon (k haplotypes, n records)" and taxa that do not
-                         form a clade are left expanded and listed
-tree_by_genus.pdf        one page per genus with two or more tips: the subtree at
-                         the genus's most recent common ancestor (tips of other
-                         genera inside it included); by_genus/tree_by_genus/<Genus>.svg
+    tree.pdf/.svg            every tip, 0.14 in per tip, 6 pt labels, supports >= 0.70
+    tree_overview.pdf/.svg   the full tree for up to 40 haplotypes; above, each taxon
+                             whose haplotypes form a clade is collapsed to one tip
+                             "Taxon (k haplotypes, n records)" and taxa that do not
+                             form a clade are left expanded and listed
+    tree_by_genus.pdf        one page per genus with two or more tips: the subtree at
+                             the genus's most recent common ancestor (tips of other
+                             genera inside it included); by_genus/tree_by_genus/<Genus>.svg
 
 The tree is read as written (phylogeny/tree.nwk is rooted by the pipeline).
 """

@@ -90,8 +90,8 @@ v2:
 ├── label_conflicts.csv
 ├── metadata_coverage.csv
 ├── divergence/   haplotypes_aligned.fasta, pairwise_p_distance.csv
-├── phylogeny/    tree.nwk, tree_labeled.nwk, excluded_tips.txt, tree.pdf, tree.svg   (--build-tree)
-├── geography/    haplotype_by_region.csv, distribution_map.pdf, distribution_map.svg  (with coordinates)
+├── phylogeny/    tree.nwk, tree_labeled.nwk, excluded_tips.txt, tree.*, tree_overview.*, tree_by_genus.pdf  (--build-tree)
+├── geography/    haplotype_by_region.csv, distribution_map.*, distribution_map_by_species.pdf  (with coordinates)
 ├── report.html
 ├── extended/     (--extended)       metadata/, divergence/, species/, geography/, labels/
 ├── exports/      (--export-format)  arlequin/, dnasp/, popart/, generic/
@@ -130,7 +130,6 @@ v2:
 | `divergence_analysis/within_vs_between_species.csv`, `barcoding_gap.pdf` | `extended/divergence/label_based_gap.csv`, `label_based_gap.pdf` (computed from record labels) |
 | `phylogenetic/<org>_tree.nwk` | `phylogeny/tree.nwk` |
 | `phylogenetic/<org>_tree_relabeled.nwk` | `phylogeny/tree_labeled.nwk` |
-| `phylogenetic/<org>_tree.pdf`, `.svg` | `phylogeny/tree.pdf`, `.svg` |
 | — | `phylogeny/excluded_tips.txt` (haplotypes left out of the tree, with the reason) |
 | `phylogenetic/<org>_MSA_chunk<N>.pdf`, `.png` | `extended/divergence/msa/MSA_chunk<N>.pdf` (no PNG) |
 | `geographic_analysis/geographic_coverage.csv` | `haplotypes.csv` `n_with_coords`, `n_with_region`, `n_with_country` |
@@ -148,13 +147,16 @@ v2:
 | `metadata_summary/<org>_<field>_tabulation.csv` | `extended/metadata/<field>_tabulation.csv` |
 | `metadata_summary/<org>_haplotype_emergence.csv` | `extended/metadata/haplotype_first_sampled.csv` |
 | `metadata_summary/<org>_temporal_trends.csv`, `_temporal_summary.csv` | `extended/metadata/temporal_trends.csv`, `temporal_summary.csv` |
-| `visualization/metadata/{pdf,png}/<org>_<name>.*` | `extended/metadata/figures/<name>.pdf`, `.png` |
-| `visualization/metadata/svg/*` | removed |
-| `visualization/metadata/*/<org>_haplotype_emergence_timeline.*` | `extended/metadata/figures/haplotype_sampling_timeline.*` |
-| `visualization/metadata/*/<org>_emergence_timeline_{species,country}_faceted.*` | `extended/metadata/figures/sampling_timeline_{species,country}_faceted.*` |
-| `visualization/{pdf,svg}/<org>_distribution_map.*` | `geography/distribution_map.*` (v1 often failed to write it) |
-| `visualization/{pdf,svg}/<org>_<name>.*` (bars, faceted maps, species maps and bars) | `extended/geography/<name>.*` |
-| `visualization/{pdf,svg}/species_haplotype_{maps,bars}/*` | `extended/geography/per_species/*` |
+| `visualization/metadata/{pdf,png}/<org>_<field>_by_haplotype.*` | `extended/metadata/figures/<field>.*` (overview), `<field>_by_haplotype.pdf` (one page per species), `<field>_by_region.*` |
+| `visualization/metadata/*/<org>_temporal_composition*.*` | `extended/metadata/figures/records_by_year.*` (heatmap), `records_by_year_by_species.pdf`, `records_by_year_by_region.*` |
+| `visualization/metadata/*/<org>_haplotype_emergence_timeline.*`, `*_emergence_timeline_{species,country}_faceted.*` | `extended/metadata/figures/sampling_timeline.*`, `sampling_timeline_by_species.pdf` |
+| `visualization/metadata/*/<org>_metadata_coverage.*`, `<org>_metadata_heatmap.*` | `extended/metadata/figures/metadata_coverage.*`, `metadata_coverage_by_species.pdf` |
+| country-faceted metadata figures | "by region" views on the run's region column (`country/ocean` when fewer than two regions) |
+| `visualization/{pdf,svg}/<org>_distribution_map.*` | `geography/distribution_map.*` (overview; v1 often failed to write it), `geography/distribution_map_by_species.pdf` |
+| `visualization/{pdf,svg}/<org>_distribution_map_{faceted,species_faceted}.*`, `<org>_species_distribution_map.*`, `species_haplotype_maps/*` | `geography/distribution_map_by_species.pdf` and `geography/by_species/distribution_map/*.svg` |
+| `visualization/{pdf,svg}/<org>_{distribution,totaldistribution}_bar*.*`, `<org>_species_*distribution_bar.*`, `species_haplotype_bars/*` | `extended/geography/region_abundance_{relative,total}.*` and `*_by_species.pdf` |
+| `phylogenetic/<org>_tree.pdf`, `.svg` (one size for every tree) | `phylogeny/tree.*` (0.14 in per tip), `tree_overview.*`, `tree_by_genus.pdf` |
+| PNG figures | removed (PDF and SVG; the plot kit still writes PNG) |
 | `visualization/json/*.json` | removed (the data are embedded in `report.html`) |
 | `plots/data/distribution_bar_absolute.csv` | `geography/haplotype_by_region.csv`; the plot kit keeps it with `--plot-kit` |
 | `plots/data/consensus_sequences.fasta`, `plots/data/tree_data.nwk` | removed (the kit reads `../haplotypes.fasta`, `../phylogeny/tree.nwk`) |
@@ -564,6 +566,7 @@ of the final run.
 | `divergence_analysis.analyze_barcoding_gap` | removed; `compute_label_based_gap` (`--extended`) |
 | `haplotype_assignment` (identity-based assignment), `config.GenotypeAssignmentConfig` | removed: records are mapped directly from haplotype discovery |
 | `visualization.plot_identity_distribution`, `plot_identity_by_status`, `plot_assignment_status`; `reports.generate_taxonomy_conflicts_report`, `generate_consensus_characterization`, `generate_sequence_quality_metrics` | removed (identity scores and the v1 files they read no longer exist) |
+| `visualization.plot_distribution_map`, `plot_ocean_basin_abundance(_total, _faceted)`, `plot_distribution_map_faceted`, `plot_species_*`, `plot_haplotypes_by_species_*`, `plot_phylogenetic_tree`; `metadata_summary.plot_*` | removed: `run_figures.write_run_figures` (and `tree_figures`, `metadata_figures`) draw the run's figures by species |
 | `haplotype_query.write_results`, `results_to_dataframe`, `write_json_results`, `write_text_report`, `write_query_summary` | `query_outputs` (`calls_table`, `candidates_table`, `write_calls`, `write_candidates`, `write_alignments`, `write_json`, `write_query_provenance`, `write_query_readme`) |
 | `reports.generate_html_report(organism, output_dir, version)` | adds `staging_dir`, `report_path`, `links`, `provenance`; writes `report.html` |
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |

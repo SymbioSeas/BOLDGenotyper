@@ -205,7 +205,10 @@ Pass only records with `coord_status == "ok"` to the region functions, as the pi
 
 ### Figures — `visualization`, `plot_export`, `plot_regeneration`
 
-- `visualization.plot_distribution_map(df, output_path, genotype_column, latitude_col, longitude_col, dpi=300)`; region bar charts and faceted maps (`plot_ocean_basin_abundance`, `plot_distribution_map_faceted`, ...)
+- `run_figures.write_run_figures(records, run_dir, tree_path=None, haplotypes=None, region_col=None, geography=True, metadata_fields=None, extended=False, ...)` → `(manifests, warnings)`: every figure of a run, by species, from `records.csv` and the tree
+- `tree_figures.write_tree_figures(tree_path, haplotypes, out_dir)`; `run_figures.write_geography_figures(records, region_col, geography_dir, extended_dir=None)`; `metadata_figures.write_metadata_figures(records, fields, region_col, out_dir)`; `metadata_figures.region_facet(records, region_col)` → `(column, caption)`
+- `figure_pages.cap_items(counts, max_items=12)`, `species_groups(haplotypes)`, `haplotype_colors(haplotypes)`, `write_paged_figure(name, out_dir, overview, page, groups)`, `write_manifest(out_dir, entries)`
+- `visualization.get_genotype_colors(n)` and the map helpers the figure modules share
 - `plot_export.export_plots_complete(df, output_dir, organism, color_map=None)` → the `plots/` kit
 - `plot_regeneration.regenerate_all_plots(base_dir)` → regenerate from a kit
 
