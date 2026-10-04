@@ -1827,6 +1827,7 @@ def run_pipeline(
                 version=__version__,
                 staging_dir=dirs['base'],
                 links=moves,
+                provenance=prov.to_dict(),
             )
             if html_report_path:
                 logger.info(f"  Generated HTML report: {html_report_path}")

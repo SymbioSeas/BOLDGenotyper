@@ -478,3 +478,21 @@ def test_log_has_no_glyphs(extended_run):
     for glyph in ("✓", "→", "⊘", "⚠"):
         assert glyph not in log, glyph
     assert "Identity column not found" not in log
+
+
+def _section(html, section_id):
+    start = html.index(f'id="{section_id}"')
+    end = html.find('<div class="section"', start + 1)
+    return html[start:end if end != -1 else len(html)]
+
+
+def test_methods_tab_reports_this_runs_values(tmp_path):
+    """The Methods tab uses the run's final values, not the provenance written at startup."""
+    ok, out = run_synthetic(tmp_path, report=True, phylogenetic__build_tree=True)
+    assert ok
+    methods = _section((out / "report.html").read_text(encoding="utf-8"), "section-methods")
+    # every value is recorded except the BOLD download date (not given here)
+    rows = [r for r in re.findall(r"<tr>(.*?)</tr>", methods, re.S) if "download date" not in r]
+    assert rows and not any("not recorded" in r for r in rows)
+    assert "No tree was built" not in methods
+    assert " tips, " in methods

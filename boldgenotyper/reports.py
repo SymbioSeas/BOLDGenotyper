@@ -2968,22 +2968,30 @@ def _build_quality_control_section(quality_dir: Path) -> str:
     return html
 
 
-def _build_parameters_section(output_dir: Path, organism: str) -> str:
+def _load_provenance(run_dir: Path, provenance: Optional[dict]) -> dict:
+    """The run's provenance: the dict passed by the pipeline, else run_provenance.json."""
+    if provenance is not None:
+        return provenance
+    try:
+        return json.loads((Path(run_dir) / "run_provenance.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _build_parameters_section(output_dir: Path, organism: str,
+                              provenance: Optional[dict] = None) -> str:
     """Build pipeline parameters section."""
     html = '<div class="section" id="section-parameters">\n'
     html += '<h2>Pipeline Parameters</h2>\n'
 
-    # Parameters come from run_provenance.json (the fully resolved configuration)
-    params_file = output_dir / "run_provenance.json"
-    if not params_file.exists():
+    # Parameters come from the run's provenance (the fully resolved configuration)
+    prov = _load_provenance(output_dir, provenance)
+    if not prov:
         html += '<p class="alert alert-info">Parameter information not available</p>\n'
         html += '</div>\n'
         return html
 
     try:
-        import json
-        with open(params_file, 'r') as f:
-            prov = json.load(f)
         cfg = prov.get('config', {})
         applied = prov.get('applied', {})
 
@@ -3684,20 +3692,13 @@ def _build_visualizations_section(
     return html
 
 
-def _build_methods_section(output_dir: Path, organism: str, version: str) -> str:
+def _build_methods_section(output_dir: Path, organism: str, version: str,
+                           provenance: Optional[dict] = None) -> str:
     """
     Methods for the haplotype (exact sequence variant) workflow, with the
-    values this run used, read from run_provenance.json.
+    values this run used: the pipeline's provenance, else run_provenance.json.
     """
-    import json
-
-    prov = {}
-    params_file = output_dir / "run_provenance.json"
-    if params_file.exists():
-        try:
-            prov = json.loads(params_file.read_text())
-        except Exception:
-            prov = {}
+    prov = _load_provenance(output_dir, provenance)
     cfg = prov.get('config', {})
     applied = prov.get('applied', {})
     tools = prov.get('tools', {})
@@ -3891,6 +3892,7 @@ def generate_html_report(
     staging_dir: Optional[Path] = None,
     report_path: Optional[Path] = None,
     links: Optional[dict] = None,
+    provenance: Optional[dict] = None,
 ) -> Optional[Path]:
     """
     Generate comprehensive HTML summary report.
@@ -3915,6 +3917,10 @@ def generate_html_report(
         Staged file -> path in the run folder (layout.plan_moves). Figures are
         linked at those paths; staged files not in it are not shown. Without
         it, figures are linked relative to the report.
+    provenance : dict, optional
+        The pipeline's in-memory provenance (RunProvenance.to_dict()); the
+        Methods and Parameters sections read it. Read from run_provenance.json
+        when omitted.
 
     Returns
     -------
@@ -3994,10 +4000,10 @@ def generate_html_report(
 
         # Build sections
         builder.add_section(_build_executive_summary_section(assignment_summary, annotated_df))
-        builder.add_section(_build_parameters_section(run_dir, organism))
+        builder.add_section(_build_parameters_section(run_dir, organism, provenance))
         resolve = _link_resolver(links) if links is not None else None
         builder.add_section(_build_visualizations_section(output_dir, organism, resolve))
-        builder.add_section(_build_methods_section(run_dir, organism, version))
+        builder.add_section(_build_methods_section(run_dir, organism, version, provenance))
         builder.add_section(_build_assignment_section(assignment_summary, diagnostics_df))
         builder.add_section(_build_quality_control_section(quality_dir))
         builder.add_section(_build_taxonomy_section(taxonomy_dir, organism))
