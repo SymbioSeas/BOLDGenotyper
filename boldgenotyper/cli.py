@@ -989,6 +989,7 @@ def run_pipeline(
             species_col="species",
             genus_col="genus",
             notes_col="notes" if "notes" in df_final.columns else None,
+            curated_taxa=taxon_curation_mod.curated_taxa(assign_table),
         )
 
         # Save enhanced annotated file

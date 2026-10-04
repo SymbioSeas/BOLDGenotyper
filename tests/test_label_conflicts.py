@@ -112,3 +112,30 @@ def test_report_files_and_evidence(tmp_path, labeled):
     readme = (tmp_path / "README.md").read_text().lower()
     assert "contamination" not in readme and "confidence" not in readme
     assert res["summary"]["n_label_conflicts"] == 9
+
+
+def test_conflicts_follow_a_curated_taxon():
+    df = pd.DataFrame({"processid": list("abcde"), "haplotype_id": ["H1"] * 5,
+                       "species": ["Genus alpha", "Genus alpha", "Genus beta", "Genus beta", ""],
+                       "genus": ["Genus"] * 4 + ["Other"]})
+    tied = qc.add_label_columns(df)
+    assert tied["label_conflict"].tolist() == [True, True, True, True, True]
+    out = qc.add_label_columns(df, curated_taxa={"H1": "Genus alpha"})
+    assert out["label_conflict"].tolist() == [False, False, True, True, True]
+    assert out["majority_label"].isna().all()          # label columns are unchanged
+
+
+def test_genus_level_curated_taxon_accepts_its_species():
+    df = pd.DataFrame({"processid": list("abc"), "haplotype_id": ["H1"] * 3,
+                       "species": ["Genus alpha", "Genus beta", "Other gamma"],
+                       "genus": ["Genus", "Genus", "Other"]})
+    out = qc.add_label_columns(df, curated_taxa={"H1": "Genus"})
+    assert out["label_conflict"].tolist() == [False, False, True]
+
+
+def test_conflict_rows_carry_haplotype_taxon():
+    df = pd.DataFrame({"processid": list("abc"), "haplotype_id": ["H1"] * 3,
+                       "species": ["Genus alpha", "Genus alpha", "Genus beta"], "genus": ["Genus"] * 3,
+                       "assigned_sp": ["Genus alpha"] * 3, "assignment_source": ["labels"] * 3})
+    rows = qc.build_label_conflicts(qc.add_label_columns(df))
+    assert rows.loc[0, "haplotype_taxon"] == "Genus alpha" and rows.loc[0, "assignment_source"] == "labels"

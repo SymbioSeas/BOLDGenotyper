@@ -520,6 +520,14 @@ def test_curation_file_sets_haplotype_taxon(tmp_path):
     applied = json.loads((out / "run_provenance.json").read_text())["applied"]["taxon_curation"]
     assert applied["n_applied"] == 1 and applied["n_not_applied"] == 1
     assert applied["md5"] and applied["not_applied"][0]["row"] == 3
+    # every labeled member now differs from the curated taxon
+    records = pd.read_csv(out / "records.csv")
+    members = records[(records["haplotype_id"] == target["haplotype_id"]) & records["label"].notna()]
+    assert len(members) and members["label_conflict"].all()
+    conflicts = pd.read_csv(out / "label_conflicts.csv")
+    rows = conflicts[conflicts["haplotype_id"] == target["haplotype_id"]]
+    assert len(rows) == len(members)
+    assert (rows["haplotype_taxon"] == "Genus curata").all() and (rows["assignment_source"] == "curated").all()
 
 
 def test_invalid_curation_file_stops_the_run(tmp_path):

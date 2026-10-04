@@ -19,7 +19,7 @@ from typing import Dict, Iterable, List, Optional, Set
 import numpy as np
 import pandas as pd
 
-from . import quality_control
+from . import quality_control, taxon_curation
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,8 @@ def build_records_table(
 
     labeled = quality_control.add_label_columns(
         records.assign(haplotype_id=out["haplotype_id"].values),
-        group_col="haplotype_id", notes_col="notes")
+        group_col="haplotype_id", notes_col="notes",
+        curated_taxa=taxon_curation.curated_taxa(taxonomy))
     out["label"] = labeled["label"].values
     out["label_conflict"] = labeled["label_conflict"].values
     out["depositor_keyword_hits"] = labeled["depositor_keyword_hits"].values

@@ -406,7 +406,8 @@ _KEYWORD_PATTERNS = [(kw, re.compile(r'(?<![A-Za-z])' + re.escape(kw) + r'(?![A-
                      for kw in DEPOSITOR_KEYWORDS]
 
 LABEL_CONFLICT_COLUMNS = [
-    'processid', 'label', 'haplotype_id', 'n_members', 'n_labeled', 'majority_label',
+    'processid', 'label', 'haplotype_id', 'haplotype_taxon', 'assignment_source',
+    'n_members', 'n_labeled', 'majority_label',
     'n_majority', 'majority_fraction', 'nearest_haplotype_with_label',
     'distance_to_nearest_with_label', 'depositor_keyword_hits', 'depositor_note',
 ]
@@ -439,8 +440,15 @@ def record_labels(df: pd.DataFrame, species_col: str = "species",
     return species.where(species != "", genus)
 
 
-def _haplotype_label_stats(labels: List[str]) -> Dict[str, Any]:
-    """Majority label and counts for one haplotype's member labels."""
+def _haplotype_label_stats(labels: List[str], curated_taxon: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Majority label and counts for one haplotype's member labels.
+
+    is_conflict compares a label with the majority label, or with curated_taxon
+    when the haplotype's taxon was curated: a species-level label conflicts when
+    it differs from a species-level curated taxon; any other label when its
+    genus differs from the curated taxon's.
+    """
     from .taxon_labels import pool_labels, label_level, genus_of
     pooled = pool_labels(labels)
     species_counts = {}
@@ -452,7 +460,13 @@ def _haplotype_label_stats(labels: List[str]) -> Dict[str, Any]:
     tied_genera = {genus_of(lab) for lab in tied}
 
     def is_conflict(lab):
-        if not lab or not species_counts:
+        if not lab:
+            return False
+        if curated_taxon:
+            if label_level(lab) == "species" and label_level(curated_taxon) == "species":
+                return lab != curated_taxon
+            return genus_of(lab) != genus_of(curated_taxon)
+        if not species_counts:
             return False
         level = label_level(lab)
         if pooled.leading_species is None:          # tie for most common
@@ -479,6 +493,7 @@ def add_label_columns(
     species_col: str = "species",
     genus_col: str = "genus",
     notes_col: str = "notes",
+    curated_taxa: Optional[Dict[str, str]] = None,
 ) -> pd.DataFrame:
     """
     Add record labels, haplotype majority labels and label conflicts.
@@ -487,6 +502,8 @@ def add_label_columns(
     n_missing_label, majority_fraction, label_conflict, depositor_keyword_hits
     (';'-joined), has_depositor_keyword_hit, depositor_notes. Records without a
     haplotype get empty haplotype columns and label_conflict False.
+    curated_taxa (haplotype_id -> curated taxon): members of those haplotypes
+    are compared with the curated taxon instead of the majority label.
     """
     df = df.copy()
     df['label'] = record_labels(df, species_col, genus_col)
@@ -498,7 +515,7 @@ def add_label_columns(
     if group_col in df.columns:
         for hid, idx in df[df[group_col].notna()].groupby(group_col).groups.items():
             labels = df.loc[idx, 'label'].tolist()
-            stats = _haplotype_label_stats(labels)
+            stats = _haplotype_label_stats(labels, (curated_taxa or {}).get(hid))
             df.loc[idx, 'majority_label'] = stats['majority_label']
             df.loc[idx, 'n_majority'] = stats['n_majority']
             df.loc[idx, 'n_labeled'] = stats['n_labeled']
@@ -539,6 +556,8 @@ def build_label_conflicts(df: pd.DataFrame, group_col: str = "haplotype_id",
                           haplotype_sequences: Optional[Dict[str, str]] = None) -> pd.DataFrame:
     """One row per label-conflict record, with the evidence.
 
+    haplotype_taxon / assignment_source: the haplotype's assigned_sp and how it
+    was assigned (labels or curated), when df carries them.
     nearest_haplotype_with_label / distance_to_nearest_with_label: the nearest
     other haplotype with at least one member carrying the record's label, and
     the p-distance to it (dereplication's definition); empty when no other
@@ -566,6 +585,8 @@ def build_label_conflicts(df: pd.DataFrame, group_col: str = "haplotype_id",
         nearest, dist = cache[key]
         rows.append({
             'processid': r.get('processid'), 'label': lab, 'haplotype_id': hid,
+            'haplotype_taxon': r.get('assigned_sp', np.nan),
+            'assignment_source': r.get('assignment_source', np.nan),
             'n_members': int(n_members[hid]), 'n_labeled': r['n_labeled'],
             'majority_label': r['majority_label'], 'n_majority': r['n_majority'],
             'majority_fraction': r['majority_fraction'],

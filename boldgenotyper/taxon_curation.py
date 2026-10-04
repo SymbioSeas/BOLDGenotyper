@@ -138,3 +138,11 @@ def apply_curation(taxonomy: pd.DataFrame, applied: pd.DataFrame) -> pd.DataFram
         tax.loc[idx, "assignment_source"] = "curated"
         tax.loc[idx, "assignment_notes"] = [note + (f"; labels: {p}" if p else "") for p in previous]
     return tax
+
+
+def curated_taxa(taxonomy: pd.DataFrame) -> Dict[str, str]:
+    """haplotype_id -> assigned_sp for haplotypes whose assignment_source is curated."""
+    if taxonomy is None or "assignment_source" not in taxonomy.columns:
+        return {}
+    cur = taxonomy[taxonomy["assignment_source"] == "curated"]
+    return dict(zip(cur["haplotype_id"], cur["assigned_sp"]))

@@ -166,9 +166,13 @@ FILE_DOCS = [
          "n_with_country": "members with a country/ocean value",
      }},
     {"pattern": "label_conflicts.csv",
-     "text": "One row per record whose label conflicts with its haplotype's majority label, with "
-             "the evidence. A conflict is not a verdict on which label is right.",
+     "text": "One row per record whose label conflicts with its haplotype's majority label, or "
+             "with its haplotype's curated taxon (see Taxonomy), with the evidence. A conflict is "
+             "not a verdict on which label is right.",
      "columns": {
+         "haplotype_taxon": "the haplotype's assigned_sp",
+         "assignment_source": "labels or curated; when curated, the record's label is compared "
+                              "with haplotype_taxon rather than majority_label",
          "nearest_haplotype_with_label": "nearest other haplotype with at least one member carrying "
                                          "the record's label; empty when none",
          "distance_to_nearest_with_label": "p-distance from the record's haplotype to that haplotype",
@@ -457,7 +461,9 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "",
               "A label conflict is a member whose species-level label differs from the majority "
               "label, any species-level member of a haplotype whose top labels are tied, or a "
-              "genus-only label of another genus.",
+              "genus-only label of another genus. For a curated haplotype, labels are compared "
+              "with the curated taxon instead: a species-level label conflicts when it differs "
+              "from a species-level taxon, any other label when its genus differs.",
               "", "## Divergence", "",
               "Distances are uncorrected p-distances between aligned haplotype sequences. They are "
               "reported without taxonomic thresholds.",
