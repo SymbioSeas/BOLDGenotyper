@@ -588,6 +588,10 @@ The run folder's `README.md` defines every output; this section describes the st
 - Each haplotype gets its member labels with counts, a majority label and fraction
   (members without a species label left out), and an assigned taxon: the majority species
   when its fraction is above 0.70, otherwise the genus
+- Evidence for each haplotype's taxon (nearest species-level haplotype, BIN, tree sister,
+  label sources) and, for haplotypes left at genus, a suggested taxon that is never applied
+- `--taxon-curation FILE` applies taxa you have checked; see
+  [Reviewing and Curating Haplotype Taxa](#reviewing-and-curating-haplotype-taxa)
 - Label conflicts are listed with their evidence in `label_conflicts.csv`
 
 ### 5. Phylogeny (`--build-tree`)
@@ -744,6 +748,12 @@ boldgenotyper-query --query new_samples.fasta --haplotypes results/Sphyrna_analy
   --search-records --output query_results/
 ```
 
+**With taxa curated for this query** (a run folder's own curated taxa are used without it):
+```bash
+boldgenotyper-query --query new_samples.fasta --haplotypes results/Sphyrna_analysis \
+  --taxon-curation curation.csv --output query_results/
+```
+
 **Against a FASTA only** (haplotype matching without species support):
 ```bash
 boldgenotyper-query --query samples.fasta --haplotypes haplotypes.fasta --top-n 20 \
@@ -777,6 +787,10 @@ least `--min-query-coverage` (0.95) of the shorter of query and haplotype and re
 - `species_call` and `species_support`: the leading species and its share of the counted
   labels (genus-only labels of the leading genus are compatible); `species_call` is empty
   unless the support reaches `--min-species-support` (0.70)
+- `call_basis`: `pooled labels` (the call above), or `haplotype taxa` when a haplotype in
+  the set has a curated taxon: the call is then the set's shared haplotype taxon, and no
+  call (flag `curated_taxa_disagree`) when the set's taxa differ or one is not at species
+  level
 - `flags`: e.g. `label_conflict_in_set`, `indel_in_query`, `no_reference_labels`
 - `reference_run_id`: the md5 of the reference run's `run_provenance.json`
 
@@ -833,6 +847,7 @@ boldgenotyper --help
 | `--no-metadata-summary` | Flag | False | With `--extended`, skip the metadata cross-tabs (coverage is always written) |
 | `--no-temporal-analysis` | Flag | False | With `--extended`, skip the collection-date summaries |
 | `--download-date` | Date | None | Date the BOLD TSV was downloaded (YYYY-MM-DD); recorded in `run_provenance.json` |
+| `--taxon-curation` | Path | None | CSV/TSV of checked haplotype taxa applied after the label rule (see [Reviewing and Curating Haplotype Taxa](#reviewing-and-curating-haplotype-taxa)) |
 | `--keep-intermediates` | Flag | False | Keep `intermediate/` |
 | `--log-level` | String | INFO | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
 | `--version` | Flag | - | Show version and exit |
@@ -923,6 +938,7 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 | `--max-mismatch-delta` | Integer | 0 | Differences from the best match allowed in the equivalence set |
 | `--min-species-support` | Float | 0.70 | Minimum share of counted labels for a species call |
 | `--search-records` | Flag | False | Also search QC-passed records (`records_qc_passed.fasta`) |
+| `--taxon-curation` | Path | None | Curation file applied to the reference run's haplotype taxa for this query (needs a v2 run folder) |
 | `--min-length`, `--max-length` | Integer | 100, 2000 | Query length limits |
 
 #### `boldgenotyper-sweep` Parameters
@@ -1015,8 +1031,10 @@ have no sequence. Columns include `status` (see below), `status_note`, `haplotyp
 One row per haplotype: `haplotype_id`, `haplotype_label`, `seq_md5` (stable across runs
 on the same data), `length`, `n_members` (`n_exact` + `n_corrected`), the assigned taxon,
 member `labels` with counts, `majority_label` and `majority_fraction`, `n_label_conflicts`,
-the nearest other haplotype and its p-distance, suspect flags, `in_tree`, and the members
-with coordinates, a region and a country.
+the nearest other haplotype and its p-distance, suspect flags, `in_tree`, the members
+with coordinates, a region and a country, `assignment_source` (`labels` or `curated`), and
+the taxon evidence columns (see
+[Reviewing and Curating Haplotype Taxa](#reviewing-and-curating-haplotype-taxa)).
 
 #### `summary.csv`
 
@@ -1028,8 +1046,10 @@ records), and species counts under named definitions (`n_species_labels_input`,
 
 Records whose species-level label differs from their haplotype's majority label (or whose
 haplotype has tied top labels), with the evidence: members, labeled members, the majority
-label and fraction, and the nearest other haplotype carrying the record's label. A
-conflict is evidence to look at, not a verdict on which label is right.
+label and fraction, and the nearest other haplotype carrying the record's label. For a
+haplotype with a curated taxon, labels are compared with that taxon (`haplotype_taxon`,
+`assignment_source`). A conflict is evidence to look at, not a verdict on which label is
+right.
 
 #### `run_provenance.json`
 
@@ -1230,6 +1250,56 @@ only to genus. BOLDGenotyper reports labels rather than judging them:
 
 Divergences are reported as uncorrected p-distances without species-delimitation
 thresholds; `--extended` adds a barcoding gap computed from record labels.
+
+### Reviewing and Curating Haplotype Taxa
+
+When a haplotype's labels split, the label rule leaves it at genus. `haplotypes.csv`
+reports evidence that does not depend on the haplotype's own majority, for every haplotype:
+
+- **Distance**: `nearest_species_haplotype`, `nearest_species_taxon` and
+  `nearest_species_distance` (the nearest other haplotype assigned at species level).
+  `taxon_max_within_distance` is the largest distance between the other haplotypes of that
+  taxon, and `within_taxon_spread` says whether this haplotype is as close to the taxon as
+  its haplotypes are to one another.
+- **BIN**: `member_bins` (the members' BOLD BINs with counts) and `bin_taxon` (for the
+  most common BIN, the most common species-level label among the run's QC-passed records
+  in that BIN, with its fraction). Closely related species can share a BIN; a fraction
+  below 0.70 is not counted as evidence.
+- **Tree**: `tree_sister_taxon` and `tree_sister_support`. Walking from the haplotype's tip
+  toward the root, the first clade that holds another species-level haplotype; its taxon
+  when those haplotypes share one. The tree is unrooted unless you set an outgroup, so a
+  clade next to the root is approximate.
+- **Label sources**: `label_sources` counts the records, BOLD projects (processid prefix;
+  GenBank accession prefix for records mined from GenBank) and institutions behind each
+  label. Many records from one project may be one identification repeated. The counts are
+  approximate: one study can span several projects.
+
+For a haplotype neither at species level nor curated, `suggested_sp` is a taxon that at
+least two of the distance, BIN and tree lines name and none contradicts;
+`suggestion_basis` names the lines that agree, or why there is no suggestion. Suggestions
+are never applied. A label split can have several causes (misidentified specimens, shared
+haplotypes between species, a lineage not yet described), and weighing them is your call.
+
+To apply a taxon you have checked, list it in a curation file (CSV, or TSV for
+`.tsv`/`.txt`) and pass it with `--taxon-curation`:
+
+```csv
+seq_md5,taxon,reason,curator,date
+0f3c...,Genus species,"within Genus species spread; sister in tree (0.88); conflicting labels from one project",AB,2026-10-04
+```
+
+- `seq_md5` or `sequence` names the haplotype (one is required); `taxon` and `reason` are
+  required; `curator` and `date` are optional.
+- A row applies to the haplotype with that `seq_md5`, or whose core sequence equals,
+  contains or is contained in `sequence`. `seq_md5` is the md5 of the core sequence, so it
+  matches only runs with the same core region; `sequence` carries a call to another
+  dataset. Rows matching no haplotype or several, and rows that disagree for one
+  haplotype, are not applied; the log and `run_provenance.json` list each with the reason.
+- A curated haplotype gets `assigned_sp` = `taxon`, `assignment_source` = `curated` and
+  `assignment_notes` starting with `curated: <reason>`; its label conflicts are judged
+  against the curated taxon. `run_provenance.json` records the file's path and md5.
+- `boldgenotyper-query` uses a run folder's curated taxa, and `--taxon-curation` applies a
+  file at query time; see `call_basis` under [Querying New Sequences](#querying-new-sequences).
 
 ---
 

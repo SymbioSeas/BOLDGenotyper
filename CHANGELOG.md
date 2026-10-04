@@ -31,6 +31,9 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - `boldgenotyper-sweep --genetic-code`, so a sweep checks reading frames with the same code as the final run (v1 sweeps always used code 2).
 - A log warning when `--geo-category` has the name of an input field (e.g. BOLD's `ecoregion`), which the region column replaces.
 - `docs/guides/MIGRATION_v1_to_v2.md`.
+- Taxon evidence in `haplotypes.csv`: nearest species-level haplotype and whether it lies within that taxon's spread, member BINs and the BIN's majority label, label sources (records, projects, institutions), the tree sister taxon and its support, and for haplotypes left at genus a `suggested_sp` with its `suggestion_basis`. Suggestions are never applied.
+- `--taxon-curation FILE` on `boldgenotyper` and `boldgenotyper-query`: checked haplotype taxa applied after the label rule, matched by `seq_md5` or sequence, with `assignment_source` (`labels`/`curated`) in `haplotypes.csv`, `haplotype_taxon` and `assignment_source` in `label_conflicts.csv`, and the file's md5 and rows not applied in `run_provenance.json`.
+- `boldgenotyper-query`: `call_basis` (`pooled labels` or `haplotype taxa`); a set containing a curated haplotype is called from the haplotypes' taxa, with the flag `curated_taxa_disagree` when they differ.
 - A `docs` extra (`pip install -e ".[docs]"`) and Sphinx in `environment.yml`; `sphinx-build -b html docs/source docs/build/html` builds the API pages without warnings.
 
 ### Changed

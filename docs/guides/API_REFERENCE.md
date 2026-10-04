@@ -74,10 +74,13 @@ ok = cli.run_pipeline(
 
 `run_pipeline(tsv_path, organism, output_dir, cfg, no_report=False, skip_geo=False,
 export_plot_data=False, export_popgen_formats=None, metadata_summary_enabled=False,
-metadata_fields=None, normalize_sex=True, temporal_analysis=False, ...)` returns `True`
+metadata_fields=None, normalize_sex=True, temporal_analysis=False, ...,
+taxon_curation=None)` returns `True`
 when the run finishes (`completed` or `completed_with_warnings` in
 `run_provenance.json`). `export_plot_data` is `--plot-kit`; `export_popgen_formats` is
-`--export-format`. Call `utils.setup_logging(log_file=...)` first to get the run log.
+`--export-format`; `taxon_curation` is `--taxon-curation` (a curation file that cannot be
+read or lacks required columns makes it return `False` before writing anything). Call
+`utils.setup_logging(log_file=...)` first to get the run log.
 
 ---
 
@@ -143,9 +146,9 @@ Signatures are abbreviated; see each function's docstring.
 ### Quality control and labels — `quality_control`
 
 - `apply_orientation_normalization(sequences_dict, genetic_code=2, ...)`, `apply_dynamic_qc_filters(df, sequences_dict, ...)` → oriented sequences and QC flags (`qc_pass`, `qc_fail_reason`)
-- `add_label_columns(df, group_col="haplotype_id", notes_col="notes")` → `label`, `majority_label`, `n_majority`, `n_labeled`, `n_missing_label`, `majority_fraction`, `label_conflict`, `depositor_keyword_hits`
+- `add_label_columns(df, group_col="haplotype_id", notes_col="notes", curated_taxa=None)` → `label`, `majority_label`, `n_majority`, `n_labeled`, `n_missing_label`, `majority_fraction`, `label_conflict`, `depositor_keyword_hits`
 - `summarize_haplotype_labels(df)` → one row per haplotype (labels with counts, majority, conflicts)
-- `build_label_conflicts(df, haplotype_sequences=None)` → the rows of `label_conflicts.csv`
+- `build_label_conflicts(df, haplotype_sequences=None)` → the rows of `label_conflicts.csv` (`haplotype_taxon` and `assignment_source` from `assigned_sp` and `assignment_source` when `df` has them)
 - `find_keyword_hits(note)` → keywords found as whole words
 
 ### Haplotypes — `dereplication`, `haplotype_ids`, `record_status`
@@ -156,17 +159,19 @@ Signatures are abbreviated; see each function's docstring.
 - `haplotype_ids.assign_display_ids(counts)` → `{seq_md5: "H0001", ...}` by count, then md5
 - `record_status.build_record_status(unique_ids, sequence_ids, qc, exact_mapping, excluded_core, error_singletons, singleton_distance)` → one status per unique record; `record_status.STATUSES`
 
-### Taxonomy — `taxon_labels`, `utils`
+### Taxonomy — `taxon_labels`, `taxon_evidence`, `taxon_curation`, `utils`
 
 - `taxon_labels.label_level(label)` → `species`, `open`, `genus` or `missing`
 - `taxon_labels.pool_labels(labels)` → `PooledLabels` (`text`, `leading_species`, `support`, `n_leading`, `n_species_level`, `n_compatible`, `n_missing`)
 - `taxon_labels.species_count_summary(input_labels, qc_passed_labels, haplotype_taxonomy, majority_threshold)` → the `n_species_*` counts of `summary.csv`
 - `utils.assign_consensus_taxonomy(df, group_col, species_col="species", genus_col="genus", majority_threshold)` → `(assign_table, species_counts)`; `assigned_sp` is the majority species when `majority_fraction` (members without a species label left out) exceeds the threshold, otherwise the genus
+- `taxon_evidence.compute_evidence(taxonomy, records, sequences, tree_path=None)` → `haplotype_id` + `taxon_evidence.EVIDENCE_COLUMNS` (nearest species-level haplotype and spread, BINs, label sources, tree sister, `suggested_sp`, `suggestion_basis`); `taxon_evidence.label_source(processid, inst, insdc_acs)` → project code or GenBank accession prefix; `BIN_MAJORITY` (0.70)
+- `taxon_curation.load_curation(path)` → validated curation rows (raises `CurationError`); `match_curation(curation, haplotypes, sequences)` → `(applied, not_applied)`; `apply_curation(taxonomy, applied)` → taxonomy with `assignment_source`; `curated_taxa(taxonomy)` → `{haplotype_id: taxon}` of curated haplotypes
 
 ### Run folder — `layout`, `run_readme`, `provenance`
 
 - `layout.build_records_table(records, status, qc, taxonomy, region_col, region_confidence=None)` → `records.csv`
-- `layout.build_haplotypes_table(stats, taxonomy, records, region_col, tree_tips=None)` → `haplotypes.csv`
+- `layout.build_haplotypes_table(stats, taxonomy, records, region_col, tree_tips=None, evidence=None)` → `haplotypes.csv`
 - `layout.build_haplotype_by_region(records, region_col)` → `geography/haplotype_by_region.csv`
 - `layout.plan_moves(staging, organism, extended=False)`, `layout.apply_moves(moves, output_dir)`, `layout.FILE_MAP`, `layout.KEY_BOLD_FIELDS`
 - `run_readme.write_run_readme(output_dir, organism, region_col="ocean_basin")` → `(path, undocumented)`
@@ -207,7 +212,9 @@ PNG output is capped at 150 dpi and 3000 px per side (`utils.save_capped_png`).
 ### Query — `haplotype_query`, `query_assignment`
 
 - `haplotype_query.align_query_to_haplotype(query_seq, query_id, haplotype_seq, haplotype_id)` → `AlignmentResult` (`differences`, `n_mismatches`, `n_gaps`, `identity_pct`, `query_coverage`, `overlap_coverage`, ...)
-- `haplotype_query.query_against_haplotypes(query_fasta, haplotype_fasta, analysis_dir=None, top_n=10, min_identity=0.97, min_query_coverage=0.95, max_mismatch_delta=0, min_species_support=0.70)` → `(results, metadata, verdicts)`
+- `haplotype_query.query_against_haplotypes(query_fasta, haplotype_fasta, analysis_dir=None, top_n=10, min_identity=0.97, min_query_coverage=0.95, max_mismatch_delta=0, min_species_support=0.70, haplotype_taxa=None)` → `(results, metadata, verdicts)`; `haplotype_taxa` defaults to the run folder's (`load_haplotype_taxa`)
+- `query_assignment.assign_query(query_id, matches, member_labels, ..., haplotype_taxa=None)` → `QueryVerdict` (`species_call`, `call_basis`, `flags`, ...)
+- `query_assignment.load_haplotype_taxa(run_dir)` → `{haplotype_id: HaplotypeTaxon(taxon, level, source)}` from `haplotypes.csv`
 - `query_assignment.resolve_reference(haplotypes_arg, analysis_dir_arg)` → `(fasta_path, run_dir)` for a v2 or v1 run folder or a FASTA
 - `query_assignment.load_reference_run(path)` → the `reference_run` block of a v2 run folder
 

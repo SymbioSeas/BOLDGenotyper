@@ -61,6 +61,8 @@ API Reference
    api/haplotype_ids
    api/record_status
    api/taxon_labels
+   api/taxon_evidence
+   api/taxon_curation
    api/layout
    api/run_readme
    api/provenance

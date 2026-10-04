@@ -5,7 +5,7 @@ species most of its member labels name, or the genus. A curation file records
 calls a user has checked against other evidence (see taxon_evidence) and wants
 to apply instead, with the reason.
 
-File (CSV, or TSV for .tsv/.txt), one row per curated haplotype:
+File (CSV, or TSV for .tsv/.txt), one row per curated haplotype::
 
     seq_md5 or sequence   key of the haplotype (one of the two is required)
     taxon                 the taxon to assign (required)

@@ -211,11 +211,15 @@ habitat, nuc_basecount`. Join any other input column on `processid`
 
 `haplotypes.csv` columns: `haplotype_id, haplotype_label, seq_md5, length,
 n_members, n_exact, n_corrected, is_singleton, assigned_sp, assignment_level,
-assignment_notes, labels, n_labeled, n_missing_label, n_species_labels,
-majority_label, n_majority, majority_fraction, n_label_conflicts,
-nearest_haplotype, nearest_distance, is_suspect, suspect_reasons,
-min_orf_coverage, max_internal_stops, in_tree, n_with_coords, n_with_region,
-n_with_country`.
+assignment_notes, assignment_source, labels, n_labeled, n_missing_label,
+n_species_labels, majority_label, n_majority, majority_fraction,
+n_label_conflicts, nearest_haplotype, nearest_distance, is_suspect,
+suspect_reasons, min_orf_coverage, max_internal_stops, in_tree, n_with_coords,
+n_with_region, n_with_country`, then the taxon evidence columns
+`nearest_species_haplotype, nearest_species_taxon, nearest_species_distance,
+taxon_max_within_distance, within_taxon_spread, member_bins, bin_taxon,
+label_sources, tree_sister_taxon, tree_sister_support, suggested_sp,
+suggestion_basis` (new in v2; see 5.6).
 
 | v1 file: column | v2 `haplotypes.csv` |
 |---|---|
@@ -279,6 +283,7 @@ n_with_country`.
 | v1 | v2 |
 |---|---|
 | `processid`, `haplotype_id` | same |
+| — | `haplotype_taxon`, `assignment_source` (the haplotype's `assigned_sp` and whether it was curated) |
 | `species` | `label` |
 | `group_majority_species`, `group_majority_pct` | `majority_label`, `majority_fraction` (a fraction) |
 | `misidentification_confidence` | removed; evidence in `n_members`, `n_labeled`, `n_majority`, `nearest_haplotype_with_label`, `distance_to_nearest_with_label` |
@@ -415,6 +420,11 @@ Country counts read the BOLD portal's `country/ocean` field (v1 read a
 - A label conflict is a member whose species-level label differs from the
   majority label, any species-level member of a haplotype whose top labels are
   tied, or a genus-only label of another genus.
+- New in v2: evidence columns in `haplotypes.csv` and a `suggested_sp` for
+  haplotypes left at genus (never applied), and `--taxon-curation FILE` to apply
+  checked taxa (`assignment_source` = `curated`; label conflicts of a curated
+  haplotype are judged against its taxon). See the README section "Reviewing and
+  Curating Haplotype Taxa".
 
 ### 5.7 Metadata values
 
@@ -451,6 +461,7 @@ mismatch); v1's main distribution map also failed silently. v2 writes them.
 | `--tree-min-members` | — (fixed minimum of 3 members) | new, default 1: every non-suspect haplotype is a tip |
 | `--no-assign-corrected` | — | new: leave error-filtered singletons unassigned |
 | `--download-date` | — | new: recorded in `run_provenance.json` |
+| `--taxon-curation` | — | new: apply checked haplotype taxa (5.6) |
 | `--similarity-threshold`, `--tie-margin`, `--tie-threshold` | identity re-assignment | removed (records are mapped directly from haplotype discovery) |
 | `--singleton-distance` | default 0.005 | unchanged; recorded in `run_provenance.json`. Always pass it explicitly. |
 
@@ -469,6 +480,7 @@ A removed flag stops the command with one line naming what to use instead (exit 
 | `--tie-margin` | removed; use `--max-mismatch-delta` |
 | `--min-species-support` | new, default 0.70 |
 | `--search-records` | new: search QC-passed records (`records_qc_passed.fasta`) |
+| `--taxon-curation` | new: apply a curation file to the reference run's haplotype taxa for this query |
 | `--haplotypes` | accepts a v2 run folder (`haplotypes.fasta` at the root), a v1 run folder (`haplotypes/*_haplotypes.fasta`; haplotype matching only) or a FASTA file |
 
 ---
@@ -493,6 +505,7 @@ parameters and the reference run):
 | `reason` | `flags` |
 | `assign_identity`, `tie_margin` | in the `#` header lines |
 | — | `query_length`, `aligned_length`, `query_coverage`, `n_mismatches`, `n_gaps`, `set_identical_over_region`, `n_exact_record_matches`, `reference_run_id` |
+| — | `call_basis`: `pooled labels`, or `haplotype taxa` when a haplotype in the set has a curated taxon (no call, flag `curated_taxa_disagree`, when the set's taxa differ) |
 
 `query_results.csv`: `match_quality` removed; new `differences`,
 `n_mismatches`, `n_gaps`, `indel_in_query`, `query_coverage`,
@@ -538,7 +551,7 @@ of the final run.
 | `reports.generate_html_report(organism, output_dir, version)` | adds `staging_dir`, `report_path`, `links`, `provenance`; writes `report.html` |
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |
 | `utils.assign_consensus_taxonomy` | label-based rule (5.6) |
-| — | `layout` (`build_records_table`, `build_haplotypes_table`, `FILE_MAP`), `run_readme`, `provenance`, `record_status`, `haplotype_ids`, `taxon_labels` |
+| — | `layout` (`build_records_table`, `build_haplotypes_table`, `FILE_MAP`), `run_readme`, `provenance`, `record_status`, `haplotype_ids`, `taxon_labels`, `taxon_evidence`, `taxon_curation` |
 
 ---
 

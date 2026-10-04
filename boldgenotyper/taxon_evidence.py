@@ -3,7 +3,7 @@
 Evidence is never applied. A suggested taxon prompts a check of the haplotype;
 a call the user accepts goes in a curation file (taxon_curation) with its reason.
 
-Columns (EVIDENCE_COLUMNS), one row per haplotype:
+Columns (EVIDENCE_COLUMNS), one row per haplotype::
 
     nearest_species_haplotype   nearest other haplotype assigned at species level
                                 (';'-joined when several are equally near)
