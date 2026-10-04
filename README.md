@@ -45,7 +45,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - **Geographic analysis**: region assignment from geographic-quality coordinates using GOaS ocean basins (marine), HydroBASINS (freshwater), Ecoregions2017 (terrestrial), or any polygon shapefile; centroid coordinates are kept but not assigned a region
 - **Phylogeny**: optional FastTree tree (GTR+Gamma) of every non-suspect haplotype, with excluded tips listed
 - **Reproducibility**: `run_provenance.json` records the full configuration, tool versions, seeds and input checksum; the log ends with a warnings summary
-- **HTML report** with interactive plots that links to the run's figures
+- **HTML report** built from the run folder: key findings, what needs attention (haplotypes left at genus with their evidence, label conflicts, curated taxa), figures with species and genus menus, the methods with a ready-to-edit statement, and every output file
 - **Optional extras** with `--extended` (metadata cross-tabulations, collection-date summaries, a label-based barcoding gap, species tables, alignment plots, region and metadata figures by species), `--export-format` (Arlequin, PopART, DnaSP, generic) and `--plot-kit` (plot data and regeneration scripts)
 - **Query tool** (`boldgenotyper-query`) to place new sequences on a run's haplotypes, and a **parameter sweep** (`boldgenotyper-sweep`) for `--singleton-distance`
 - **Skip geography** with `--no-geo` when no shapefile is available
@@ -85,7 +85,7 @@ This package enables reproducible analysis of mitochondrial COI genotypes and th
 - **tree_figures.py**, **run_figures.py**, **metadata_figures.py**: the run's figures (tree, maps, regions, metadata views), an overview plus one page per species
 - **figure_pages.py**: color capping, per-species pages and figure manifests; **visualization.py**: shared palette and map helpers
 - **metadata_summary.py**: Metadata coverage, normalized cross-tabulations and collection-date summaries
-- **reports.py**: Assignment summary, HTML report
+- **reports.py**: Assignment summary (`summary.csv`); **report/**: the HTML report, one module per section
 - **layout.py**: `records.csv`, `haplotypes.csv` and the run-folder file map
 - **run_readme.py**: the run folder's `README.md`
 - **provenance.py**: `run_provenance.json` and end-of-run warnings
@@ -428,7 +428,7 @@ Results are organized in the output directory:
 ├── divergence/                # aligned haplotypes and pairwise p-distances
 ├── phylogeny/                 # tree files and figure (--build-tree)
 ├── geography/                 # records per region and the distribution map
-├── report.html                # interactive summary report
+├── report.html                # summary report: key findings, figures, methods, every file
 └── extended/, exports/, plots/  (with --extended, --export-format, --plot-kit)
 ```
 
@@ -1122,10 +1122,18 @@ its md5 as `reference_run`.
 
 #### `report.html`
 
-Interactive summary: counts, parameters, figures (linked from the run folder),
-interactive plots (filter by haplotype and region; export PNG, SVG or CSV), label and
-geography tables, and a Methods tab describing what the run did with its values. Open it
-from the run folder.
+Built from the final run folder after every file is in place, in nine sections:
+Overview (counts and **key findings**: a fixed list of counts, each shown when it applies,
+none interpreting biology), Records and haplotypes (statuses, error filter), Taxonomy and
+labels (**needs attention**: haplotypes not assigned at species level with their evidence
+and any suggested taxon, label conflicts per haplotype and label, curated haplotypes,
+curation rows not applied), Phylogeny (tree overview with a genus menu), Geography (map
+with a species menu, region bars, coordinate quality), Sampling and metadata (coverage,
+collection years, timeline, field views with field and view menus), Divergence
+(`--extended`), Methods (the values the run used and a methods statement to edit), and
+Output files (every file, described as in the run README). Tables show ten rows and say how
+many more are in which file. Figures are linked, not embedded: open the report from the run
+folder.
 
 #### Trees
 
@@ -1455,8 +1463,7 @@ Understanding these assumptions is critical for interpreting results and plannin
 
 #### 8. Visualization Scalability
 - **Challenge**: Maps with >100 haplotypes become cluttered
-- **Current**: Color palette recycles if >20 haplotypes
-- **Workaround**: Filter the HTML report interactively, or use `--plot-kit` filters
+- **Current**: Overviews show taxa above 40 haplotypes, color at most 12 items, and each taxon has its own page (see Figures)
 
 ### Known Issues and Feature Requests
 
@@ -1697,15 +1704,12 @@ python -c "import pandas as pd; r = pd.read_csv('{organism}_output/records.csv')
 # or failed: see the warnings summary at the end of the log
 ```
 
-**Problem**: HTML report plots not interactive
+**Problem**: HTML report shows no figures, or the menus do nothing
 
 ```bash
-# Possible causes:
-# 1. JavaScript disabled in browser
-# 2. Plotly.js CDN blocked (requires internet connection)
-# 3. Images missing: open report.html from the run folder (figures are linked)
-
-# Check browser console for errors (F12)
+# Figures are linked from the run folder: open report.html from that folder,
+# and keep the folder's subfolders (phylogeny/, geography/, extended/) next to it.
+# The species and genus menus need JavaScript enabled; no internet connection is needed.
 ```
 
 ### Advanced Command Troubleshooting

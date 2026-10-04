@@ -108,7 +108,7 @@ v2:
 | `<org>_annotated.csv` | `records.csv` (see 4.1) |
 | `<org>_pipeline.log` | `<org>_pipeline.log` (written fresh each run; ends with a warnings summary and the run status) |
 | `<org>_pipeline_parameters.json` | `run_provenance.json` |
-| `<org>_summary_report.html` | `report.html` (figures linked, not embedded: open it from the run folder) |
+| `<org>_summary_report.html` | `report.html`, built from the final run folder (figures linked, not embedded: open it from the run folder). Sections: Overview with key findings, Records and haplotypes, Taxonomy and labels (needs attention), Phylogeny, Geography, Sampling and metadata, Divergence (`--extended`), Methods, Output files. The full taxonomy, species composition, haplotype × region, field coverage, first-sampled and per-record label-conflict tables are no longer in the report: they are in the run's CSVs |
 | `haplotypes/<org>_haplotypes.fasta` | `haplotypes.fasta` (header `>H0001 seq_md5=... n_members=...`) |
 | `haplotypes/<org>_haplotype_mapping.csv` | `records.csv` |
 | `haplotypes/<org>_haplotype_stats.csv` | `haplotypes.csv` |
@@ -157,7 +157,7 @@ v2:
 | `visualization/{pdf,svg}/<org>_{distribution,totaldistribution}_bar*.*`, `<org>_species_*distribution_bar.*`, `species_haplotype_bars/*` | `extended/geography/region_abundance_{relative,total}.*` and `*_by_species.pdf` |
 | `phylogenetic/<org>_tree.pdf`, `.svg` (one size for every tree) | `phylogeny/tree.*` (0.14 in per tip), `tree_overview.*`, `tree_by_genus.pdf` |
 | PNG figures | removed (PDF and SVG; the plot kit still writes PNG) |
-| `visualization/json/*.json` | removed (the data are embedded in `report.html`) |
+| `visualization/json/*.json` | removed |
 | `plots/data/distribution_bar_absolute.csv` | `geography/haplotype_by_region.csv`; the plot kit keeps it with `--plot-kit` |
 | `plots/data/consensus_sequences.fasta`, `plots/data/tree_data.nwk` | removed (the kit reads `../haplotypes.fasta`, `../phylogeny/tree.nwk`) |
 | `plots/plot_customization_config.yaml` | removed (duplicate of `plots/plot_config.yaml`) |
@@ -571,7 +571,7 @@ of the final run.
 | `visualization.plot_identity_distribution`, `plot_identity_by_status`, `plot_assignment_status`; `reports.generate_taxonomy_conflicts_report`, `generate_consensus_characterization`, `generate_sequence_quality_metrics` | removed (identity scores and the v1 files they read no longer exist) |
 | `visualization.plot_distribution_map`, `plot_ocean_basin_abundance(_total, _faceted)`, `plot_distribution_map_faceted`, `plot_species_*`, `plot_haplotypes_by_species_*`, `plot_phylogenetic_tree`; `metadata_summary.plot_*` | removed: `run_figures.write_run_figures` (and `tree_figures`, `metadata_figures`) draw the run's figures by species |
 | `haplotype_query.write_results`, `results_to_dataframe`, `write_json_results`, `write_text_report`, `write_query_summary` | `query_outputs` (`calls_table`, `candidates_table`, `write_calls`, `write_candidates`, `write_alignments`, `write_json`, `write_query_provenance`, `write_query_readme`) |
-| `reports.generate_html_report(organism, output_dir, version)` | adds `staging_dir`, `report_path`, `links`, `provenance`; writes `report.html` |
+| `reports.generate_html_report(organism, output_dir, version)` | `report.generate_html_report(run_dir, organism, provenance=None, version=None)`; reads the final run folder; `reports` keeps `compute_assignment_summary` and `generate_assignment_summary` |
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |
 | `utils.assign_consensus_taxonomy` | label-based rule (5.6) |
 | — | `layout` (`build_records_table`, `build_haplotypes_table`, `FILE_MAP`), `run_readme`, `provenance`, `record_status`, `haplotype_ids`, `taxon_labels`, `taxon_evidence`, `taxon_curation` |

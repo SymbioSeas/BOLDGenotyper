@@ -214,6 +214,13 @@ Pass only records with `coord_status == "ok"` to the region functions, as the pi
 
 PNG output is capped at 150 dpi and 3000 px per side (`utils.save_capped_png`).
 
+### Report — `report`, `reports`
+
+- `report.generate_html_report(run_dir, organism, provenance=None, version=None)` → `report.html` from the final run folder
+- `report.data.load_run(run_dir, organism, provenance=None)` → `RunData` (tables, figure manifests, provenance); `report.insights.key_findings(run)` → `[Finding(key, text, count, link), ...]`
+- `report.page`: `table(df, columns, max_rows=10, file=None)` (ten rows and the true count of the rest), `switcher`, `two_level_switcher`, `bars`, `render_page`
+- `reports.compute_assignment_summary(...)`, `reports.generate_assignment_summary(...)` → `summary.csv`
+
 ### Query — `haplotype_query`, `query_assignment`, `query_outputs`, `query_overlays`, `query_report`
 
 - `haplotype_query.align_query_to_haplotype(query_seq, query_id, haplotype_seq, haplotype_id)` → `AlignmentResult` (`differences`, `n_mismatches`, `n_gaps`, `identity_pct`, `query_coverage`, `overlap_coverage`, ...)

@@ -86,6 +86,7 @@ API Reference
    api/parameter_sweep
    api/popgen_export
    api/reports
+   api/report
    api/utils
 
 Citation
