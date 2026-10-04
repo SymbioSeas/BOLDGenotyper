@@ -180,7 +180,7 @@ FILE_MAP = [
     ("quality_control/label_conflicts.csv", "label_conflicts.csv", "default"),
     ("metadata_summary/{org}_metadata_summary.csv", "metadata_coverage.csv", "default"),
     ("divergence_analysis/{org}_consensus_aligned.fasta", "divergence/haplotypes_aligned.fasta", "default"),
-    ("divergence_analysis/pairwise_divergence_matrix.csv", "divergence/pairwise_p_distance.csv", "default"),
+    ("divergence_analysis/pairwise_p_distance_by_id.csv", "divergence/pairwise_p_distance.csv", "default"),
     ("phylogenetic/{org}_tree.nwk", "phylogeny/tree.nwk", "default"),
     ("phylogenetic/{org}_tree_relabeled.nwk", "phylogeny/tree_labeled.nwk", "default"),
     ("phylogenetic/{org}_excluded_tips.txt", "phylogeny/excluded_tips.txt", "default"),

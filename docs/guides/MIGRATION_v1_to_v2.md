@@ -298,8 +298,9 @@ species-level member.
 ### 4.6 Divergence tables
 
 - `pairwise_divergence_matrix.csv` → `divergence/pairwise_p_distance.csv`:
-  same values; row and column names are haplotype labels (`Genus species H0001`
-  instead of `Genus species h1_n354`).
+  same values; row and column names are haplotype IDs (`H0001` instead of
+  `Genus species h1_n354`); taxa are in `haplotypes.csv`. The per-species matrices
+  in `extended/divergence/within_species/` are keyed the same way.
 - `within_vs_between_species.csv` (`species, n_within_comparisons, mean_within,
   sd_within, max_within, n_between_comparisons, mean_between, sd_between,
   min_between, barcoding_gap, gap_size`) → `extended/divergence/label_based_gap.csv`

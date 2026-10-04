@@ -496,3 +496,10 @@ def test_methods_tab_reports_this_runs_values(tmp_path):
     assert rows and not any("not recorded" in r for r in rows)
     assert "No tree was built" not in methods
     assert " tips, " in methods
+
+
+def test_distance_matrix_keyed_by_haplotype_id(synthetic_run):
+    d = pd.read_csv(synthetic_run / "divergence" / "pairwise_p_distance.csv", index_col=0)
+    ids = set(pd.read_csv(synthetic_run / "haplotypes.csv")["haplotype_id"])
+    assert set(d.index) == ids and set(d.columns) == ids
+    assert d.index.name == "haplotype_id"

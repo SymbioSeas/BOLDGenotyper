@@ -779,11 +779,22 @@ def generate_divergence_analysis(
         taxonomy_df
     )
 
-    # Save matrix
+    # Save matrix. The label-keyed copy stays in staging for the species
+    # analyses (labels carry the taxon); the run folder gets the copy keyed by
+    # haplotype_id, which does not change when a taxon assignment does.
     matrix_path = output_dir / "pairwise_divergence_matrix.csv"
     divergence_matrix.to_csv(matrix_path)
     results['divergence_matrix'] = matrix_path
-    logger.info(f"  Saved divergence matrix: {matrix_path}")
+    to_id = {}
+    if 'haplotype_sp' in taxonomy_df.columns and 'haplotype_id' in taxonomy_df.columns:
+        to_id = dict(zip(taxonomy_df['haplotype_sp'], taxonomy_df['haplotype_id']))
+    distance_by_id = divergence_matrix.rename(index=lambda x: to_id.get(x, x),
+                                              columns=lambda x: to_id.get(x, x))
+    distance_by_id.index.name = 'haplotype_id'
+    by_id_path = output_dir / "pairwise_p_distance_by_id.csv"
+    distance_by_id.to_csv(by_id_path)
+    results['divergence_matrix_by_id'] = by_id_path
+    logger.info(f"  Saved divergence matrix: {by_id_path}")
 
     # Generate divergence summary
     summary_df = generate_divergence_summary(divergence_matrix, taxonomy_df)
@@ -795,11 +806,6 @@ def generate_divergence_analysis(
 
     # Label-based barcoding gap: only with --extended (P1-2)
     if extended and records is not None:
-        to_id = {}
-        if 'haplotype_sp' in taxonomy_df.columns and 'haplotype_id' in taxonomy_df.columns:
-            to_id = dict(zip(taxonomy_df['haplotype_sp'], taxonomy_df['haplotype_id']))
-        distance_by_id = divergence_matrix.rename(index=lambda x: to_id.get(x, x),
-                                                  columns=lambda x: to_id.get(x, x))
         gap_df = compute_label_based_gap(distance_by_id, records)
         gap_path = output_dir / "label_based_gap.csv"
         gap_df.to_csv(gap_path, index=False)

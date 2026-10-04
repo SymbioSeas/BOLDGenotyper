@@ -191,7 +191,8 @@ FILE_DOCS = [
     {"pattern": "divergence/pairwise_p_distance.csv",
      "text": "Uncorrected p-distance between every pair of haplotypes: differing sites / sites "
              "compared, skipping sites with a gap or N in either sequence.",
-     "matrix": "Square matrix: the first column and the header are haplotype labels."},
+     "matrix": "Square matrix: the first column and the header are haplotype_id; taxa are "
+               "in haplotypes.csv."},
     {"pattern": "phylogeny/tree.nwk",
      "text": "FastTree tree of the haplotypes, tips named by haplotype ID; support values are "
              "FastTree local support."},
@@ -294,7 +295,8 @@ FILE_DOCS = [
      }},
     {"pattern": "extended/divergence/within_species/*_divergence_matrix.csv",
      "text": "--extended. p-distances among the haplotypes of one assigned species.",
-     "matrix": "Square matrix: the first column and the header are haplotype labels."},
+     "matrix": "Square matrix: the first column and the header are haplotype_id; taxa are "
+               "in haplotypes.csv."},
     {"pattern": "extended/divergence/msa/MSA_chunk*.pdf",
      "text": "--extended. Haplotype alignment in tree order, in chunks of columns."},
     {"pattern": "extended/species/species_summary.csv",

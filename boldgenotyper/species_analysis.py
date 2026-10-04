@@ -496,7 +496,10 @@ def generate_within_species_divergence_matrices(
             }
             results['stats'].append(stats)
 
-        # Save matrix
+        # Save matrix keyed by haplotype_id (display labels end with the ID)
+        id_of = {lab: str(lab).split()[-1] for lab in species_matrix.index}
+        species_matrix = species_matrix.rename(index=id_of, columns=id_of)
+        species_matrix.index.name = 'haplotype_id'
         safe_name = species.replace(' ', '_').replace('/', '_')
         matrix_file = species_matrices_dir / f"{safe_name}_divergence_matrix.csv"
         species_matrix.to_csv(matrix_file)

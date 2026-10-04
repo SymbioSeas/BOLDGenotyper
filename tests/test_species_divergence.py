@@ -37,9 +37,11 @@ def test_species_divergence_summary_uses_display_labels(tmp_path, inputs):
     assert out.loc["Genus alpha", "min_between_species"] == pytest.approx(0.10)
 
 
-def test_within_species_matrices_use_display_labels(tmp_path, inputs):
+def test_within_species_matrices_found_by_label_written_by_id(tmp_path, inputs):
     matrix, summary, tax = inputs
     res = sa.generate_within_species_divergence_matrices(matrix, summary, tax, tmp_path / "out")
     assert list(res["matrices"]) == ["Genus alpha"]
     m = pd.read_csv(res["matrices"]["Genus alpha"], index_col=0)
-    assert list(m.index) == LABELS[:2]
+    # written keyed by haplotype_id (display labels change when a taxon changes)
+    assert list(m.index) == ["H0001", "H0002"] and list(m.columns) == ["H0001", "H0002"]
+    assert m.index.name == "haplotype_id"
