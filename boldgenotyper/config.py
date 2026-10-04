@@ -703,6 +703,12 @@ class VisualizationConfig:
     map_background_detail: str = "auto"
     intermediate_dpi: int = 150
 
+    # Figures that scale to large runs (figure_pages)
+    max_overview_haplotypes: int = 40   # above this, overviews show taxa instead of haplotypes
+    max_colored_items: int = 12         # colored items per panel; the rest are "Other (n)"
+    max_overview_species: int = 15      # colored taxa in species-level overviews
+    max_heatmap_species: int = 30       # rows of the records-by-year heatmap
+
     def __post_init__(self):
         """Validate configuration parameters."""
         if self.figure_dpi < 72:
