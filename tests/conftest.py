@@ -19,6 +19,4 @@ collect_ignore = [
     "test_snap_to_coast_local.py",  # loads Natural Earth land geometries at import
     "test_tree_scaling.py",
     "test_viz_warnings.py",         # needs a local run in tests/Carcharhinus_output/
-    # Imports boldgenotyper.genotype_assignment, removed before v1.0.0
-    "test_genotype_assignment.py",
 ]

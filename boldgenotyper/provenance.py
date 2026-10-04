@@ -36,15 +36,6 @@ STEP_FAILURE = "step_failure"
 
 FASTTREE_SEED = 314159  # FastTree's own default, now passed explicitly and recorded
 
-# Config sections present in PipelineConfig but not used by the ESV workflow.
-NOT_APPLIED = {
-    "genotype_assignment": (
-        "Not used: samples are mapped directly from ESV discovery (no identity "
-        "re-assignment or tie detection). --similarity-threshold, --tie-margin and "
-        "--tie-threshold have no effect."
-    ),
-}
-
 _VERSION_COMMANDS = {
     "mafft": (["mafft", "--version"], r"v?(\d+\.\d+\S*)"),
     "fasttree": (["FastTree", "-expert"], r"FastTree(?: version)? (\d+\.\d+\S*)"),
@@ -171,8 +162,7 @@ class RunProvenance:
         from . import __version__
         from .config import _convert_paths_to_strings
         self.version = __version__
-        full = _convert_paths_to_strings(cfg.to_dict())
-        self.config = {k: v for k, v in full.items() if k not in NOT_APPLIED}
+        self.config = _convert_paths_to_strings(cfg.to_dict())
         self.argv = [str(a) for a in argv]
         self.input_path = Path(input_path)
         self.output_dir = Path(output_dir)
@@ -204,7 +194,6 @@ class RunProvenance:
             "output_dir": str(self.output_dir),
             "config": self.config,
             "applied": self.applied,
-            "not_applied": NOT_APPLIED,
             "tools": self._tools,
             "seeds": {"fasttree": FASTTREE_SEED},
             "started_at": self.started_at,

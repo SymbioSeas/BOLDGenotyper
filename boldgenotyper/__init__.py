@@ -41,7 +41,6 @@ from . import config
 from . import utils
 from . import quality_control
 from . import dereplication
-from . import haplotype_assignment
 from . import haplotype_query
 from . import metadata
 from . import geographic
@@ -63,7 +62,6 @@ __all__ = [
     "utils",
     "quality_control",
     "dereplication",
-    "haplotype_assignment",
     "haplotype_query",
     "metadata",
     "geographic",

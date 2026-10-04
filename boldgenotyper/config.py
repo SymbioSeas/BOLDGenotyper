@@ -16,7 +16,6 @@ Configuration Structure:
 - CoreRegionConfig: Core shared region extraction and masking
 - HaplotypeConfig: Haplotype (ESV) discovery and flagging
 - DereplicationConfig: Sequence alignment and ESV discovery parameters
-- GenotypeAssignmentConfig: Sample-to-haplotype matching parameters
 - GeographicConfig: Coordinate filtering and geographic region assignment
 - VisualizationConfig: Plot styling and output parameters
 - PhylogeneticConfig: Phylogenetic tree construction parameters
@@ -403,70 +402,6 @@ class DereplicationConfig:
 # Genotype Assignment Configuration
 # ============================================================================
 
-@dataclass(frozen=True)
-class GenotypeAssignmentConfig:
-    """
-    Configuration for assigning samples to haplotype groups.
-
-    Controls how raw sequences are matched to haplotype sequences using
-    edit distance calculations with target-based identity scoring.
-
-    Attributes
-    ----------
-    min_identity : float
-        Minimum sequence identity for haplotype assignment (default: 0.5).
-        Samples below this threshold are flagged as unassigned.
-        Identity is calculated as matches / haplotype_length (target-based),
-        which is robust to variable-length 5'/3' ends.
-
-    use_edlib : bool
-        Prefer edlib for fast edit distance if available (default: True)
-
-    n_threads : int
-        Number of parallel threads for assignment (default: 1)
-
-    report_ties : bool
-        Report samples with ambiguous assignments (default: True)
-
-    tie_margin : float
-        Maximum identity difference between best and runner-up to call a tie (default: 0.003).
-        Samples with best_identity - runner_up_identity < tie_margin are flagged for review.
-
-    tie_threshold : float
-        Minimum best identity required to consider tie detection (default: 0.95).
-        Prevents flagging low-quality matches as ties.
-
-    Notes
-    -----
-    The default minimum identity of 0.5 (50%) provides a permissive threshold
-    for haplotype assignment, allowing for:
-
-    - Greater intraspecific variation
-    - Degraded or low-quality sequences
-    - Differences between haplotype and raw sequences
-
-    Tie Detection:
-
-    - tie_margin: Controls sensitivity of tie detection (default 0.003 = 0.3%)
-    - tie_threshold: Minimum quality for considering ties (default 0.95 = 95%)
-    - Ties are only called when: best_identity >= tie_threshold AND
-      (best_identity - runner_up_identity) < tie_margin
-    """
-    min_identity: float = 0.5
-    use_edlib: bool = True
-    n_threads: int = 1
-    report_ties: bool = True
-    tie_margin: float = 0.003
-    tie_threshold: float = 0.95
-
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        if not 0 < self.min_identity <= 1:
-            raise ValueError("min_identity must be between 0 and 1")
-        if self.n_threads < 1:
-            raise ValueError("n_threads must be at least 1")
-            
-            
 # ============================================================================
 # Taxonomy (Sequence-based Species Assignment) Configuration
 # ============================================================================
@@ -1019,9 +954,6 @@ class PipelineConfig:
     dereplication : DereplicationConfig
         Sequence alignment and ESV discovery configuration
 
-    genotype_assignment : GenotypeAssignmentConfig
-        Sample-to-haplotype matching configuration
-
     geographic : GeographicConfig
         Coordinate filtering and geographic region configuration
 
@@ -1062,7 +994,6 @@ class PipelineConfig:
     core_region: CoreRegionConfig = field(default_factory=CoreRegionConfig)
     haplotype: HaplotypeConfig = field(default_factory=HaplotypeConfig)
     dereplication: DereplicationConfig = field(default_factory=DereplicationConfig)
-    genotype_assignment: GenotypeAssignmentConfig = field(default_factory=GenotypeAssignmentConfig)
     geographic: GeographicConfig = field(default_factory=GeographicConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     taxonomy: TaxonomyConfig = field(default_factory=TaxonomyConfig)
@@ -1328,6 +1259,11 @@ def _dict_to_config(config_dict: Dict[str, Any]) -> PipelineConfig:
     # Convert string paths back to Path objects
     config_dict = _convert_strings_to_paths(config_dict)
 
+    # Sections removed in 2.0.0 (v1 identity-based assignment) are ignored
+    for removed in ('genotype_assignment',):
+        if config_dict.pop(removed, None) is not None:
+            logger.warning(f"Config section '{removed}' was removed in 2.0.0 and is ignored")
+
     # Extract nested configurations
     nested_configs = {}
 
@@ -1338,7 +1274,6 @@ def _dict_to_config(config_dict: Dict[str, Any]) -> PipelineConfig:
         'core_region': CoreRegionConfig,
         'haplotype': HaplotypeConfig,
         'dereplication': DereplicationConfig,
-        'genotype_assignment': GenotypeAssignmentConfig,
         'geographic': GeographicConfig,
         'visualization': VisualizationConfig,
         'phylogenetic': PhylogeneticConfig,
@@ -1428,13 +1363,6 @@ def validate_config(config: PipelineConfig) -> List[str]:
             warnings.append(
                 f"Outgroup FASTA not found: {config.phylogenetic.outgroup_fasta}"
             )
-
-    # Check for low minimum identity
-    if config.genotype_assignment.min_identity < 0.80:
-        warnings.append(
-            f"Minimum identity ({config.genotype_assignment.min_identity}) is quite low. "
-            "This may result in poor genotype assignments."
-        )
 
     # Check thread count
     if config.n_threads > os.cpu_count():

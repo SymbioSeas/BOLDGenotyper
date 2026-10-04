@@ -89,7 +89,6 @@ def run_single_threshold(
     cfg = cfg.update(
         haplotype__min_singleton_distance=threshold,
         haplotype__max_singleton_distance=max_singleton_dist,
-        genotype_assignment__min_identity=0.5,
         coi_validation__mitochondrial_code=genetic_code,
         n_threads=threads,
         output_dir=output_dir,

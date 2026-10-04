@@ -44,7 +44,7 @@ from Bio import Phylo, SeqIO
 # Local imports
 from . import (
     utils, config, metadata, geographic, dereplication,
-    haplotype_assignment, phylogenetics, visualization, reports,
+    phylogenetics, visualization, reports,
     quality_control, plot_export,
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,

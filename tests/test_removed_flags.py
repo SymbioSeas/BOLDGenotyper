@@ -38,8 +38,11 @@ def test_main_exits_2(monkeypatch, capsys):
     assert "--tie-threshold was removed in 2.0.0" in capsys.readouterr().err
 
 
-def test_query_returns_2(capsys):
-    assert cli.main_query(["--query", "q.fasta", "--haplotypes", "h.fasta", "--tie-margin", "0.005"]) == 2
+def test_query_returns_2(tmp_path, capsys):
+    out = tmp_path / "out"
+    assert cli.main_query(["--query", "q.fasta", "--haplotypes", "h.fasta", "--output", str(out),
+                           "--tie-margin", "0.005"]) == 2
+    assert not out.exists()
     assert "--tie-margin was removed in 2.0.0" in capsys.readouterr().err
 
 

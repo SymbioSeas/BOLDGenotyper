@@ -74,7 +74,7 @@ def test_run_provenance_serializes_full_config(tmp_path):
     assert d["config"]["haplotype"]["max_singleton_distance"] == 0.05
     assert d["config"]["core_region"]["min_sequence_coverage"] == 0.95
     assert "genotype_assignment" not in d["config"]
-    assert "genotype_assignment" in d["not_applied"]
+    assert "not_applied" not in d
     assert d["input"]["md5"] == provenance.file_md5(tsv)
     assert d["input"]["n_rows"] == 1
     assert d["input"]["download_date"] == "2026-09-30"
