@@ -63,3 +63,50 @@ def test_key_findings_match_the_tables(run_dir):
     assert ("not_monophyletic" in found) == bool(run.non_monophyletic())
     assert found["dates"].text.startswith("Collection years 20")
     assert [f.key for f in insights.key_findings(run)][0] == "assigned"
+
+
+from boldgenotyper import report
+
+SECTIONS = ["overview", "records", "taxonomy", "phylogeny", "geography", "sampling", "divergence",
+            "methods", "files"]
+
+
+@pytest.fixture(scope="module")
+def html(run_dir):
+    path = report.generate_html_report(run_dir, "Synth")
+    return path.read_text(encoding="utf-8")
+
+
+@needs_tools
+def test_sections_in_order_and_linked(html):
+    pos = [html.index(f'id="section-{s}"') for s in SECTIONS]
+    assert pos == sorted(pos)
+    nav = html[html.index("<nav"):html.index("</nav>")]
+    assert all(f'href="#section-{s}"' in nav for s in SECTIONS)
+
+
+@needs_tools
+def test_no_missing_values(html):
+    rows = re.findall(r"<tr>(.*?)</tr>", html, re.S)
+    assert not [r for r in rows if "not recorded" in r and "download date" not in r.lower()]
+
+
+@needs_tools
+def test_links_and_dropdown_targets_resolve(html, run_dir):
+    targets = re.findall(r'(?:src|href)="([^"#:]+)"', html) + re.findall(r'<option value="([^"#:]+)"', html)
+    for blob in re.findall(r'<script type="application/json"[^>]*>(.*?)</script>', html, re.S):
+        targets += [src for views in json.loads(blob).values() for _, src in views]
+    assert any(t.endswith(".svg") for t in targets)
+    for t in targets:
+        assert (run_dir / t).exists(), t
+    assert html.count("<select") >= 2
+
+
+@needs_tools
+def test_files_section_covers_every_file(html, run_dir):
+    from boldgenotyper import run_readme
+    files = html[html.index('id="section-files"'):]
+    for p in run_dir.rglob("*"):
+        if p.is_file():
+            entry = run_readme._entry_for(p.relative_to(run_dir).as_posix())
+            assert entry is None or page.esc(entry["pattern"]) in files, p
