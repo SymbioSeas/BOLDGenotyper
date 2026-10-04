@@ -72,12 +72,6 @@ def test_indel_and_no_match_flags(tmp_path, run_dir):
     assert s.loc["unrelated", "species_call"] == ""
 
 
-def test_deprecated_tie_margin_still_runs(tmp_path, run_dir, capsys):
-    s, _ = _query(tmp_path, run_dir, {"window": WINDOW}, "--tie-margin", "0.005")
-    assert "deprecated" in capsys.readouterr().err
-    assert s.loc["window", "call_level"] == "haplotype_set"
-
-
 def test_bare_fasta_reference_has_no_species_support(tmp_path, run_dir):
     fasta = run_dir / "haplotypes.fasta"
     s, _ = _query(tmp_path, fasta, {"window": WINDOW})

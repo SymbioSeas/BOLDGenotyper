@@ -55,12 +55,6 @@ def test_terminal_difference_and_delta():
     assert v.set_identical_over_region is False and "set_not_identical" in v.flags
 
 
-def test_deprecated_tie_margin_converts_per_query():
-    matches = [_m("H0001"), _m("H0002", d=1, region="Y"), _m("H0003", d=2, region="Z")]
-    v = _call(matches, tie_margin=0.005)          # floor(0.005 * 220) = 1 difference
-    assert v.equivalence_set == ["H0001", "H0002"] and v.max_mismatch_delta == 1
-
-
 def test_low_coverage_and_low_identity_give_no_call():
     v = _call([_m("H0001", cov=0.6)])
     assert v.call_level == "none" and v.flags == ["low_coverage"] and v.equivalence_set == []

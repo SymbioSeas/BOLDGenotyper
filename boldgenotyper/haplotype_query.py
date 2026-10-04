@@ -415,7 +415,6 @@ def query_against_haplotypes(
     min_length: int = 100,
     max_length: int = 2000,
     min_identity: float = 0.97,
-    tie_margin: Optional[float] = None,
     min_query_coverage: float = 0.95,
     max_mismatch_delta: int = 0,
     min_species_support: float = 0.70,
@@ -538,7 +537,6 @@ def query_against_haplotypes(
             query_id, query_results, member_labels,
             min_identity=min_identity, min_query_coverage=min_query_coverage,
             max_mismatch_delta=max_mismatch_delta, min_species_support=min_species_support,
-            tie_margin=tie_margin,
         ))
         all_results.extend(query_results[:top_n])
 

@@ -16,7 +16,6 @@ label_conflict_in_set, species_support_below_threshold, no_species_labels,
 no_reference_labels.
 """
 
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -68,15 +67,12 @@ def rank_matches(matches: Sequence, min_identity: float, min_query_coverage: flo
 
 def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]], *,
                  min_identity: float = 0.97, min_query_coverage: float = 0.95,
-                 max_mismatch_delta: int = 0, min_species_support: float = 0.70,
-                 tie_margin: Optional[float] = None) -> QueryVerdict:
+                 max_mismatch_delta: int = 0, min_species_support: float = 0.70) -> QueryVerdict:
     """Compute a QueryVerdict from a query's full list of haplotype matches.
 
     member_labels maps haplotype_id -> labels of its member records (exact
     and corrected); None when the reference has no record labels (bare FASTA
-    or a v1 run folder). tie_margin is the deprecated fractional margin: when
-    given, this query's delta is floor(tie_margin * aligned_length of the best
-    match).
+    or a v1 run folder).
     """
     ranked = rank_matches(matches, min_identity, min_query_coverage)
     eligible = [m for m in ranked if is_eligible(m, min_identity, min_query_coverage)]
@@ -123,8 +119,7 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
     best = eligible[0]
     if best.indel_in_query:
         flags.append("indel_in_query")
-    delta = (math.floor(tie_margin * best.aligned_length) if tie_margin is not None
-             else int(max_mismatch_delta))
+    delta = int(max_mismatch_delta)
     eq = [m for m in eligible if m.differences <= best.differences + delta]
     identical = len({m.haplotype_region for m in eq}) == 1
     if not identical:

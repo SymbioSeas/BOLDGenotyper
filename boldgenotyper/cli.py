@@ -55,6 +55,33 @@ from . import __version__
 
 logger = logging.getLogger(__name__)
 
+# Flags removed in 2.0.0, per command, with what to do instead. A removed flag
+# fails with one line instead of being accepted and ignored.
+_MIGRATION = "see docs/guides/MIGRATION_v1_to_v2.md"
+REMOVED_FLAGS = {
+    "boldgenotyper": {
+        "--similarity-threshold": "records are mapped directly from haplotype discovery",
+        "--tie-margin": "records are mapped directly from haplotype discovery",
+        "--tie-threshold": "records are mapped directly from haplotype discovery",
+        "--no-export-plot-data": "the plot kit is written only with --plot-kit",
+        "--no-export-format": "exports are written only with --export-format",
+        "--no-metadata-analysis": "use --no-metadata-summary",
+    },
+    "boldgenotyper-query": {
+        "--tie-margin": "use --max-mismatch-delta (integer differences)",
+    },
+}
+
+
+def removed_flag_error(argv, command):
+    """One-line error for the first flag in argv that was removed in 2.0.0, else None."""
+    removed = REMOVED_FLAGS.get(command, {})
+    for arg in argv:
+        flag = str(arg).split("=", 1)[0]
+        if flag in removed:
+            return f"{flag} was removed in 2.0.0; {removed[flag]} ({_MIGRATION})"
+    return None
+
 
 # Shared help footer listing every installed BOLDGenotyper command, so running
 # --help on any one command surfaces the others. Referenced by each parser's
@@ -2115,17 +2142,6 @@ Notes:
         help='Output directory (default: {organism}_output in current directory)'
     )
 
-    # Deprecated: samples are mapped directly from ESV discovery, so these
-    # assignment thresholds have no effect. Kept so older commands still run.
-    for flag in ('--similarity-threshold', '--tie-margin', '--tie-threshold'):
-        parser.add_argument(
-            flag,
-            type=float,
-            default=None,
-            help='Deprecated: has no effect (samples are mapped directly from ESV '
-                 'discovery). Will be removed in a future release.'
-        )
-
     parser.add_argument(
         '--threads',
         type=int,
@@ -2175,11 +2191,6 @@ Notes:
         help='Write plots/: plot data, a plot configuration and scripts that '
              'regenerate the map, bar charts and tree'
     )
-    parser.add_argument(
-        '--no-export-plot-data',
-        action='store_true',
-        help=argparse.SUPPRESS  # deprecated: the plot kit is now opt-in (--plot-kit)
-    )
 
     parser.add_argument(
         '--export-format',
@@ -2191,11 +2202,6 @@ Notes:
              'dnasp (DnaSP .fas), generic (CSV), all. '
              'Populations in Arlequin and DnaSP are defined by --geo-category. '
              'Example: --export-format arlequin popart'
-    )
-    parser.add_argument(
-        '--no-export-format',
-        action='store_true',
-        help=argparse.SUPPRESS  # deprecated: nothing is exported without --export-format
     )
 
     parser.add_argument(
@@ -2280,15 +2286,12 @@ Notes:
     )
 
     # Metadata Summarization Arguments (enabled by default).
-    # Note: --no-metadata-analysis is retained as a deprecated alias of
-    # --no-metadata-summary to keep older invocations working.
     parser.add_argument(
         '--no-metadata-summary',
-        '--no-metadata-analysis',
         dest='no_metadata_summary',
         action='store_true',
         help='With --extended, skip the metadata cross-tabs (metadata coverage is always '
-             'written). The legacy alias --no-metadata-analysis is also accepted.'
+             'written).'
     )
 
     parser.add_argument(
@@ -2387,6 +2390,10 @@ Notes:
 
 def main():
     """Main CLI entry point."""
+    msg = removed_flag_error(sys.argv[1:], "boldgenotyper")
+    if msg:
+        print(f"boldgenotyper: error: {msg}", file=sys.stderr)
+        sys.exit(2)
     parser = _build_main_parser()
     args = parser.parse_args()
 
@@ -2468,23 +2475,6 @@ def main():
     logger.info(f"BOLDGenotyper {__version__} run started "
                 f"{datetime.now().astimezone().isoformat(timespec='seconds')}")
     logger.info(f"Command: {shlex.join(sys.argv)}")
-
-    for flag, value in (('--similarity-threshold', args.similarity_threshold),
-                        ('--tie-margin', args.tie_margin),
-                        ('--tie-threshold', args.tie_threshold)):
-        if value is not None:
-            msg = f"{flag} is deprecated and has no effect in the ESV workflow; it will be removed."
-            print(f"Warning: {msg}", file=sys.stderr)
-            logger.warning(msg)
-    for flag, used, note in (
-            ('--no-export-plot-data', args.no_export_plot_data,
-             "the plot kit is written only with --plot-kit"),
-            ('--no-export-format', args.no_export_format,
-             "exports are written only with --export-format")):
-        if used:
-            msg = f"{flag} is deprecated and has no effect: {note}; it will be removed."
-            print(f"Warning: {msg}", file=sys.stderr)
-            logger.warning(msg)
 
     # Load and configure pipeline
     cfg = config.get_default_config()
@@ -2715,14 +2705,6 @@ For more information:
     )
 
     parser.add_argument(
-        '--tie-margin',
-        type=float,
-        default=None,
-        help='Deprecated: use --max-mismatch-delta. A fractional margin is converted per '
-             'query to floor(tie_margin x aligned length) differences.'
-    )
-
-    parser.add_argument(
         '--min-length',
         type=int,
         default=100,
@@ -2744,10 +2726,11 @@ For more information:
     )
 
     # Parse arguments
+    msg = removed_flag_error(argv if argv is not None else sys.argv[1:], "boldgenotyper-query")
+    if msg:
+        print(f"boldgenotyper-query: error: {msg}", file=sys.stderr)
+        return 2
     args = parser.parse_args(argv)
-    if args.tie_margin is not None:
-        print("Warning: --tie-margin is deprecated; use --max-mismatch-delta (integer differences). "
-              "Converting per query to floor(tie_margin x aligned length).", file=sys.stderr)
 
     # Determine output directory
     output_dir = args.output if args.output else Path("haplotype_query_results")
@@ -2801,7 +2784,6 @@ For more information:
             min_length=args.min_length,
             max_length=args.max_length,
             min_identity=args.assign_identity,
-            tie_margin=args.tie_margin,
             min_query_coverage=args.min_query_coverage,
             max_mismatch_delta=args.max_mismatch_delta,
             min_species_support=args.min_species_support,
@@ -2826,7 +2808,6 @@ For more information:
             "min_query_coverage": args.min_query_coverage,
             "max_mismatch_delta": args.max_mismatch_delta,
             "min_species_support": args.min_species_support,
-            "tie_margin_deprecated": args.tie_margin,
             "top_n": args.top_n,
             "search_records": args.search_records,
         }
