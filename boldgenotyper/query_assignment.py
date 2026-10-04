@@ -11,18 +11,30 @@ Eligible match: overlap_coverage >= min_query_coverage and identity_pct >=
 alignment, haplotype ID. Equivalence set: eligible matches within
 max_mismatch_delta differences of the best.
 
+Species call: when a haplotype in the equivalence set has a curated taxon, the
+call uses the haplotypes' taxa (curated, else the label rule's): one shared
+species is called (call_basis 'haplotype taxa'); otherwise no call (flag
+curated_taxa_disagree). When none is curated, the pooled member labels are
+called at min_species_support or more (call_basis 'pooled labels').
+
 Flags: indel_in_query, low_coverage, below_identity, set_not_identical,
 label_conflict_in_set, species_support_below_threshold, no_species_labels,
-no_reference_labels.
+no_reference_labels, curated_taxa_disagree.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, NamedTuple, Optional, Sequence
 
 from . import taxon_labels
 
 CALL_LEVELS = ("haplotype", "haplotype_set", "none")
+
+
+class HaplotypeTaxon(NamedTuple):
+    taxon: str                            # assigned_sp
+    level: str                            # species | genus | unassigned
+    source: str                           # labels | curated
 
 
 @dataclass(frozen=True)
@@ -48,6 +60,7 @@ class QueryVerdict:
     notes: str
     max_mismatch_delta: int               # delta applied to this query
     n_reference_haplotypes: int = 0
+    call_basis: str = ""                  # pooled labels | haplotype taxa | "" (no call)
 
 
 def is_eligible(match, min_identity: float, min_query_coverage: float) -> bool:
@@ -67,19 +80,23 @@ def rank_matches(matches: Sequence, min_identity: float, min_query_coverage: flo
 
 def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]], *,
                  min_identity: float = 0.97, min_query_coverage: float = 0.95,
-                 max_mismatch_delta: int = 0, min_species_support: float = 0.70) -> QueryVerdict:
+                 max_mismatch_delta: int = 0, min_species_support: float = 0.70,
+                 haplotype_taxa: Optional[Dict[str, HaplotypeTaxon]] = None) -> QueryVerdict:
     """Compute a QueryVerdict from a query's full list of haplotype matches.
 
     member_labels maps haplotype_id -> labels of its member records (exact
     and corrected); None when the reference has no record labels (bare FASTA
-    or a v1 run folder).
+    or a v1 run folder). haplotype_taxa maps haplotype_id -> HaplotypeTaxon;
+    a curated taxon in the equivalence set makes the call from the
+    haplotypes' taxa (module docstring).
     """
     ranked = rank_matches(matches, min_identity, min_query_coverage)
     eligible = [m for m in ranked if is_eligible(m, min_identity, min_query_coverage)]
     top = ranked[0] if ranked else None
     flags: List[str] = []
 
-    def _verdict(best, call_level, eq, identical, pooled_text, species_call, support, delta, notes):
+    def _verdict(best, call_level, eq, identical, pooled_text, species_call, support, delta, notes,
+                 call_basis=""):
         return QueryVerdict(
             query_id=query_id,
             query_length=(best or top).query_length if (best or top) else 0,
@@ -102,6 +119,7 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
             notes=notes,
             max_mismatch_delta=delta,
             n_reference_haplotypes=len(matches),
+            call_basis=call_basis,
         )
 
     if not eligible:
@@ -137,6 +155,22 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
         label for m in eq for label in member_labels.get(m.haplotype_id, []))
     if pooled.n_distinct_species > 1:
         flags.append("label_conflict_in_set")
+    support = round(pooled.support, 4) if pooled.support is not None else None
+
+    taxa = haplotype_taxa or {}
+    if any(taxa.get(m.haplotype_id) and taxa[m.haplotype_id].source == "curated" for m in eq):
+        set_taxa = [taxa.get(m.haplotype_id) for m in eq]
+        species = {t.taxon for t in set_taxa if t and t.level == "species"}
+        if len(species) == 1 and all(t and t.level == "species" for t in set_taxa):
+            return _verdict(best, call_level, eq, identical, pooled.text, species.pop(), support,
+                            delta, notes + "; called from haplotype taxa (one is curated)",
+                            call_basis="haplotype taxa")
+        flags.append("curated_taxa_disagree")
+        listed = "; ".join(f"{m.haplotype_id} {t.taxon} ({t.source})" if t else
+                           f"{m.haplotype_id} no taxon" for m, t in zip(eq, set_taxa))
+        return _verdict(best, call_level, eq, identical, pooled.text, "", support, delta,
+                        notes + f"; haplotype taxa differ: {listed}")
+
     species_call = ""
     if pooled.support is None:
         flags.append("no_species_labels")
@@ -144,9 +178,8 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
         species_call = pooled.leading_species
     else:
         flags.append("species_support_below_threshold")
-    support = round(pooled.support, 4) if pooled.support is not None else None
     return _verdict(best, call_level, eq, identical, pooled.text, species_call, support,
-                    delta, notes)
+                    delta, notes, call_basis="pooled labels" if species_call else "")
 
 
 # Record tables that carry per-record statuses (v2): records.csv (v2 layout) or
@@ -180,6 +213,30 @@ def load_member_labels(run_dir) -> tuple:
     for hid, lab in zip(df["haplotype_id"], df["label"]):
         labels.setdefault(hid, []).append(lab)
     return labels, f"member labels from {table.name}"
+
+
+def load_haplotype_taxa(run_dir) -> Optional[Dict[str, HaplotypeTaxon]]:
+    """Each haplotype's taxon from a v2 run folder's haplotypes.csv.
+
+    source is assignment_source (labels when the column is absent: runs made
+    before curation existed). None for a FASTA reference or a folder without
+    run_provenance.json and haplotypes.csv.
+    """
+    import pandas as pd
+
+    if run_dir is None:
+        return None
+    run_dir = Path(run_dir)
+    table = run_dir / "haplotypes.csv"
+    if not (run_dir / "run_provenance.json").exists() or not table.exists():
+        return None
+    df = pd.read_csv(table, dtype=str, keep_default_na=False)
+    if not {"haplotype_id", "assigned_sp", "assignment_level"} <= set(df.columns):
+        return None
+    source = df["assignment_source"] if "assignment_source" in df.columns else ["labels"] * len(df)
+    return {h: HaplotypeTaxon(t, lvl, src or "labels")
+            for h, t, lvl, src in zip(df["haplotype_id"], df["assigned_sp"],
+                                      df["assignment_level"], source)}
 
 
 def load_record_table(run_dir) -> tuple:

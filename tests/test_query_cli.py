@@ -48,6 +48,7 @@ def test_equivalence_set_and_pooled_species(tmp_path, run_dir):
     assert row["species_call"] == "Genus alpha"
     assert round(float(row["species_support"]), 2) == 0.76
     assert row["flags"] == "label_conflict_in_set"
+    assert row["call_basis"] == "pooled labels"
     assert int(row["query_length"]) == 220 and float(row["query_coverage"]) == 1.0
     results = pd.read_csv(out / "query_results.csv")
     assert "match_quality" not in results.columns
@@ -70,6 +71,41 @@ def test_indel_and_no_match_flags(tmp_path, run_dir):
     assert int(s.loc["deletion", "n_gaps"]) == 1 and int(s.loc["deletion", "n_mismatches"]) == 0
     assert s.loc["unrelated", "call_level"] == "none"
     assert s.loc["unrelated", "species_call"] == ""
+
+
+def test_run_folder_curated_taxa_are_inherited(tmp_path, run_dir):
+    ref = tmp_path / "ref"
+    shutil.copytree(run_dir, ref)
+    haps = pd.read_csv(ref / "haplotypes.csv")
+    haps.loc[haps["haplotype_id"] == "H0002", "assignment_source"] = "curated"
+    haps.to_csv(ref / "haplotypes.csv", index=False)
+    s, _ = _query(tmp_path, ref, {"window": WINDOW})
+    row = s.loc["window"]
+    assert row["species_call"] == "" and row["call_basis"] == ""
+    assert "curated_taxa_disagree" in row["flags"]
+
+
+def test_query_time_curation(tmp_path, run_dir):
+    haps = pd.read_csv(run_dir / "haplotypes.csv").set_index("haplotype_id")
+    cur = tmp_path / "cur.csv"
+    cur.write_text(f"seq_md5,taxon,reason\n{haps.loc['H0002', 'seq_md5']},Genus alpha,test\n"
+                   f"ffff,Genus nulla,no match\n")
+    s, out = _query(tmp_path, run_dir, {"window": WINDOW}, "--taxon-curation", str(cur))
+    row = s.loc["window"]
+    assert row["species_call"] == "Genus alpha" and row["call_basis"] == "haplotype taxa"
+    header = [l for l in (out / "query_summary.csv").read_text().splitlines() if l.startswith("#")]
+    assert f"# parameter.taxon_curation_md5: {hashlib.md5(cur.read_bytes()).hexdigest()}" in header
+    assert "# parameter.taxon_curation_applied: 1" in header
+
+
+def test_query_time_curation_needs_a_run_folder(tmp_path, run_dir):
+    cur = tmp_path / "cur.csv"
+    cur.write_text("seq_md5,taxon,reason\nabc,Genus alpha,test\n")
+    fasta = tmp_path / "q.fasta"
+    fasta.write_text(f">window\n{WINDOW}\n")
+    code = cli.main_query(["--query", str(fasta), "--haplotypes", str(run_dir / "haplotypes.fasta"),
+                           "--output", str(tmp_path / "o"), "--taxon-curation", str(cur)])
+    assert code == 1
 
 
 def test_bare_fasta_reference_has_no_species_support(tmp_path, run_dir):

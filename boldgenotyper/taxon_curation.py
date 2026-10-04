@@ -116,6 +116,11 @@ def match_curation(curation: pd.DataFrame, haplotypes: pd.DataFrame,
     return applied_df, not_applied_df.sort_values("row").reset_index(drop=True)
 
 
+def taxon_level(taxon) -> str:
+    """assignment_level of a curated taxon: species for a species name, else genus."""
+    return "species" if label_level(taxon) == "species" else "genus"
+
+
 def apply_curation(taxonomy: pd.DataFrame, applied: pd.DataFrame) -> pd.DataFrame:
     """
     Copy of the taxonomy table (haplotype_id, assigned_sp, assignment_level,
@@ -133,8 +138,7 @@ def apply_curation(taxonomy: pd.DataFrame, applied: pd.DataFrame) -> pd.DataFram
         note = f"curated: {r['reason']}" + (f" ({who})" if who else "")
         previous = tax.loc[idx, "assignment_notes"].fillna("").astype(str)
         tax.loc[idx, "assigned_sp"] = r["taxon"]
-        tax.loc[idx, "assignment_level"] = ("species" if label_level(r["taxon"]) == "species"
-                                            else "genus")
+        tax.loc[idx, "assignment_level"] = taxon_level(r["taxon"])
         tax.loc[idx, "assignment_source"] = "curated"
         tax.loc[idx, "assignment_notes"] = [note + (f"; labels: {p}" if p else "") for p in previous]
     return tax

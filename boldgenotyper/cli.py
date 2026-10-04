@@ -2757,6 +2757,17 @@ For more information:
     )
 
     parser.add_argument(
+        '--taxon-curation',
+        type=Path,
+        default=None,
+        metavar='FILE',
+        help='CSV/TSV of accepted haplotype taxa (seq_md5 or sequence, taxon, reason; '
+             'optional curator, date) applied to the reference run\'s haplotype taxa for '
+             'this query. Needs a v2 run folder as --haplotypes. Curated taxa already in '
+             'the run folder are used without it.'
+    )
+
+    parser.add_argument(
         '--search-records',
         action='store_true',
         help='Also search every QC-passed reference record (records_qc_passed.fasta in a '
@@ -2829,6 +2840,39 @@ For more information:
                            "outputs record the haplotype file only")
         if not args.query.exists():
             raise FileNotFoundError(f"Query file not found: {args.query}")
+
+        # Haplotype taxa of the reference run, with query-time curation
+        haplotype_taxa = query_assignment.load_haplotype_taxa(analysis_dir)
+        curation_parameters = {}
+        if args.taxon_curation:
+            if haplotype_taxa is None:
+                print("Error: --taxon-curation needs a v2 run folder as --haplotypes "
+                      "(haplotypes.csv and run_provenance.json)", file=sys.stderr)
+                return 1
+            try:
+                curation = taxon_curation_mod.load_curation(args.taxon_curation)
+            except taxon_curation_mod.CurationError as e:
+                print(f"Error: taxon curation file: {e}", file=sys.stderr)
+                return 1
+            ref_seqs = {r.id: str(r.seq) for r in SeqIO.parse(reference_fasta, "fasta")}
+            hap_meta = pd.DataFrame({"haplotype_id": list(ref_seqs),
+                                     "seq_md5": [haplotype_ids.seq_md5(s) for s in ref_seqs.values()]})
+            applied_rows, not_applied_rows = taxon_curation_mod.match_curation(
+                curation, hap_meta, ref_seqs)
+            for r in applied_rows.to_dict("records"):
+                haplotype_taxa[r["haplotype_id"]] = query_assignment.HaplotypeTaxon(
+                    r["taxon"], taxon_curation_mod.taxon_level(r["taxon"]), "curated")
+            logger.info(f"Curated taxa applied to {len(applied_rows)} haplotype(s)")
+            for r in not_applied_rows.to_dict("records"):
+                logger.warning(f"Curation row {r['row']} ({r['taxon']}) not applied: "
+                               f"{r['reason_not_applied']}")
+            curation_parameters = {
+                "taxon_curation": str(args.taxon_curation),
+                "taxon_curation_md5": provenance.file_md5(args.taxon_curation),
+                "taxon_curation_applied": len(applied_rows),
+                "taxon_curation_not_applied": len(not_applied_rows),
+            }
+
         query_records = haplotype_query.load_query_sequences(
             args.query, min_length=args.min_length, max_length=args.max_length)
         if not query_records:
@@ -2848,6 +2892,7 @@ For more information:
             max_mismatch_delta=args.max_mismatch_delta,
             min_species_support=args.min_species_support,
             query_records=query_records,
+            haplotype_taxa=haplotype_taxa,
         )
 
         # Exact-match reference records (Q10)
@@ -2870,6 +2915,7 @@ For more information:
             "min_species_support": args.min_species_support,
             "top_n": args.top_n,
             "search_records": args.search_records,
+            **curation_parameters,
         }
 
         # Write results

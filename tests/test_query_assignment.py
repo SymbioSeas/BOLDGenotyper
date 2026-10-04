@@ -150,3 +150,55 @@ def test_write_query_summary_roundtrip(tmp_path):
     assert df.loc[0, "equivalence_set"] == "H0001;H0002"
     assert df.loc[0, "species_call"] == "Genus alpha"
     assert list(df.columns) == haplotype_query.QUERY_SUMMARY_COLUMNS
+
+
+# --- Curated haplotype taxa (Phase 9) ----------------------------------------
+
+def test_pooled_call_has_pooled_basis():
+    v = _call([_m("H0001")])
+    assert v.species_call == "Genus alpha" and v.call_basis == "pooled labels"
+
+
+def test_curated_set_is_called_by_haplotype_taxa():
+    taxa = {"H0005": qa.HaplotypeTaxon("Genus alpha", "species", "curated")}
+    v = _call([_m("H0005")], haplotype_taxa=taxa)          # labels 4/4: no pooled call
+    assert v.species_call == "Genus alpha" and v.call_basis == "haplotype taxa"
+    assert v.species_support == 0.5 and "species_support_below_threshold" not in v.flags
+    assert "label_conflict_in_set" in v.flags
+
+
+def test_curated_taxa_that_disagree_give_no_call():
+    taxa = {"H0001": qa.HaplotypeTaxon("Genus alpha", "species", "curated"),
+            "H0004": qa.HaplotypeTaxon("Genus beta", "species", "labels")}
+    v = _call([_m("H0001"), _m("H0004", region="Y")], haplotype_taxa=taxa)
+    assert v.species_call == "" and v.call_basis == ""
+    assert "curated_taxa_disagree" in v.flags
+    assert "H0001 Genus alpha (curated)" in v.notes and "H0004 Genus beta (labels)" in v.notes
+
+
+def test_curated_with_a_genus_level_member_gives_no_call():
+    taxa = {"H0001": qa.HaplotypeTaxon("Genus alpha", "species", "curated"),
+            "H0005": qa.HaplotypeTaxon("Genus", "genus", "labels")}
+    v = _call([_m("H0001"), _m("H0005")], haplotype_taxa=taxa)
+    assert v.species_call == "" and "curated_taxa_disagree" in v.flags
+
+
+def test_uncurated_sets_still_use_pooled_labels():
+    taxa = {"H0005": qa.HaplotypeTaxon("Genus", "genus", "labels")}
+    v = _call([_m("H0005")], haplotype_taxa=taxa)
+    assert v.species_call == "" and v.call_basis == ""
+    assert "species_support_below_threshold" in v.flags
+
+
+def test_load_haplotype_taxa(tmp_path):
+    assert qa.load_haplotype_taxa(None) is None
+    assert qa.load_haplotype_taxa(tmp_path) is None
+    (tmp_path / "run_provenance.json").write_text("{}")
+    (tmp_path / "haplotypes.csv").write_text(
+        "haplotype_id,assigned_sp,assignment_level,assignment_source\n"
+        "H0001,Genus alpha,species,labels\nH0002,Genus beta,species,curated\n")
+    taxa = qa.load_haplotype_taxa(tmp_path)
+    assert taxa["H0002"] == qa.HaplotypeTaxon("Genus beta", "species", "curated")
+    (tmp_path / "haplotypes.csv").write_text(
+        "haplotype_id,assigned_sp,assignment_level\nH0001,Genus alpha,species\n")
+    assert qa.load_haplotype_taxa(tmp_path)["H0001"].source == "labels"

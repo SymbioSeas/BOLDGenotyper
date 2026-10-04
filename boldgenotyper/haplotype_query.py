@@ -394,6 +394,7 @@ def query_against_haplotypes(
     max_mismatch_delta: int = 0,
     min_species_support: float = 0.70,
     query_records: Optional[List[SeqRecord]] = None,
+    haplotype_taxa: Optional[Dict[str, "query_assignment.HaplotypeTaxon"]] = None,
 ) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame], List["query_assignment.QueryVerdict"]]:
     """
     Query sequences against haplotype consensuses.
@@ -419,6 +420,9 @@ def query_against_haplotypes(
         Minimum query sequence length (default: 100)
     max_length : int, optional
         Maximum query sequence length (default: 2000)
+    haplotype_taxa : dict, optional
+        haplotype_id -> HaplotypeTaxon for species calls; None loads them from
+        analysis_dir's haplotypes.csv (query_assignment.load_haplotype_taxa)
 
     Returns
     -------
@@ -480,6 +484,12 @@ def query_against_haplotypes(
     else:
         logger.info(f"Species support uses {label_source} "
                     f"(members with status assigned or assigned_corrected)")
+    if haplotype_taxa is None:
+        haplotype_taxa = query_assignment.load_haplotype_taxa(analysis_dir)
+    n_curated = sum(t.source == "curated" for t in (haplotype_taxa or {}).values())
+    if n_curated:
+        logger.info(f"{n_curated} haplotype(s) have curated taxa; sets containing one are "
+                    f"called from the haplotypes' taxa")
 
     # Perform alignments
     logger.info(f"Performing alignments: {len(valid_queries)} queries × {len(haplotype_records)} haplotypes")
@@ -512,6 +522,7 @@ def query_against_haplotypes(
             query_id, query_results, member_labels,
             min_identity=min_identity, min_query_coverage=min_query_coverage,
             max_mismatch_delta=max_mismatch_delta, min_species_support=min_species_support,
+            haplotype_taxa=haplotype_taxa,
         ))
         all_results.extend(query_results[:top_n])
 
@@ -748,13 +759,15 @@ def search_records(queries: List[SeqRecord], records_fasta: Path,
 QUERY_SUMMARY_COLUMNS = [
     "query_id", "query_length", "aligned_length", "query_coverage", "n_mismatches",
     "n_gaps", "best_identity", "call_level", "equivalence_set", "n_equivalent",
-    "set_identical_over_region", "pooled_member_labels", "species_call",
+    "set_identical_over_region", "pooled_member_labels", "species_call", "call_basis",
     "species_support", "flags", "n_exact_record_matches", "reference_run_id",
 ]
 
 POOLED_LABELS_NOTE = ("pooled_member_labels and species_support use the labels of every record "
                       "assigned to the equivalence set's haplotypes, including assigned_corrected "
-                      "records; genus-only labels of the leading genus are compatible")
+                      "records; genus-only labels of the leading genus are compatible. "
+                      "call_basis 'haplotype taxa': a haplotype in the set has a curated taxon, "
+                      "so species_call is the set's shared haplotype taxon")
 
 
 def query_summary_header(parameters: Optional[Dict[str, Any]] = None,
@@ -793,6 +806,7 @@ def write_query_summary(verdicts, output_dir, parameters=None, reference_run=Non
             "set_identical_over_region": v.set_identical_over_region,
             "pooled_member_labels": v.pooled_member_labels,
             "species_call": v.species_call,
+            "call_basis": v.call_basis,
             "species_support": v.species_support,
             "flags": ";".join(v.flags),
             "n_exact_record_matches": (record_matches or {}).get(v.query_id) if record_matches is not None else None,
@@ -933,7 +947,11 @@ def write_text_report(
                            f"({v.differences} difference{'' if v.differences == 1 else 's'}, "
                            f"{v.best_identity:.2f}% identity, "
                            f"coverage {v.query_coverage:.2f})")
-                sp = (f"species {v.species_call} (support {v.species_support:.2f})" if v.species_call
+                sp = (f"species {v.species_call} (haplotype taxa; pooled support "
+                      f"{v.species_support:.2f})" if v.call_basis == "haplotype taxa"
+                      and v.species_support is not None
+                      else f"species {v.species_call} (haplotype taxa)" if v.call_basis == "haplotype taxa"
+                      else f"species {v.species_call} (support {v.species_support:.2f})" if v.species_call
                       else f"no species call (support {v.species_support:.2f})" if v.species_support is not None
                       else "no species call")
                 f.write(f"{query_id} : {hap}\n")
