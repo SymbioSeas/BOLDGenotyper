@@ -18,13 +18,6 @@ from boldgenotyper import haplotype_query
 class TestAlignmentFunctions:
     """Test core alignment and classification functions."""
 
-    def test_classify_match_quality(self):
-        """Deprecated interpretive labels (Q7): still importable, warn when used."""
-        with pytest.deprecated_call():
-            assert haplotype_query.classify_match_quality(100.0) == "perfect"
-        with pytest.warns(DeprecationWarning):
-            assert haplotype_query.classify_match_quality(99.8) == "high"
-
     def test_align_query_to_haplotype_perfect_match(self):
         """Test alignment with perfect match."""
         query_seq = "ATCGATCGATCG"

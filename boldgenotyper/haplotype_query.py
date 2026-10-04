@@ -42,7 +42,6 @@ import logging
 import json
 from datetime import datetime
 from dataclasses import asdict, dataclass, field
-import warnings
 
 import pandas as pd
 from Bio import SeqIO
@@ -289,30 +288,6 @@ def align_query_to_haplotype(
         differences=n_mismatches + n_gaps,
         haplotype_region=haplotype_clean[h_start:h_end],
     )
-
-
-def classify_match_quality(identity_pct: float) -> str:
-    """
-    Deprecated: interpretive identity labels (removed from outputs in v2.0.0).
-
-    The labels ("same species" at 97%, "same genus" at 95%) do not hold across
-    taxa; v2 reports numbers only (identity, differences, coverage).
-    """
-    warnings.warn(
-        "classify_match_quality is deprecated and no longer used in outputs; "
-        "it will be removed in a future release.",
-        DeprecationWarning, stacklevel=2,
-    )
-    if identity_pct >= 100.0:
-        return "perfect"
-    elif identity_pct >= 99.5:
-        return "high"
-    elif identity_pct >= 97.0:
-        return "good"
-    elif identity_pct >= 95.0:
-        return "moderate"
-    else:
-        return "low"
 
 
 # ============================================================================

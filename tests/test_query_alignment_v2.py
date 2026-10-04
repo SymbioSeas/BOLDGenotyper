@@ -87,6 +87,3 @@ def test_unrelated_sequence_has_low_coverage():
     assert r.overlap_coverage < 0.5
 
 
-def test_classify_match_quality_is_deprecated():
-    with pytest.deprecated_call():
-        assert hq.classify_match_quality(100.0) == "perfect"

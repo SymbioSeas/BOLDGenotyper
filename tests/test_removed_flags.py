@@ -41,3 +41,14 @@ def test_main_exits_2(monkeypatch, capsys):
 def test_query_returns_2(capsys):
     assert cli.main_query(["--query", "q.fasta", "--haplotypes", "h.fasta", "--tie-margin", "0.005"]) == 2
     assert "--tie-margin was removed in 2.0.0" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("module,name", [
+    ("quality_control", "detect_depositor_uncertainty"),
+    ("quality_control", "add_contamination_columns"),
+    ("haplotype_query", "classify_match_quality"),
+    ("divergence_analysis", "analyze_barcoding_gap"),
+])
+def test_deprecated_functions_removed(module, name):
+    import importlib
+    assert not hasattr(importlib.import_module(f"boldgenotyper.{module}"), name)

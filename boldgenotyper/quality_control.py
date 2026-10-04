@@ -429,15 +429,6 @@ def find_keyword_hits(note) -> List[str]:
     return [kw for _, kw in sorted(found)]
 
 
-def detect_depositor_uncertainty(note: str) -> Tuple[bool, str, str]:
-    """Deprecated: categories are no longer assigned; use find_keyword_hits."""
-    import warnings
-    warnings.warn("detect_depositor_uncertainty is deprecated; use find_keyword_hits",
-                  DeprecationWarning, stacklevel=2)
-    hits = find_keyword_hits(note)
-    return bool(hits), "", hits[0] if hits else ""
-
-
 def record_labels(df: pd.DataFrame, species_col: str = "species",
                   genus_col: str = "genus") -> pd.Series:
     """Species label, or genus when the species is missing; '' when neither."""
@@ -522,15 +513,6 @@ def add_label_columns(
     df['has_depositor_keyword_hit'] = hits.map(bool)
     df['depositor_notes'] = notes
     return df
-
-
-def add_contamination_columns(df, group_col="haplotype_id", species_col="species",
-                              notes_col="notes", majority_threshold=0.7):
-    """Deprecated: renamed add_label_columns (label conflicts, not contamination)."""
-    import warnings
-    warnings.warn("add_contamination_columns is deprecated; use add_label_columns",
-                  DeprecationWarning, stacklevel=2)
-    return add_label_columns(df, group_col=group_col, species_col=species_col, notes_col=notes_col)
 
 
 def summarize_haplotype_labels(df: pd.DataFrame, group_col: str = "haplotype_id") -> pd.DataFrame:
