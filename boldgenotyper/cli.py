@@ -2995,9 +2995,11 @@ For more information:
                 "unmatched_ids": unmatched,
             }
         if reference is not None:
-            query_overlays.write_query_regions(
-                query_overlays.query_regions_table(calls, query_meta, reference),
-                output_dir / "query_figures")
+            figures, figure_warnings = query_overlays.write_query_figures(
+                calls, query_meta, reference, output_dir / "query_figures")
+            qprov["figures"] = {name: [str(p.relative_to(output_dir)) for p in paths]
+                                for name, paths in figures.items()}
+            qprov["warnings"] += figure_warnings
         query_outputs.write_query_provenance(qprov, output_dir)
         query_outputs.write_query_readme(output_dir, qprov)
         query_outputs.write_query_provenance(qprov, output_dir)      # now lists README.md too

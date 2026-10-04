@@ -91,3 +91,31 @@ def test_query_regions_table(tmp_path, ref_run):
     assert win["n_queries"] == 1 and win["query_ids"] == "win" and win["n_reference_records"] > 0
     prov = json.loads((out / "query_provenance.json").read_text())
     assert prov["query_metadata"]["n_matched"] == 3 and prov["query_metadata"]["unmatched_ids"] == ["extra"]
+
+
+@needs_fasttree
+def test_figures_with_a_tree_and_metadata(tmp_path, ref_run):
+    out = _run_query(tmp_path, ref_run)
+    figs = out / "query_figures"
+    for name in ("query_tree", "query_map", "query_regions", "query_timeline"):
+        assert (figs / f"{name}.pdf").exists(), name
+        assert list((figs / name).glob("*.svg")), name
+    tree_svg = (figs / "query_tree" / "Genus.svg").read_text()
+    assert "win" in tree_svg and "Not placed: none" in tree_svg
+    assert {p.stem for p in (figs / "query_map").glob("*.svg")} == {"Genus_alpha", "Genus_gamma"}
+    prov = json.loads((out / "query_provenance.json").read_text())
+    assert prov["warnings"] == [] and "query_tree" in prov["figures"]
+
+
+def test_figures_without_tree_or_metadata(tmp_path):
+    ok, ref = run_synthetic(tmp_path / "ref")                  # no tree, no regions
+    assert ok
+    fasta = tmp_path / "q.fasta"
+    fasta.write_text(f">win\n{QUERIES['win']}\n")
+    out = tmp_path / "out"
+    assert cli.main_query(["--query", str(fasta), "--haplotypes", str(ref), "--output", str(out)]) == 0
+    figs = out / "query_figures"
+    assert not (figs / "query_tree.pdf").exists() and not (figs / "query_regions.pdf").exists()
+    assert (figs / "query_map.pdf").exists() and (figs / "query_timeline.pdf").exists()
+    prov = json.loads((out / "query_provenance.json").read_text())
+    assert prov["warnings"] == []
