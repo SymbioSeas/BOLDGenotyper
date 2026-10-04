@@ -39,6 +39,17 @@ def cap_items(counts: pd.Series, max_items: int = 12, noun: str = "") -> pd.Seri
     return labels
 
 
+def article(word) -> str:
+    """'an' before a vowel, else 'a' (for captions naming a column)."""
+    return "an" if str(word)[:1].lower() in "aeiou" else "a"
+
+
+def add_caption(ax, text: str) -> None:
+    """A small caption between the title and the panel."""
+    ax.text(0.0, 1.01, text, transform=ax.transAxes, fontsize=7, color="#444444",
+            ha="left", va="bottom")
+
+
 def is_other(label) -> bool:
     return str(label).startswith("Other (")
 

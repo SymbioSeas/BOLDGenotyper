@@ -34,3 +34,28 @@ def test_tree_figures(tmp_path, data):
     beta = (tmp_path / entries["tree_by_genus"]["pages"]["Beta"]).read_text()
     assert "Alpha two" in beta                               # the genus's clade holds another genus
     assert tf.full_tree_size(46) == (10, pytest.approx(0.14 * 46 + 1.0))
+
+
+from boldgenotyper import run_figures as rf
+
+
+def test_geography_figures(tmp_path, data):
+    records, haps, _ = data
+    out = rf.write_geography_figures(records, "ocean_basin", tmp_path / "geography",
+                                     tmp_path / "extended" / "geography")
+    m = out["geography"]["distribution_map"]
+    overview = (tmp_path / "geography" / "distribution_map.svg").read_text()
+    assert "Alpha one" in overview and "H0001" not in overview          # 46 haplotypes: by taxon
+    assert set(m["pages"]) == {"Alpha one", "Alpha two", "Beta three", "Beta four", "Gamma"}
+    ext = out["extended/geography"]
+    assert set(ext) == {"region_abundance_relative", "region_abundance_total"}
+    assert set(ext["region_abundance_total"]["pages"]) == {"Alpha one", "Alpha two", "Beta three", "Gamma"}
+    beta = (tmp_path / "extended" / "geography" / ext["region_abundance_total"]["pages"]["Beta three"]).read_text()
+    assert "Other (3 haplotypes)" in beta                                # 14 haplotypes: 11 + Other
+
+
+def test_small_run_overview_is_by_haplotype(tmp_path, data):
+    records, _, _ = data
+    small = records[records["assigned_sp"] == "Beta three"]
+    rf.write_geography_figures(small, "ocean_basin", tmp_path, None)
+    assert "Beta three H00" in (tmp_path / "distribution_map.svg").read_text()

@@ -336,8 +336,8 @@ def plot_query_map(calls: pd.DataFrame, meta: Optional[pd.DataFrame],
     """
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
-    from .visualization import (_add_cartopy_background, _add_map_gridlines,
-                                calculate_map_extent_with_buffer)
+    from .run_figures import map_extent
+    from .visualization import _add_cartopy_background, _add_map_gridlines
 
     if reference is None:
         return []
@@ -366,17 +366,10 @@ def plot_query_map(calls: pd.DataFrame, meta: Optional[pd.DataFrame],
         lons = pd.concat([set_recs["lon"], other["lon"], pd.Series([x[2] for x in q_ok], dtype=float)])
         if lats.empty:
             continue
-        lon_min, lon_max, lat_min, lat_max = calculate_map_extent_with_buffer(
-            lats, lons, buffer_degrees=10)
-        min_lat_span = (lon_max - lon_min) / 2.2           # avoid thin strips
-        if lat_max - lat_min < min_lat_span:
-            mid = (lat_max + lat_min) / 2
-            lat_min = max(-90.0, mid - min_lat_span / 2)
-            lat_max = min(90.0, mid + min_lat_span / 2)
-        height = min(9.0, max(4.0, 11 * (lat_max - lat_min) / max(lon_max - lon_min, 1e-6)))
-        fig = plt.figure(figsize=(11, height))
+        extent, size = map_extent(lats, lons)
+        fig = plt.figure(figsize=size)
         ax = plt.axes(projection=ccrs.PlateCarree())
-        ax.set_extent((lon_min, lon_max, lat_min, lat_max), crs=ccrs.PlateCarree())
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
         _add_cartopy_background(ax, detail_level="simple")
         _add_map_gridlines(ax)
         if len(other):
