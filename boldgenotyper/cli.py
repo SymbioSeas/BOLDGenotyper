@@ -49,7 +49,7 @@ from . import (
     divergence_analysis, parameter_sweep, geographic_enhancement,
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
-    run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays,
+    run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays, query_report,
 )
 from . import taxon_curation as taxon_curation_mod
 from . import __version__
@@ -2971,10 +2971,10 @@ For more information:
             reference_fasta, n_reference, reference_run, parameters, curation_provenance)
         calls = query_outputs.calls_table(verdicts, reference_run, record_matches)
         query_outputs.write_calls(calls, output_dir)
-        query_outputs.write_candidates(query_outputs.candidates_table(
+        candidates = query_outputs.candidates_table(
             results, verdicts, haplotypes=metadata, haplotype_taxa=haplotype_taxa,
-            min_identity=args.assign_identity, min_query_coverage=args.min_query_coverage),
-            output_dir)
+            min_identity=args.assign_identity, min_query_coverage=args.min_query_coverage)
+        query_outputs.write_candidates(candidates, output_dir)
         query_outputs.write_alignments(results, verdicts, output_dir, reference_run=reference_run,
                                        haplotypes=metadata, haplotype_file=reference_fasta)
         if args.json:
@@ -2994,12 +2994,18 @@ For more information:
                 "n_matched": n_rows - len(unmatched),
                 "unmatched_ids": unmatched,
             }
+        figures = {}
         if reference is not None:
             figures, figure_warnings = query_overlays.write_query_figures(
                 calls, query_meta, reference, output_dir / "query_figures")
             qprov["figures"] = {name: [str(p.relative_to(output_dir)) for p in paths]
                                 for name, paths in figures.items()}
             qprov["warnings"] += figure_warnings
+        best_alignments = {}
+        for r in results:                       # results are in rank order per query
+            best_alignments.setdefault(r.query_id, haplotype_query.format_alignment_display(r, width=100))
+        query_report.generate_query_report(output_dir, calls, candidates, qprov, figures,
+                                           best_alignments)
         query_outputs.write_query_provenance(qprov, output_dir)
         query_outputs.write_query_readme(output_dir, qprov)
         query_outputs.write_query_provenance(qprov, output_dir)      # now lists README.md too
