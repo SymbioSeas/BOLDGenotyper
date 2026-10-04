@@ -1,15 +1,14 @@
-"""Report tables: truncation notices give the table's true length."""
+"""Report tables show ten rows and say how many more are in which file (Phase 8, 12)."""
 
 import pandas as pd
 
-from boldgenotyper import reports
+from boldgenotyper.report import page
 
 
 def test_truncation_notice_counts_all_rows():
-    html = reports._dataframe_to_html(pd.DataFrame({"a": range(25)}), max_rows=10)
-    assert "Showing first 10 rows of 25 total" in html
+    html = page.table(pd.DataFrame({"a": range(25)}), ["a"], file="records.csv")
+    assert "15 more in <code>records.csv</code> (25 in all)" in html
 
 
 def test_no_notice_when_not_truncated():
-    html = reports._dataframe_to_html(pd.DataFrame({"a": range(5)}), max_rows=10)
-    assert "Showing first" not in html
+    assert "more" not in page.table(pd.DataFrame({"a": range(5)}), ["a"])

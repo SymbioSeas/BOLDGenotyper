@@ -51,6 +51,7 @@ from . import divergence_analysis
 from . import species_analysis
 from . import metadata_summary
 from . import reports
+from . import report
 from . import plot_export
 from . import plot_regeneration
 from . import popgen_export
@@ -58,6 +59,7 @@ from . import parameter_sweep
 from . import msa_visualization
 
 __all__ = [
+    "report",
     "config",
     "utils",
     "quality_control",

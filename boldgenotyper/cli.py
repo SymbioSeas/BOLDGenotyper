@@ -51,6 +51,7 @@ from . import (
     run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays, query_report,
     run_figures,
 )
+from . import report as run_report
 from . import taxon_curation as taxon_curation_mod
 from . import __version__
 
@@ -1565,35 +1566,6 @@ def run_pipeline(
         step_warnings.record("13 output layout", e)
         logger.debug("Output layout error details:", exc_info=True)
 
-    # ========================================================================
-    # HTML Summary Report (built from the staged files)
-    # ========================================================================
-    html_report_path = None
-    if not no_report:
-        logger.info("")
-        logger.info("Generating HTML summary report...")
-        try:
-            html_report_path = reports.generate_html_report(
-                organism=organism,
-                output_dir=output_dir,
-                version=__version__,
-                staging_dir=dirs['base'],
-                links=moves,
-                provenance=prov.to_dict(),
-            )
-            if html_report_path:
-                logger.info(f"  Generated HTML report: {html_report_path}")
-            else:
-                step_warnings.record("12 HTML report", "report generation returned no file")
-        except ImportError as e:
-            step_warnings.record("12 HTML report", f"{e} (install jinja2: pip install jinja2)")
-        except Exception as e:
-            step_warnings.record("12 HTML report", e)
-            logger.debug("HTML report error details:", exc_info=True)
-    else:
-        logger.info("")
-        logger.info("HTML report generation skipped (--no-report)")
-
     # Place staged files at their v2 paths; per-species records with --extended
     try:
         placed = layout.apply_moves(moves, output_dir)
@@ -1621,6 +1593,22 @@ def run_pipeline(
         remove_empty_directories(output_dir)
     except Exception as e:
         logger.debug(f"Directory cleanup encountered minor issues: {e}")
+
+    # HTML report from the final run folder; written before the README, which lists it
+    html_report_path = None
+    if not no_report:
+        logger.info("")
+        logger.info("Generating HTML summary report...")
+        try:
+            html_report_path = run_report.generate_html_report(output_dir, organism, prov.to_dict(),
+                                                               __version__)
+            logger.info(f"  Generated HTML report: {html_report_path}")
+        except Exception as e:
+            step_warnings.record("13 HTML report", e)
+            logger.debug("HTML report error details:", exc_info=True)
+    else:
+        logger.info("")
+        logger.info("HTML report generation skipped (--no-report)")
 
     # Run README: every file and column (P2)
     try:
