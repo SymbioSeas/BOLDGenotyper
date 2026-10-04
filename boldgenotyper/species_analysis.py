@@ -23,6 +23,7 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict
 
+from . import utils
 from .taxon_labels import haplotype_species_map
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def aggregate_samples_by_species(
     # Merge metadata with species composition
     # First, ensure primary_species_pct is numeric
     species_composition = species_composition.copy()
-    if species_composition['primary_species_pct'].dtype == 'object':
+    if utils.is_text_series(species_composition['primary_species_pct']):
         species_composition['primary_species_pct'] = (
             species_composition['primary_species_pct']
             .str.rstrip('%')

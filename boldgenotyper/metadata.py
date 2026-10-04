@@ -65,6 +65,8 @@ import csv
 from functools import partial
 import multiprocessing as mp
 
+from . import utils
+
 # Try to import edlib for fast edit distance
 try:
     import edlib
@@ -201,8 +203,9 @@ def parse_bold_tsv(
             logger.info(f"After removing duplicates: {len(df)} rows remaining")
 
     # Clean up whitespace in string columns
-    for col in df.select_dtypes(include=['object']).columns:
-        df[col] = df[col].str.strip() if df[col].dtype == 'object' else df[col]
+    for col in df.columns:
+        if utils.is_text_series(df[col]):
+            df[col] = df[col].str.strip()
 
     # Log data quality statistics
     _log_data_quality(df)

@@ -79,7 +79,7 @@ from Bio import SeqIO, AlignIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-from . import haplotype_ids
+from . import haplotype_ids, utils
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1286,7 +1286,7 @@ def identify_haplotypes(
     # Also drop if all values are empty strings or False
     for c in orf_cols:
         if c in haplotype_stats.columns and c not in cols_to_drop:
-            if haplotype_stats[c].dtype == 'object' and (haplotype_stats[c] == '').all():
+            if utils.is_text_series(haplotype_stats[c]) and (haplotype_stats[c] == '').all():
                 cols_to_drop.append(c)
             elif haplotype_stats[c].dtype == 'bool' and not haplotype_stats[c].any():
                 cols_to_drop.append(c)

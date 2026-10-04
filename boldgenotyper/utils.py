@@ -752,6 +752,12 @@ def extract_processid_from_header(header: str) -> Optional[str]:
 # ============================================================================
 import pandas as pd
 
+
+def is_text_series(series: pd.Series) -> bool:
+    """True for text columns: object dtype or pandas' string dtypes (pandas 3 reads text as str)."""
+    return series.dtype == object or pd.api.types.is_string_dtype(series)
+
+
 def _norm_species(s: str) -> str:
     if pd.isna(s):
         return ""
