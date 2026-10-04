@@ -1267,8 +1267,9 @@ reports evidence that does not depend on the haplotype's own majority, for every
   below 0.70 is not counted as evidence.
 - **Tree**: `tree_sister_taxon` and `tree_sister_support`. Walking from the haplotype's tip
   toward the root, the first clade that holds another species-level haplotype; its taxon
-  when those haplotypes share one. The tree is unrooted unless you set an outgroup, so a
-  clade next to the root is approximate.
+  when those haplotypes share one. A clade with support below 0.70 is not counted as
+  evidence. The tree is unrooted unless you set an outgroup, so a clade next to the root is
+  approximate.
 - **Label sources**: `label_sources` counts the records, BOLD projects (processid prefix;
   GenBank accession prefix for records mined from GenBank) and institutions behind each
   label. Many records from one project may be one identification repeated. The counts are

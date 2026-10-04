@@ -183,7 +183,8 @@ FILE_DOCS = [
                               "haplotype: their shared taxon; empty when they differ or no tree "
                               "was built",
          "tree_sister_support": "that clade's support value (FastTree SH-like local support, "
-                                "0 to 1)",
+                                "0 to 1); below 0.70 the tree does not count toward a "
+                                "suggestion",
          "suggested_sp": "for haplotypes neither at species level nor curated: a taxon named "
                          "by at least two evidence lines and contradicted by none (see "
                          "Taxonomy). Never applied",
@@ -487,7 +488,8 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "lines that do not use its own majority: distance (its nearest species-level "
               "haplotype lies within that taxon's spread, `within_taxon_spread`), BIN (the "
               "members' most common BIN has one species-level label at 0.70 or more of its "
-              "QC-passed records) and tree (`tree_sister_taxon`). For a haplotype neither at "
+              "QC-passed records) and tree (`tree_sister_taxon`, when `tree_sister_support` is "
+              "0.70 or more). For a haplotype neither at "
               "species level nor curated, `suggested_sp` is a taxon at least two lines name "
               "and none contradicts. A suggestion is never applied: check it, and record an "
               "accepted call in a curation file with its reason. The tree is unrooted unless an "

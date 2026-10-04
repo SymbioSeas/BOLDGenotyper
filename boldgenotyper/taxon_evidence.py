@@ -27,8 +27,8 @@ Columns (EVIDENCE_COLUMNS), one row per haplotype::
     suggested_sp                for haplotypes neither at species level nor curated:
                                 a taxon named by at least two of the three lines
                                 (distance within the taxon's spread; BIN taxon at
-                                BIN_MAJORITY or more; tree sister) and contradicted
-                                by none
+                                BIN_MAJORITY or more; tree sister with support at
+                                TREE_MIN_SUPPORT or more) and contradicted by none
     suggestion_basis            which lines agree, or why there is no suggestion
 
 Distances are dereplication's p-distance over the aligned core sequences, the
@@ -53,6 +53,7 @@ EVIDENCE_COLUMNS = [
     "suggestion_basis",
 ]
 BIN_MAJORITY = 0.70
+TREE_MIN_SUPPORT = 0.70
 _TOL = 1e-12
 
 
@@ -159,7 +160,7 @@ def _tree_sisters(tree_path, species_taxon: Dict[str, str], ids: List[str]) -> D
     return out
 
 
-def _suggest(dist_taxon, bin_taxon, tree_taxon):
+def _suggest(dist_taxon, bin_taxon, tree_taxon, abstained=""):
     lines = [(name, t) for name, t in (("distance", dist_taxon), ("BIN", bin_taxon),
                                        ("tree", tree_taxon)) if t]
     named = {t for _, t in lines}
@@ -167,9 +168,10 @@ def _suggest(dist_taxon, bin_taxon, tree_taxon):
         return lines[0][1], ", ".join(name for name, _ in lines) + " agree"
     if len(named) > 1:
         return "", "evidence disagrees: " + "; ".join(f"{name} {t}" for name, t in lines)
+    why = f"; {abstained}" if abstained else ""
     if lines:
-        return "", f"insufficient evidence ({lines[0][0]} {lines[0][1]} only)"
-    return "", "insufficient evidence (no line names a taxon)"
+        return "", f"insufficient evidence ({lines[0][0]} {lines[0][1]} only{why})"
+    return "", f"insufficient evidence (no line names a taxon{why})"
 
 
 def compute_evidence(taxonomy: pd.DataFrame, records: pd.DataFrame,
@@ -249,8 +251,14 @@ def compute_evidence(taxonomy: pd.DataFrame, records: pd.DataFrame,
         else:
             dist_taxon = (row["nearest_species_taxon"] if row["within_taxon_spread"] is True else "")
             bin_line = bin_major if bin_major and bin_frac >= BIN_MAJORITY - _TOL else ""
+            tree_line, abstained = row["tree_sister_taxon"], ""
+            support = row["tree_sister_support"]
+            if tree_line and not (support >= TREE_MIN_SUPPORT - _TOL):
+                tree_line = ""
+                abstained = (f"tree support {support:.2f} below {TREE_MIN_SUPPORT:.2f}"
+                             if not np.isnan(support) else "tree clade has no support value")
             row["suggested_sp"], row["suggestion_basis"] = _suggest(
-                dist_taxon, bin_line, row["tree_sister_taxon"])
+                dist_taxon, bin_line, tree_line, abstained)
         rows.append(row)
     out = pd.DataFrame(rows, columns=["haplotype_id"] + EVIDENCE_COLUMNS)
     out["within_taxon_spread"] = out["within_taxon_spread"].astype(object)

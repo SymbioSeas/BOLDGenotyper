@@ -108,3 +108,19 @@ def test_curated_haplotypes_get_no_suggestion_and_missing_columns_are_empty():
     assert ev.loc["H1", "nearest_species_haplotype"] == "H2"
     assert np.isnan(ev.loc["H1", "taxon_max_within_distance"])
     assert pd.isna(ev.loc["H1", "within_taxon_spread"])
+
+
+def test_weakly_supported_tree_sister_does_not_count(tmp_path):
+    tree = tmp_path / "t.nwk"
+    tree.write_text("((H3:0.01,(H1:0.01,H2:0.01)0.9:0.01)0.5:0.02,H4:0.2);")
+    recs = _records()
+    recs["bin_uri"] = ""
+    ev = te.compute_evidence(TAX, recs, SEQS, tree).set_index("haplotype_id")
+    h3 = ev.loc["H3"]
+    assert h3["tree_sister_taxon"] == "Genus alpha" and h3["tree_sister_support"] == 0.5
+    assert h3["suggested_sp"] == ""
+    assert h3["suggestion_basis"] == ("insufficient evidence (distance Genus alpha only; "
+                                      "tree support 0.50 below 0.70)")
+    tree.write_text("((H3:0.01,(H1:0.01,H2:0.01)0.9:0.01)0.7:0.02,H4:0.2);")
+    ev = te.compute_evidence(TAX, recs, SEQS, tree).set_index("haplotype_id")
+    assert ev.loc["H3", "suggestion_basis"] == "distance, tree agree"
