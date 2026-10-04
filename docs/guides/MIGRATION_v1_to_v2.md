@@ -441,18 +441,24 @@ mismatch); v1's main distribution map also failed silently. v2 writes them.
 |---|---|---|
 | `--extended` | — | new: write `extended/` (metadata cross-tabs, collection-date summaries, label-based gap, species tables, MSA plots, extra figures) |
 | `--plot-kit` | — | new: write `plots/` |
-| `--no-export-plot-data` | skip `plots/` (written by default) | deprecated no-op (`plots/` only with `--plot-kit`) |
+| `--no-export-plot-data` | skip `plots/` (written by default) | removed (`plots/` only with `--plot-kit`) |
 | `--export-format` | default `all` | default none: `exports/` only when given |
-| `--no-export-format` | skip `exports/` | deprecated no-op |
+| `--no-export-format` | skip `exports/` | removed (`exports/` only with `--export-format`) |
 | `--no-metadata-summary` | skip the metadata step | only drops the cross-tabs `--extended` adds; `metadata_coverage.csv` is always written |
+| `--no-metadata-analysis` | alias of `--no-metadata-summary` | removed; use `--no-metadata-summary` |
+| `--metadata-fields` | default included `realm`, `biome`, `ecoregion`, `geoid`, `country_iso` | default `sex`, `life_stage`, `reproduction`, `habitat`, `country/ocean`, `province/state`; name the others to summarize them (BOLD derives `realm`, `biome` and `ecoregion` from the coordinates using terrestrial ecoregions) |
 | `--no-temporal-analysis` | skip temporal outputs | only restricts what `--extended` adds |
 | `--tree-min-members` | — (fixed minimum of 3 members) | new, default 1: every non-suspect haplotype is a tip |
 | `--no-assign-corrected` | — | new: leave error-filtered singletons unassigned |
 | `--download-date` | — | new: recorded in `run_provenance.json` |
-| `--similarity-threshold`, `--tie-margin`, `--tie-threshold` | identity re-assignment | deprecated no-ops (warn) |
+| `--similarity-threshold`, `--tie-margin`, `--tie-threshold` | identity re-assignment | removed (records are mapped directly from haplotype discovery) |
 | `--singleton-distance` | default 0.005 | unchanged; recorded in `run_provenance.json`. Always pass it explicitly. |
 
-Config default changed: `msa.output_formats` is `["pdf"]` (v1: PDF and PNG).
+Config default changed: `msa.output_formats` is `["pdf"]` (v1: PDF and PNG). The
+`genotype_assignment` config section is removed; a config file that still has it loads,
+with a warning.
+
+A removed flag stops the command with one line naming what to use instead (exit status 2).
 
 ### `boldgenotyper-query`
 
@@ -460,7 +466,7 @@ Config default changed: `msa.output_formats` is `["pdf"]` (v1: PDF and PNG).
 |---|---|
 | `--min-query-coverage` | new, default 0.95 (of the shorter of query and haplotype) |
 | `--max-mismatch-delta` | new, default 0: integer differences for the equivalence set; replaces `--tie-margin` |
-| `--tie-margin` | deprecated (warns) |
+| `--tie-margin` | removed; use `--max-mismatch-delta` |
 | `--min-species-support` | new, default 0.70 |
 | `--search-records` | new: search QC-passed records (`records_qc_passed.fasta`) |
 | `--haplotypes` | accepts a v2 run folder (`haplotypes.fasta` at the root), a v1 run folder (`haplotypes/*_haplotypes.fasta`; haplotype matching only) or a FASTA file |
@@ -523,10 +529,13 @@ of the final run.
 
 | v1 | v2 |
 |---|---|
-| `quality_control.add_contamination_columns` | `add_label_columns` (old name warns) |
-| `quality_control.detect_depositor_uncertainty` | `find_keyword_hits` (old name warns) |
-| `haplotype_query.classify_match_quality` | deprecated (warns) |
-| `reports.generate_html_report(organism, output_dir, version)` | adds `staging_dir`, `report_path`, `links`; writes `report.html` |
+| `quality_control.add_contamination_columns` | removed; use `add_label_columns` |
+| `quality_control.detect_depositor_uncertainty` | removed; use `find_keyword_hits` |
+| `haplotype_query.classify_match_quality` | removed (identity labels are no longer reported) |
+| `divergence_analysis.analyze_barcoding_gap` | removed; `compute_label_based_gap` (`--extended`) |
+| `haplotype_assignment` (identity-based assignment), `config.GenotypeAssignmentConfig` | removed: records are mapped directly from haplotype discovery |
+| `visualization.plot_identity_distribution`, `plot_identity_by_status`, `plot_assignment_status`; `reports.generate_taxonomy_conflicts_report`, `generate_consensus_characterization`, `generate_sequence_quality_metrics` | removed (identity scores and the v1 files they read no longer exist) |
+| `reports.generate_html_report(organism, output_dir, version)` | adds `staging_dir`, `report_path`, `links`, `provenance`; writes `report.html` |
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |
 | `utils.assign_consensus_taxonomy` | label-based rule (5.6) |
 | — | `layout` (`build_records_table`, `build_haplotypes_table`, `FILE_MAP`), `run_readme`, `provenance`, `record_status`, `haplotype_ids`, `taxon_labels` |

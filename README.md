@@ -837,11 +837,6 @@ boldgenotyper --help
 | `--log-level` | String | INFO | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
 | `--version` | Flag | - | Show version and exit |
 
-**Deprecated** (accepted with a warning, no effect; to be removed): `--similarity-threshold`,
-`--tie-margin`, `--tie-threshold` (the haplotype workflow maps records directly, with no
-identity re-assignment), `--no-export-plot-data` (the plot kit is opt-in), `--no-export-format`
-(exports are opt-in).
-
 ### Parameter Details
 
 #### `--singleton-distance` (default: 0.005)
@@ -929,7 +924,6 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 | `--min-species-support` | Float | 0.70 | Minimum share of counted labels for a species call |
 | `--search-records` | Flag | False | Also search QC-passed records (`records_qc_passed.fasta`) |
 | `--min-length`, `--max-length` | Integer | 100, 2000 | Query length limits |
-| `--tie-margin` | Float | - | Deprecated: use `--max-mismatch-delta` |
 
 #### `boldgenotyper-sweep` Parameters
 
@@ -1177,7 +1171,7 @@ parameter_sweep/
 ├── group_membership_tracking.csv  # each record's haplotype (ID and seq_md5) per threshold
 ├── recommendations.txt            # haplotype-count table and stability table
 ├── README.md                      # interpretation guide
-└── runs/                          # full outputs per threshold (with --keep-intermediates)
+└── runs/                          # record and haplotype tables per threshold (full run folders with --keep-intermediates)
 ```
 
 **Key files**:

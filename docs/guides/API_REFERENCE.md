@@ -147,7 +147,6 @@ Signatures are abbreviated; see each function's docstring.
 - `summarize_haplotype_labels(df)` → one row per haplotype (labels with counts, majority, conflicts)
 - `build_label_conflicts(df, haplotype_sequences=None)` → the rows of `label_conflicts.csv`
 - `find_keyword_hits(note)` → keywords found as whole words
-- Deprecated: `add_contamination_columns`, `detect_depositor_uncertainty`
 
 ### Haplotypes — `dereplication`, `haplotype_ids`, `record_status`
 

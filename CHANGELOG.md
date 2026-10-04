@@ -41,6 +41,8 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - The input is parsed once and the log is written fresh for each run (P0-12).
 - The haplotype taxon (`assigned_sp`) uses the label-based `majority_fraction`: members without a species label are left out of the denominator; open-nomenclature labels are no longer assigned as species (P1-6).
 - Divergence outputs describe uncorrected p-distances without taxonomic threshold interpretations (P1-1).
+- `divergence/pairwise_p_distance.csv` and the per-species matrices are keyed by `haplotype_id` (display labels change when a taxon changes).
+- Default metadata fields: `sex`, `life_stage`, `reproduction`, `habitat`, `country/ocean`, `province/state`. BOLD's `realm`, `biome` and `ecoregion` (which BOLD derives from the coordinates using terrestrial ecoregions), `geoid` and `country_iso` are summarized only when named in `--metadata-fields`.
 - Depositor notes are searched for keywords as whole words; every hit is reported, without categories (P1-8).
 - "Emergence" outputs are renamed "first sampled" and describe sampling dates (P1-4).
 - Geographic coverage is reported as counts and percentages without grades (P1-9).
@@ -56,13 +58,10 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - `COMPARATIVE_ANALYSIS_GUIDE.md` compares a species-level and a family-level run by matching their `records.csv` files on `processid`; the docs no longer refer to `scripts/compare_analyses.py`, which is not distributed.
 - `FULL_DATASET_COMMANDS.md` gives the shapefiles the case-study runs use (BasinATLAS level 3 `PFAF_ID` for Salmonidae, Ecoregions2017 `REALM` for Pieridae, with the region column `biogeographic_realm` so BOLD's `ecoregion` field is kept).
 
-### Deprecated
-- `--similarity-threshold`, `--tie-margin` (pipeline), `--tie-threshold`: no effect in the haplotype workflow; they warn (P0-1).
-- `boldgenotyper-query --tie-margin`: use `--max-mismatch-delta` (Q4).
-- `--no-export-plot-data`, `--no-export-format`: no effect; the plot kit and exports are opt-in (P2).
-- `quality_control.add_contamination_columns` (use `add_label_columns`), `quality_control.detect_depositor_uncertainty` (use `find_keyword_hits`), `haplotype_query.classify_match_quality`.
-
 ### Removed
+- Flags: `--similarity-threshold`, `--tie-margin`, `--tie-threshold` (no effect: records are mapped directly from haplotype discovery), `--no-export-plot-data`, `--no-export-format` (the plot kit and exports are opt-in), the `--no-metadata-analysis` alias (use `--no-metadata-summary`), and `boldgenotyper-query --tie-margin` (use `--max-mismatch-delta`, Q4). A removed flag stops the command with one line naming its replacement.
+- Functions: `quality_control.add_contamination_columns` (use `add_label_columns`), `quality_control.detect_depositor_uncertainty` (use `find_keyword_hits`), `haplotype_query.classify_match_quality`, `divergence_analysis.analyze_barcoding_gap` (use `compute_label_based_gap`).
+- The v1 identity-based assignment module `haplotype_assignment`, the `genotype_assignment` config section (a config file that still has it loads, with a warning) and the provenance `not_applied` entry; identity plots and report helpers that read v1 files.
 - `<org>_annotated.csv`, the diagnostics, mapping, stats, taxonomy, species-composition and label-summary tables (folded into `records.csv` and `haplotypes.csv`) (P2).
 - Duplicated outputs: plot-kit copies of the FASTA and tree, the duplicate plot config, the identity regeneration script, the generic export's consensus FASTA, `visualization/json/`, `species_assignments.csv`, the metadata coverage JSON, MSA PNGs, metadata SVGs (P2, P3).
 - `potential_misidentifications.csv` confidence levels, CLEAN/CONTAMINATED/AMBIGUOUS flags, depositor-note categories (P1-6 to P1-8).
@@ -82,6 +81,9 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - Species-level divergence summaries and per-species matrices were never written (haplotype-ID mismatch).
 - The report never showed the metadata tabulations; the exports README named files that are not written; the sweep's example command used a nonexistent `--input` flag.
 - Datasets that collapse to a single haplotype no longer fail.
+- The report's Methods and Parameters tabs read the provenance written at the start of the run, so every count read "not recorded" and a built tree was reported as not built; they now use the run's final provenance.
+- Report tables said "Showing first N rows of N total" with the truncated count; they give the true count.
+- With pandas 3, text fields were not stripped of surrounding whitespace on input (pandas 3 reads text as the `str` dtype); all-empty ORF columns were kept.
 
 ## [1.0.0] - 2025
 

@@ -855,7 +855,7 @@ rare variants.
 | `elbow_plot.pdf` | Optimal-threshold detection |
 | `group_membership_tracking.csv` | Sample-level haplotype stability |
 | `recommendations.txt` | Automated interpretation and next steps |
-| `runs/` | Per-threshold pipeline outputs |
+| `runs/` | Each threshold's record and haplotype tables (used for the stability table); full run folders with --keep-intermediates |
 
 ## Reading group_membership_tracking.csv
 

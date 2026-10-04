@@ -125,7 +125,7 @@ parameter_sweep/
 ├── group_membership_tracking.csv  # each record's haplotype at each value
 ├── recommendations.txt            # haplotype-count table and stability table
 ├── README.md                      # interpretation guide
-└── runs/                          # full run folders (with --keep-intermediates)
+└── runs/                          # record and haplotype tables per threshold (full run folders with --keep-intermediates)
     ├── threshold_0_010/
     └── ...
 ```
