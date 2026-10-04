@@ -35,7 +35,7 @@ Important Notes:
   similarity for computational efficiency with large datasets.
 - Samples below the minimum identity threshold are flagged but retained
   in the output for manual review.
-- The processid field must be unique; duplicates will raise an error.
+- Duplicate processids are removed, keeping the first record, with a warning.
 
 File Naming Convention:
 

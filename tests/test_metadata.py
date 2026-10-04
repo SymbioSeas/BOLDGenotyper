@@ -137,8 +137,8 @@ class TestBoldTSVParsing:
         with pytest.raises(FileNotFoundError):
             parse_bold_tsv("nonexistent_file.tsv")
 
-    def test_duplicate_processids(self):
-        """Test error when processids are not unique."""
+    def test_duplicate_processids(self, caplog):
+        """Duplicate processids: the first record is kept and a warning logged."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.tsv', delete=False) as f:
             f.write('processid\tnuc\n')
             f.write('TEST001\tACTG\n')
@@ -146,8 +146,9 @@ class TestBoldTSVParsing:
             temp_path = f.name
 
         try:
-            with pytest.raises(ValueError, match="duplicates"):
-                parse_bold_tsv(temp_path)
+            df = parse_bold_tsv(temp_path)
+            assert len(df) == 1 and df.iloc[0]['nuc'] == 'ACTG'
+            assert "duplicate processids" in caplog.text
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)

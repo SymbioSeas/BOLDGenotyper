@@ -654,8 +654,9 @@ def validate_sequence(sequence: str, min_length: int = 100) -> Tuple[bool, str]:
     if len(seq) < min_length:
         return False, f"Sequence too short ({len(seq)} < {min_length})"
 
-    # Check for valid characters
-    valid_chars = set('ACGTN-')
+    # Check for valid characters: bases, IUPAC ambiguity codes and gaps. Only N
+    # counts toward the ambiguous fraction below, as in QC.
+    valid_chars = set('ACGTRYKMSWBDHVN-')
     invalid = set(seq) - valid_chars
     if invalid:
         return False, f"Invalid characters: {invalid}"

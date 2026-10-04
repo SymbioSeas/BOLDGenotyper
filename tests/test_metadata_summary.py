@@ -287,7 +287,8 @@ class TestVisualization(unittest.TestCase):
         metadata_analysis.plot_metadata_coverage(coverage_stats, output_path)
 
         # Check that files were created
-        self.assertTrue((Path(self.temp_dir) / 'coverage.png').exists())
+        # the PDF is written next to the given path (the PNG to a sibling png/ folder)
+        self.assertTrue((Path(self.temp_dir) / 'coverage.pdf').exists())
 
     def test_plot_categorical_by_haplotype(self):
         """Test categorical plot generation."""
@@ -299,7 +300,7 @@ class TestVisualization(unittest.TestCase):
         )
 
         # Check that files were created
-        self.assertTrue((Path(self.temp_dir) / 'categorical.png').exists())
+        self.assertTrue((Path(self.temp_dir) / 'categorical.pdf').exists())
 
 
 class TestExport(unittest.TestCase):

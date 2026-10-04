@@ -6,7 +6,7 @@ Tests cover:
 """
 
 import unittest
-from unittest.mock import patch, mock_open
+from unittest.mock import Mock, patch, mock_open
 import tempfile
 from pathlib import Path
 import subprocess

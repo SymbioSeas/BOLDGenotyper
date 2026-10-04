@@ -348,3 +348,13 @@ For questions about the test suite:
 **Last Updated**: 2025-11-18
 **Test Suite Version**: 1.0
 **Status**: ✅ Complete and Ready for JOSS Publication
+
+## Test data
+
+- `data/test_bold.tsv`: 20 synthetic records (`TESTID001`–`TESTID020`, not BOLD data) with
+  coordinate edge cases used by `test_metadata.py`: a standard `[lat, lon]` pair
+  (TESTID001), a country centroid (TESTID002), `[0, 0]` (TESTID004), no coordinate
+  (TESTID006), a space-separated pair (TESTID008), an unparseable value (TESTID013) and an
+  out-of-range pair (TESTID016).
+- `data/bold_portal_coords_2026-09-30.tsv`: coordinate fields of public BOLD portal records
+  (source and date in its header), used by `test_coordinates_portal.py`.
