@@ -11,15 +11,16 @@ Eligible match: overlap_coverage >= min_query_coverage and identity_pct >=
 alignment, haplotype ID. Equivalence set: eligible matches within
 max_mismatch_delta differences of the best.
 
-Species call: when a haplotype in the equivalence set has a curated taxon, the
-call uses the haplotypes' taxa (curated, else the label rule's): one shared
-species is called (call_basis 'haplotype taxa'); otherwise no call (flag
-curated_taxa_disagree). When none is curated, the pooled member labels are
-called at min_species_support or more (call_basis 'pooled labels').
+Species call: when a haplotype in the equivalence set has a curated or
+evidence taxon, the call uses the haplotypes' taxa (curated, evidence, else the
+label rule's): one shared species is called (call_basis 'haplotype taxa');
+otherwise no call (flag haplotype_taxa_disagree). When none has, the pooled
+member labels are called at min_species_support or more (call_basis 'pooled
+labels').
 
 Flags: indel_in_query, low_coverage, below_identity, set_not_identical,
 label_conflict_in_set, species_support_below_threshold, no_species_labels,
-no_reference_labels, curated_taxa_disagree.
+no_reference_labels, haplotype_taxa_disagree.
 """
 
 from dataclasses import dataclass, field
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Sequence
 
 from . import taxon_labels
+
+REVIEWED_SOURCES = ("curated", "evidence")    # haplotype taxa not from the pooled labels
 
 CALL_LEVELS = ("haplotype", "haplotype_set", "none")
 
@@ -158,14 +161,14 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
     support = round(pooled.support, 4) if pooled.support is not None else None
 
     taxa = haplotype_taxa or {}
-    if any(taxa.get(m.haplotype_id) and taxa[m.haplotype_id].source == "curated" for m in eq):
+    if any(taxa.get(m.haplotype_id) and taxa[m.haplotype_id].source in REVIEWED_SOURCES for m in eq):
         set_taxa = [taxa.get(m.haplotype_id) for m in eq]
         species = {t.taxon for t in set_taxa if t and t.level == "species"}
         if len(species) == 1 and all(t and t.level == "species" for t in set_taxa):
             return _verdict(best, call_level, eq, identical, pooled.text, species.pop(), support,
-                            delta, notes + "; called from haplotype taxa (one is curated)",
+                            delta, notes + "; called from haplotype taxa (one is curated or set by evidence)",
                             call_basis="haplotype taxa")
-        flags.append("curated_taxa_disagree")
+        flags.append("haplotype_taxa_disagree")
         listed = "; ".join(f"{m.haplotype_id} {t.taxon} ({t.source})" if t else
                            f"{m.haplotype_id} no taxon" for m, t in zip(eq, set_taxa))
         return _verdict(best, call_level, eq, identical, pooled.text, "", support, delta,

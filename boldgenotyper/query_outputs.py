@@ -41,8 +41,8 @@ CANDIDATE_COLUMNS = [
 POOLED_LABELS_NOTE = ("pooled_member_labels and species_support use the labels of every record "
                       "assigned to the equivalence set's haplotypes, including assigned_corrected "
                       "records; genus-only labels of the leading genus are compatible. "
-                      "call_basis 'haplotype taxa': a haplotype in the set has a curated taxon, "
-                      "so species_call is the set's shared haplotype taxon")
+                      "call_basis 'haplotype taxa': a haplotype in the set has a curated or "
+                      "evidence taxon, so species_call is the set's shared haplotype taxon")
 
 
 def _md5(path) -> Optional[str]:
@@ -297,6 +297,7 @@ def build_query_provenance(argv, query_path, n_queries: int, reference_fasta,
         "note": POOLED_LABELS_NOTE,
         "taxon_curation": taxon_curation,
         "reference_taxon_curation": None,
+        "reference_taxon_evidence": None,
         "query_metadata": None,
         "figures": {},
         "warnings": [],
@@ -331,7 +332,8 @@ _CALL_DOCS = {
     "species_call": "the species called for the query; empty when none (see call_basis)",
     "call_basis": "pooled labels (the leading species of the set's pooled member labels, at "
                   "--min-species-support or more), haplotype taxa (a haplotype in the set has a "
-                  "curated taxon: the taxon the set's haplotypes share), or empty (no call)",
+                  "curated or evidence taxon: the taxon the set's haplotypes share), or empty "
+                  "(no call)",
     "species_support": "the leading species' share of the counted pooled member labels",
     "pooled_member_labels": "labels of every member record of the set's haplotypes, with counts",
     "differences": "mismatches plus gap columns between the query and its best match, over "
@@ -344,7 +346,8 @@ _CALL_DOCS = {
              "below_identity, set_not_identical (the set's haplotypes differ over the query's "
              "region), label_conflict_in_set, species_support_below_threshold, "
              "no_species_labels, no_reference_labels (a FASTA reference or v1 run folder), "
-             "curated_taxa_disagree",
+             "haplotype_taxa_disagree (a haplotype with a curated or evidence taxon is in the "
+             "set, and the set's taxa differ or one is not at species level)",
     "n_exact_record_matches": "QC-passed reference records that contain the query unchanged or "
                               "are contained in it (--search-records); empty otherwise",
     "reference_run": "md5 of the reference run's run_provenance.json; empty for a FASTA reference",
@@ -357,7 +360,7 @@ _CANDIDATE_DOCS = {
     "haplotype_label": "its label in the reference run",
     "assigned_sp": "the haplotype's taxon (with --taxon-curation, as curated for this query)",
     "assignment_level": "species or genus",
-    "assignment_source": "labels or curated",
+    "assignment_source": "labels, evidence or curated",
     "n_members": "records assigned to the haplotype in the reference run",
     "in_equivalence_set": "the haplotype is in the query's equivalence set",
     "eligible": "the alignment covers --min-query-coverage of the shorter sequence at "
@@ -450,6 +453,9 @@ def methods_sentence(provenance: dict) -> str:
                  f"{p.get('min_species_support', 0):.2f} of the pooled labels of the member "
                  f"records of the set's haplotypes")
         sources = []
+        ref_ev = provenance.get("reference_taxon_evidence")
+        if ref_ev and ref_ev.get("n_applied"):
+            sources.append(f"{ref_ev.get('n_applied')} haplotype taxa set by evidence in the reference run")
         ref_cur = provenance.get("reference_taxon_curation")
         if ref_cur:
             sources.append(f"curation file md5 {ref_cur.get('md5')}, applied in the reference run")
@@ -457,8 +463,8 @@ def methods_sentence(provenance: dict) -> str:
         if cur:
             sources.append(f"curation file md5 {cur.get('md5')}, applied to this query run")
         if sources:
-            text += (f", or, when a haplotype in the set had a curated taxon ({'; '.join(sources)}), "
-                     f"when the set's haplotypes shared one species")
+            text += (f", or, when a haplotype in the set had a curated or evidence taxon "
+                     f"({'; '.join(sources)}), when the set's haplotypes shared one species")
         text += "."
     return text
 

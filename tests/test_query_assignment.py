@@ -156,7 +156,7 @@ def test_curated_taxa_that_disagree_give_no_call():
             "H0004": qa.HaplotypeTaxon("Genus beta", "species", "labels")}
     v = _call([_m("H0001"), _m("H0004", region="Y")], haplotype_taxa=taxa)
     assert v.species_call == "" and v.call_basis == ""
-    assert "curated_taxa_disagree" in v.flags
+    assert "haplotype_taxa_disagree" in v.flags
     assert "H0001 Genus alpha (curated)" in v.notes and "H0004 Genus beta (labels)" in v.notes
 
 
@@ -164,7 +164,14 @@ def test_curated_with_a_genus_level_member_gives_no_call():
     taxa = {"H0001": qa.HaplotypeTaxon("Genus alpha", "species", "curated"),
             "H0005": qa.HaplotypeTaxon("Genus", "genus", "labels")}
     v = _call([_m("H0001"), _m("H0005")], haplotype_taxa=taxa)
-    assert v.species_call == "" and "curated_taxa_disagree" in v.flags
+    assert v.species_call == "" and "haplotype_taxa_disagree" in v.flags
+
+
+def test_evidence_set_is_called_by_haplotype_taxa():
+    taxa = {"H0005": qa.HaplotypeTaxon("Genus alpha", "species", "evidence")}
+    v = _call([_m("H0005")], haplotype_taxa=taxa)
+    assert v.species_call == "Genus alpha" and v.call_basis == "haplotype taxa"
+    assert "one is curated or set by evidence" in v.notes
 
 
 def test_uncurated_sets_still_use_pooled_labels():

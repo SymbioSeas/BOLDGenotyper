@@ -86,7 +86,7 @@ def test_run_folder_curated_taxa_are_inherited(tmp_path, run_dir):
     s, _ = _query(tmp_path, ref, {"window": WINDOW})
     row = s.loc["window"]
     assert row["species_call"] == "" and row["call_basis"] == ""
-    assert "curated_taxa_disagree" in row["flags"]
+    assert "haplotype_taxa_disagree" in row["flags"]
 
 
 def test_reference_curation_is_recorded(tmp_path):
@@ -223,3 +223,18 @@ def test_metadata_from_v2_haplotypes_table(run_dir):
     meta = hq.load_haplotype_metadata(run_dir).set_index("haplotype_id")
     assert meta.loc["H0001", "haplotype_sp"] == "Genus alpha H0001"
     assert meta.loc["H0001", "n_members"] == 13
+
+
+def test_query_on_an_evidence_taxon(tmp_path):
+    from tests.synthetic_data import C
+    ok, ref = run_synthetic(tmp_path / "ref", split_labels=True)
+    assert ok
+    fasta = tmp_path / "q.fasta"
+    fasta.write_text(f">c_window\n{C[100:320]}\n")
+    out = tmp_path / "out"
+    assert cli.main_query(["--query", str(fasta), "--haplotypes", str(ref), "--output", str(out)]) == 0
+    row = pd.read_csv(out / "query_calls.csv").iloc[0]
+    assert row["equivalence_set"] == "H0003" and row["call_basis"] == "haplotype taxa"
+    assert row["species_call"] == "Genus alpha"
+    prov = json.loads((out / "query_provenance.json").read_text())
+    assert prov["reference_taxon_evidence"] == {"apply": True, "n_applied": 1}

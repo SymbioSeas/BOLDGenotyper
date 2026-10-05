@@ -2669,6 +2669,10 @@ For more information:
         if ref_curation:
             qprov["reference_taxon_curation"] = {
                 k: ref_curation.get(k) for k in ("path", "md5", "n_applied", "n_not_applied")}
+        ref_evidence = (reference.provenance.get("applied", {}).get("taxon_evidence")
+                        if reference is not None else None)
+        if ref_evidence:
+            qprov["reference_taxon_evidence"] = {k: ref_evidence.get(k) for k in ("apply", "n_applied")}
         if query_meta is not None:
             unmatched = query_meta.attrs.get("unmatched_ids", [])
             n_rows = query_meta.attrs.get("n_rows", len(query_meta))
