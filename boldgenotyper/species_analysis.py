@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 def aggregate_samples_by_species(
     annotated_metadata: pd.DataFrame,
     species_composition: pd.DataFrame,
-    min_confidence: float = 0.7,
     output_dir: Optional[Path] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -44,8 +43,6 @@ def aggregate_samples_by_species(
         Metadata with haplotype assignments (processid, haplotype_id, etc.)
     species_composition : pd.DataFrame
         Haplotype species composition (haplotype_id, primary_species, etc.)
-    min_confidence : float, optional
-        Minimum primary_species_pct to include (default: 0.7 = 70%)
     output_dir : Path, optional
         Directory to save output files
 
@@ -57,11 +54,10 @@ def aggregate_samples_by_species(
 
     Notes
     -----
-    Haplotypes with ambiguous taxonomy (primary_species_pct < min_confidence)
-    are excluded from species-level aggregation but retained in haplotype-level
-    analyses.
+    Haplotypes not assigned at species level (is_ambiguous) are excluded from
+    species-level aggregation but retained in haplotype-level analyses.
     """
-    logger.info(f"Aggregating samples by species (min_confidence={min_confidence:.0%})")
+    logger.info("Aggregating samples by species (species-level haplotypes)")
 
     # Merge metadata with species composition
     # First, ensure primary_species_pct is numeric
@@ -85,10 +81,7 @@ def aggregate_samples_by_species(
     # Ensure is_ambiguous is boolean (may contain NaN floats)
     is_not_ambiguous = species_assignments['is_ambiguous'].fillna(False) == False
 
-    confident_assignments = species_assignments[
-        (species_assignments['primary_species_pct'] >= min_confidence) &
-        is_not_ambiguous
-    ].copy()
+    confident_assignments = species_assignments[is_not_ambiguous].copy()
 
     n_total = len(species_assignments)
     n_confident = len(confident_assignments)

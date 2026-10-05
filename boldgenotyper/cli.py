@@ -994,13 +994,11 @@ def run_pipeline(
                 'majority_fraction': 'primary_species_pct'
             })
 
-            # Determine if haplotype is ambiguous
-            # Ambiguous if: (1) assignment_level is not 'species', or (2) majority_fraction < 0.7
-            # fillna(True) ensures NaN values are treated as ambiguous (safe default)
+            # A haplotype counts toward its species when it is assigned at species level,
+            # by labels, evidence or curation (a curated or evidence taxon can have a low
+            # majority_fraction)
             species_composition['is_ambiguous'] = (
-                (species_composition['assignment_level'] != 'species') |
-                (species_composition['primary_species_pct'] < 0.7)
-            ).fillna(True).astype(bool)
+                species_composition['assignment_level'] != 'species').astype(bool)
 
             # Determine if haplotype has multiple species (check species_counts for multi-species haplotypes)
             species_composition['is_multi_species'] = False  # Will be updated below
@@ -1017,7 +1015,6 @@ def run_pipeline(
             species_assignments, species_summary = species_analysis.aggregate_samples_by_species(
                 annotated_metadata=df_final,
                 species_composition=species_composition,
-                min_confidence=0.7,
                 output_dir=dirs['species_analysis']
             )
 
