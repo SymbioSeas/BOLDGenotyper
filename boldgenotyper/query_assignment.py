@@ -266,7 +266,7 @@ def load_record_table(run_dir) -> tuple:
 def load_reference_run(path) -> Optional[dict]:
     """The reference_run block (Q9) for a v2 run folder; None otherwise.
 
-    provenance_md5 (md5 of run_provenance.json; used as reference_run_id),
+    provenance_md5 (md5 of run_provenance.json; the reference_run column of query_calls.csv),
     boldgenotyper_version, n_haplotypes, run_date, input_md5, download_date,
     path.
     """

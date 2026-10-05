@@ -77,7 +77,7 @@ FILE_DOCS = [
     {"pattern": "run_provenance.json",
      "text": "Full configuration, the values the run applied (core length, cutoffs, tree tips), "
              "tool versions, random seeds, input file md5 and row count, data notes, warnings and "
-             "run status. boldgenotyper-query reports its md5 as reference_run_id."},
+             "run status. boldgenotyper-query reports its md5 as reference_run."},
     {"pattern": "*_pipeline.log", "text": "Run log; it ends with a summary of warnings and the run status."},
     {"pattern": "report.html",
      "text": "Summary report. Open it from this folder: figures are linked, not embedded."},
