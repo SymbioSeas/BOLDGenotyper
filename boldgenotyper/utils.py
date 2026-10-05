@@ -789,11 +789,12 @@ def assign_consensus_taxonomy(
     left out of the denominator; genus-only and open labels of another genus
     count against. Ties for most common species fall back to genus.
 
+    assign_table also reports leading_species (the rule's leading species-level
+    label; '' when there is none or two tie) and n_species_labels (distinct
+    species-level labels), read by taxon_evidence.apply_evidence.
+
     Returns:
-      - assign_table: one row per consensus_group with chosen assigned_sp (+metadata);
-        leading_species and n_species_labels are the rule's leading species-level
-        label ('' when there is none or two tie) and the number of distinct
-        species-level labels (read by taxon_evidence.apply_evidence)
+      - assign_table: one row per consensus_group with chosen assigned_sp (+metadata)
       - species_counts: long table of counts per (consensus_group, species)
 
     Parameters

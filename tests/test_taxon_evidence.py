@@ -1,4 +1,4 @@
-"""Evidence for a haplotype's taxon (never applied)."""
+"""Evidence for a haplotype's taxon, and the evidence taxa it sets."""
 
 import numpy as np
 import pandas as pd

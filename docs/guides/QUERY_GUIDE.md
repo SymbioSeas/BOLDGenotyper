@@ -107,11 +107,11 @@ is called when it holds at least `--min-species-support` (0.70) of the counted l
 (genus-only labels of the leading genus are compatible). `species_support` is that share.
 `call_basis` is then `pooled labels`.
 
-When a haplotype in the set has a **curated taxon** (see below), the call comes from the
-haplotypes' taxa instead: the taxon they all share is called, with `call_basis`
-`haplotype taxa`; if their taxa differ, or one is not at species level, there is no call
-and the flag `curated_taxa_disagree` is set. `species_support` still reports the pooled
-labels, so you can see both.
+When a haplotype in the set has a **curated or evidence taxon** (see below), the call
+comes from the haplotypes' taxa instead: the taxon they all share is called, with
+`call_basis` `haplotype taxa`; if their taxa differ, or one is not at species level, there
+is no call and the flag `haplotype_taxa_disagree` is set. `species_support` still reports
+the pooled labels, so you can see both.
 
 No identity value is read as "same species" or "same genus"; the numbers are reported.
 
@@ -127,7 +127,7 @@ No identity value is read as "same species" or "same genus"; the numbers are rep
 | `species_support_below_threshold` | the leading species is below `--min-species-support` |
 | `no_species_labels` | the set's members have no species-level labels |
 | `no_reference_labels` | the reference is a FASTA or a 1.0.0 run folder |
-| `curated_taxa_disagree` | a curated haplotype is in the set and the set's taxa differ |
+| `haplotype_taxa_disagree` | a haplotype with a curated or evidence taxon is in the set, and the set's taxa differ or one is not at species level |
 
 ---
 
@@ -187,9 +187,11 @@ sample_03,,2024-06-30,Gulf of Mexico
 
 ## Curated Haplotype Taxa
 
-If the reference run was made with `--taxon-curation`, its curated taxa are used
-automatically (they are in its `haplotypes.csv`, column `assignment_source`), and the
-methods paragraph names the run's curation file and its md5.
+The reference run's evidence and curated taxa are used automatically (they are in its
+`haplotypes.csv`, column `assignment_source`: `evidence` when the run's evidence named a
+haplotype's leading label, `curated` from a `--taxon-curation` file). The methods
+paragraph names how many taxa the reference run set by evidence, and the run's curation
+file with its md5.
 
 To try or apply a curation for one query run only:
 

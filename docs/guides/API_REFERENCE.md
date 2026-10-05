@@ -146,7 +146,7 @@ Signatures are abbreviated; see each function's docstring.
 ### Quality control and labels — `quality_control`
 
 - `apply_orientation_normalization(sequences_dict, genetic_code=2, ...)`, `apply_dynamic_qc_filters(df, sequences_dict, ...)` → oriented sequences and QC flags (`qc_pass`, `qc_fail_reason`)
-- `add_label_columns(df, group_col="haplotype_id", notes_col="notes", curated_taxa=None)` → `label`, `majority_label`, `n_majority`, `n_labeled`, `n_missing_label`, `majority_fraction`, `label_conflict`, `depositor_keyword_hits`
+- `add_label_columns(df, group_col="haplotype_id", notes_col="notes", curated_taxa=None)` (`curated_taxa`: taxa not from labels, curated or evidence) → `label`, `majority_label`, `n_majority`, `n_labeled`, `n_missing_label`, `majority_fraction`, `label_conflict`, `depositor_keyword_hits`
 - `summarize_haplotype_labels(df)` → one row per haplotype (labels with counts, majority, conflicts)
 - `build_label_conflicts(df, haplotype_sequences=None)` → the rows of `label_conflicts.csv` (`haplotype_taxon` and `assignment_source` from `assigned_sp` and `assignment_source` when `df` has them)
 - `find_keyword_hits(note)` → keywords found as whole words
@@ -164,9 +164,11 @@ Signatures are abbreviated; see each function's docstring.
 - `taxon_labels.label_level(label)` → `species`, `open`, `genus` or `missing`
 - `taxon_labels.pool_labels(labels)` → `PooledLabels` (`text`, `leading_species`, `support`, `n_leading`, `n_species_level`, `n_compatible`, `n_missing`)
 - `taxon_labels.species_count_summary(input_labels, qc_passed_labels, haplotype_taxonomy, majority_threshold)` → the `n_species_*` counts of `summary.csv`
-- `utils.assign_consensus_taxonomy(df, group_col, species_col="species", genus_col="genus", majority_threshold)` → `(assign_table, species_counts)`; `assigned_sp` is the majority species when `majority_fraction` (members without a species label left out) exceeds the threshold, otherwise the genus
-- `taxon_evidence.compute_evidence(taxonomy, records, sequences, tree_path=None)` → `haplotype_id` + `taxon_evidence.EVIDENCE_COLUMNS` (nearest species-level haplotype and spread, BINs, label sources, tree sister, `suggested_sp`, `suggestion_basis`); `taxon_evidence.label_source(processid, inst, insdc_acs)` → project code or GenBank accession prefix; `BIN_MAJORITY` (0.70)
-- `taxon_curation.load_curation(path)` → validated curation rows (raises `CurationError`); `match_curation(curation, haplotypes, sequences)` → `(applied, not_applied)`; `apply_curation(taxonomy, applied)` → taxonomy with `assignment_source`; `curated_taxa(taxonomy)` → `{haplotype_id: taxon}` of curated haplotypes
+- `utils.assign_consensus_taxonomy(df, group_col, species_col="species", genus_col="genus", majority_threshold)` → `(assign_table, species_counts)`; `assigned_sp` is the majority species when `majority_fraction` (members without a species label left out) exceeds the threshold, otherwise the genus; `leading_species` and `n_species_labels` report the rule's leading species-level label ('' when none or tied) and the number of distinct species-level labels
+- `taxon_evidence.compute_evidence(taxonomy, records, sequences, tree_path=None)` → `haplotype_id` + `taxon_evidence.EVIDENCE_COLUMNS` (nearest species-level haplotype and spread, BINs, label sources, tree sister, `suggested_sp`, `suggestion_basis`); `taxon_evidence.label_source(processid, inst, insdc_acs)` → project code or GenBank accession prefix; `BIN_MAJORITY` (0.70); `TREE_MIN_SUPPORT` (0.70; the tree line collapses branches below it)
+- `taxon_evidence.apply_evidence(taxonomy, evidence, apply=True)` → `(taxonomy, not_applied)`: genus-level haplotypes take `suggested_sp` when it is their leading label in the label rule's genus (`assignment_source` = `evidence`); `not_applied` has `NOT_APPLIED_COLUMNS` with `why_not_applied`
+- `taxon_evidence.suggestions_table(not_applied, haplotypes, sequences)` → the rows of `taxon_curation_suggestions.csv` (`SUGGESTIONS_FILE`, `SUGGESTION_COLUMNS`), a curation file
+- `taxon_curation.load_curation(path)` → validated curation rows (raises `CurationError`); `match_curation(curation, haplotypes, sequences)` → `(applied, not_applied)`; `apply_curation(taxonomy, applied)` → taxonomy with `assignment_source`; `taxa_not_from_labels(taxonomy)` → `{haplotype_id: taxon}` of curated and evidence haplotypes
 
 ### Run folder — `layout`, `run_readme`, `provenance`
 

@@ -423,10 +423,13 @@ Country counts read the BOLD portal's `country/ocean` field (v1 read a
   majority label, any species-level member of a haplotype whose top labels are
   tied, or a genus-only label of another genus.
 - New in v2: evidence columns in `haplotypes.csv` and a `suggested_sp` for
-  haplotypes left at genus (never applied), and `--taxon-curation FILE` to apply
-  checked taxa (`assignment_source` = `curated`; label conflicts of a curated
-  haplotype are judged against its taxon). See the README section "Reviewing and
-  Curating Haplotype Taxa".
+  haplotypes left at genus. A suggestion that is the haplotype's leading label in
+  the label rule's genus becomes its taxon (`assignment_source` = `evidence`;
+  `--no-evidence-taxa` turns this off); the others are written to
+  `taxon_curation_suggestions.csv`. `--taxon-curation FILE` applies checked taxa
+  (`assignment_source` = `curated`, which takes precedence). Label conflicts of a
+  haplotype with an evidence or curated taxon are judged against that taxon. See
+  the README section "Reviewing and Curating Haplotype Taxa".
 
 ### 5.7 Metadata values
 
@@ -466,6 +469,7 @@ mismatch); v1's main distribution map also failed silently. v2 writes them.
 | `--no-assign-corrected` | — | new: leave error-filtered singletons unassigned |
 | `--download-date` | — | new: recorded in `run_provenance.json` |
 | `--taxon-curation` | — | new: apply checked haplotype taxa (5.6) |
+| `--no-evidence-taxa` | — | new: report taxon evidence without applying it |
 | `--similarity-threshold`, `--tie-margin`, `--tie-threshold` | identity re-assignment | removed (records are mapped directly from haplotype discovery) |
 | `--singleton-distance` | default 0.005 | unchanged; recorded in `run_provenance.json`. Always pass it explicitly. |
 
@@ -523,7 +527,7 @@ Output files:
 | `reason` | `flags` |
 | `assign_identity`, `tie_margin` | `query_provenance.json` (`parameters`) |
 | — | `query_length`, `query_coverage`, `differences`, `n_mismatches`, `n_gaps`, `n_exact_record_matches`, `reference_run` (md5 of the reference `run_provenance.json`) |
-| — | `call_basis`: `pooled labels`, or `haplotype taxa` when a haplotype in the set has a curated taxon (no call, flag `curated_taxa_disagree`, when the set's taxa differ) |
+| — | `call_basis`: `pooled labels`, or `haplotype taxa` when a haplotype in the set has a curated or evidence taxon (no call, flag `haplotype_taxa_disagree`, when the set's taxa differ) |
 
 Development versions of 2.0.0 wrote `query_summary.csv` with `#` header lines,
 `reference_run_id`, `aligned_length` and `set_identical_over_region`; in 2.0.0 these are
