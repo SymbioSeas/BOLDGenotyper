@@ -68,8 +68,12 @@ API Reference
    api/provenance
    api/geographic
    api/geographic_enhancement
+   api/shapefile_registry
+   api/goas_downloader
    api/phylogenetics
+   api/msa_visualization
    api/divergence_analysis
+   api/species_analysis
    api/metadata_summary
    api/visualization
    api/figure_pages

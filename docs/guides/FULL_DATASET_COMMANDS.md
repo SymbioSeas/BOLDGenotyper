@@ -157,13 +157,14 @@ column. The main files:
 - `label_conflicts.csv` - label conflicts with their evidence
 - `divergence/pairwise_p_distance.csv` - p-distances between haplotypes
 - `phylogeny/tree.nwk`, `tree_labeled.nwk`, `excluded_tips.txt` - tree (from `--build-tree`)
-- `geography/haplotype_by_region.csv`, `distribution_map.pdf` - records per region (`ocean_basin`, `freshwater_basin` or `ecoregion`) and the map
+- `geography/haplotype_by_region.csv`, `distribution_map.pdf`, `distribution_map_by_species.pdf` - records per region (`ocean_basin`, `freshwater_basin` or `biogeographic_realm`), the map and one map page per taxon
 - `run_provenance.json` - configuration, tool versions, input md5, run status
-- `report.html` - interactive report (open it from the run folder)
+- `report.html` - summary report with key findings, figure menus, methods and every file (open it from the run folder)
 
 With `--extended`: `extended/species/species_diversity.csv` and species tables,
 `extended/divergence/` (label-based barcoding gap, species-level divergence,
-per-species matrices, alignment plots), `extended/metadata/`, and extra maps and bars.
+per-species matrices, alignment plots), `extended/metadata/` (tables and figures by taxon,
+haplotype and region), and `extended/geography/` (region abundance by taxon).
 
 ## Parameter Explanations
 

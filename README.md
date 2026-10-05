@@ -732,7 +732,8 @@ holds a run continues, but warns (in the log, the end-of-run summary and
 
 After a run, `boldgenotyper-query` places new COI sequences on that run's haplotypes
 without re-running the pipeline: assigning new specimens, checking field samples, or
-comparing studies.
+comparing studies. The [query guide](docs/guides/QUERY_GUIDE.md) covers the outputs,
+reporting a query, figures, curated taxa and repeat queries in detail.
 
 **Query input**: one consensus sequence per specimen in a single (multi-)FASTA, not raw
 forward/reverse Sanger reads. Gaps (`-`, `.`) and lowercase are cleaned automatically.
