@@ -458,21 +458,29 @@ def plot_query_timeline(calls: pd.DataFrame, meta: Optional[pd.DataFrame],
         fig, ax = plt.subplots(figsize=(10, 3.5))
         ax.bar(counts.index, counts.values, color=REFERENCE_GRAY, width=0.8, label="reference records")
         top = max(1, int(counts.max()) if len(counts) else 1)
-        for i, (q, yr) in enumerate(sorted(q_years, key=lambda x: x[1])):
+        # One line per year, with its number of queries; names go in the caption
+        # (a label per query overlaps when queries share or neighbor a year)
+        by_year = {}
+        for q, yr in q_years:
+            by_year.setdefault(yr, []).append(q)
+        for yr, qs in sorted(by_year.items()):
             ax.axvline(yr, color=ACCENT, linestyle="--", linewidth=1)
-            ax.annotate(q, (yr, top * (1.05 + 0.08 * (i % 4))), xytext=(3, 0),
-                        textcoords="offset points", fontsize=8, color=ACCENT, ha="left")
-        all_years = list(counts.index) + [yr for _, yr in q_years]
-        ax.set_xlim(min(all_years) - 1, max(all_years) + 1.5)
-        ax.set_ylim(0, top * 1.45)
+            ax.annotate(str(len(qs)), (yr, top * 1.05), fontsize=8, color=ACCENT, ha="center", va="bottom",
+                        bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "none"})
+        all_years = list(counts.index) + list(by_year)
+        ax.set_xlim(min(all_years) - 1, max(all_years) + 1)
+        ax.set_ylim(0, top * 1.2)
         ax.set_xlabel("collection year")
         ax.set_ylabel("records")
         call = group["species_call"].iloc[0]
         ax.set_title(f"{call + ': ' if call else ''}{eq_set}: sampling years, queries dashed",
                      fontsize=11)
         undated = [q for q in group["query_id"] if q not in dict(q_years)]
-        _caption(fig, [f"Queries without a collection date: {', '.join(undated)}"
-                       if meta is not None and undated else ""])
+        _caption(fig, [
+            "Query years (dashed; number of queries above): "
+            + "; ".join(f"{yr}: {', '.join(qs)}" for yr, qs in sorted(by_year.items())) if by_year else "",
+            f"Queries without a collection date: {', '.join(undated)}" if meta is not None and undated else "",
+        ])
         pages.append((eq_set, fig))
     return _save_pages("query_timeline", pages, out_dir)
 

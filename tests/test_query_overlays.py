@@ -33,6 +33,21 @@ def test_pruned_genus_tree_keeps_its_own_stem():
     assert tree.count_terminals() == 5
 
 
+def test_timeline_marks_each_query_year_once(tmp_path):
+    """Queries sharing a year get one line and a count; the caption names them by year."""
+    ids = ["q1", "q2", "q3", "q4"]
+    calls = pd.DataFrame({"query_id": ids, "call_level": "haplotype", "equivalence_set": "H0001",
+                          "species_call": "Genus alpha"})
+    meta = pd.DataFrame({"query_id": ids, "collection_year": [2020, 2020, 2021, None]})
+    records = pd.DataFrame({"haplotype_id": "H0001", "collection_year": [2010, 2012, 2012]})
+    ref = qv.ReferenceRun(tmp_path, records, pd.DataFrame(), {}, None, None)
+    qv.plot_query_timeline(calls, meta, ref, tmp_path)
+    svg = (tmp_path / "query_timeline" / "H0001.svg").read_text()
+    assert svg.count("stroke-dasharray") == 2
+    assert "2020: q1, q2" in svg and "2021: q3" in svg
+    assert "Queries without a collection date: q4" in svg
+
+
 def _halves(path):
     import geopandas as gpd
     from shapely.geometry import box
