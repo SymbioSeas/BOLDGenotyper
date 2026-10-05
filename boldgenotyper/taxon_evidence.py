@@ -20,15 +20,17 @@ Columns (EVIDENCE_COLUMNS), one row per haplotype::
     label_sources               per member label: records, BOLD projects (processid
                                 prefix; GenBank accession prefix for mined records)
                                 and institutions behind it
-    tree_sister_taxon           walking from the haplotype's tip toward the root, the
-                                first clade holding another species-level haplotype:
-                                their taxon when they share one, else empty
-    tree_sister_support         that clade's support value
+    tree_sister_taxon           with branches of support below TREE_MIN_SUPPORT (or
+                                none) collapsed, walking from the haplotype's tip
+                                toward the root: the first clade holding another
+                                species-level haplotype; their taxon when they share
+                                one, else empty (the root never counts)
+    tree_sister_support         that clade's support (TREE_MIN_SUPPORT or more)
     suggested_sp                for haplotypes neither at species level nor curated:
                                 a taxon named by at least two of the three lines
                                 (distance within the taxon's spread; BIN taxon at
-                                BIN_MAJORITY or more; tree sister with support at
-                                TREE_MIN_SUPPORT or more) and contradicted by none
+                                BIN_MAJORITY or more; tree sister) and contradicted
+                                by none
     suggestion_basis            which lines agree, or why there is no suggestion
 
 Distances are dereplication's p-distance over the aligned core sequences, the
@@ -123,7 +125,14 @@ def _bin_taxon(members: pd.DataFrame, qc_passed: pd.DataFrame):
 
 
 def _tree_sisters(tree_path, species_taxon: Dict[str, str], ids: List[str]) -> Dict[str, tuple]:
-    """haplotype_id -> (sister taxon or '', support) from the tree, when it exists."""
+    """
+    haplotype_id -> (sister taxon or '', support) for each of ids that is a tip
+    of the tree. Branches with support below TREE_MIN_SUPPORT, or without a
+    support value, are collapsed: walking from the tip toward the root, the
+    first clade with enough support that holds another species-level
+    haplotype is the sister clade. Its taxon is named when those haplotypes
+    share one; the root never counts.
+    """
     if not tree_path or not Path(tree_path).exists():
         return {}
     from Bio import Phylo
@@ -149,13 +158,20 @@ def _tree_sisters(tree_path, species_taxon: Dict[str, str], ids: List[str]) -> D
     for tip in tree.get_terminals():
         if tip.name not in wanted:
             continue
+        out[tip.name] = ("", np.nan)
         node = tip
         while id(node) in parent:
             node = parent[id(node)]
+            if node is tree.root:
+                break
+            s = support(node)
+            if not s >= TREE_MIN_SUPPORT - _TOL:          # collapsed; NaN fails too
+                continue
             others = [t for t in tips_below[id(node)] if t != tip.name and t in species_taxon]
             if others:
                 taxa = {species_taxon[t] for t in others}
-                out[tip.name] = ((taxa.pop(), support(node)) if len(taxa) == 1 else ("", np.nan))
+                if len(taxa) == 1:
+                    out[tip.name] = (taxa.pop(), s)
                 break
     return out
 
@@ -219,6 +235,7 @@ def compute_evidence(taxonomy: pd.DataFrame, records: pd.DataFrame,
         return spread_cache[group]
 
     sisters = _tree_sisters(tree_path, species_taxon, ids)
+    tree_read = bool(tree_path) and Path(tree_path).exists()
     rows = []
     for h in ids:
         row = {"haplotype_id": h}
@@ -252,11 +269,9 @@ def compute_evidence(taxonomy: pd.DataFrame, records: pd.DataFrame,
             dist_taxon = (row["nearest_species_taxon"] if row["within_taxon_spread"] is True else "")
             bin_line = bin_major if bin_major and bin_frac >= BIN_MAJORITY - _TOL else ""
             tree_line, abstained = row["tree_sister_taxon"], ""
-            support = row["tree_sister_support"]
-            if tree_line and not (support >= TREE_MIN_SUPPORT - _TOL):
-                tree_line = ""
-                abstained = (f"tree support {support:.2f} below {TREE_MIN_SUPPORT:.2f}"
-                             if not np.isnan(support) else "tree clade has no support value")
+            if tree_read and not tree_line:
+                abstained = ("tree: not in the tree" if h not in sisters
+                             else "tree: no supported clade names one taxon")
             row["suggested_sp"], row["suggestion_basis"] = _suggest(
                 dist_taxon, bin_line, tree_line, abstained)
         rows.append(row)

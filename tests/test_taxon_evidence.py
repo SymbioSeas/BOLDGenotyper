@@ -110,17 +110,44 @@ def test_curated_haplotypes_get_no_suggestion_and_missing_columns_are_empty():
     assert pd.isna(ev.loc["H1", "within_taxon_spread"])
 
 
+def _no_bins():
+    recs = _records()
+    recs["bin_uri"] = ""
+    return recs
+
+
+def test_tree_line_collapses_unsupported_clades(tmp_path):
+    tree = tmp_path / "t.nwk"
+    # H3's nearest clade has support 0.00 (or none); the next holds only Genus alpha
+    for newick in ("(((H3:0.01,H1:0.01)0.0:0.0,H2:0.01)0.85:0.02,H4:0.2);",
+                   "(((H3:0.01,H1:0.01):0.0,H2:0.01)0.85:0.02,H4:0.2);"):
+        tree.write_text(newick)
+        h3 = te.compute_evidence(TAX, _no_bins(), SEQS, tree).set_index("haplotype_id").loc["H3"]
+        assert h3["tree_sister_taxon"] == "Genus alpha" and h3["tree_sister_support"] == 0.85
+        assert h3["suggestion_basis"] == "distance, tree agree"
+
+
+def test_tree_line_names_no_taxon_without_a_supported_single_taxon_clade(tmp_path):
+    tree = tmp_path / "t.nwk"
+    for newick in ("(((H3:0.01,H1:0.01)0.0:0.0,H4:0.01)0.9:0.02,H2:0.2);",   # supported clade mixes taxa
+                   "((H3:0.01,H1:0.01)0.3:0.0,(H2:0.01,H4:0.2)0.4:0.1);"):   # only the root holds one
+        tree.write_text(newick)
+        h3 = te.compute_evidence(TAX, _no_bins(), SEQS, tree).set_index("haplotype_id").loc["H3"]
+        assert h3["tree_sister_taxon"] == "" and np.isnan(h3["tree_sister_support"])
+        assert h3["suggestion_basis"] == ("insufficient evidence (distance Genus alpha only; "
+                                          "tree: no supported clade names one taxon)")
+    tree.write_text("((H1:0.01,H2:0.01)0.9:0.01,H4:0.2);")
+    h3 = te.compute_evidence(TAX, _no_bins(), SEQS, tree).set_index("haplotype_id").loc["H3"]
+    assert h3["suggestion_basis"] == "insufficient evidence (distance Genus alpha only; tree: not in the tree)"
+
+
 def test_weakly_supported_tree_sister_does_not_count(tmp_path):
     tree = tmp_path / "t.nwk"
     tree.write_text("((H3:0.01,(H1:0.01,H2:0.01)0.9:0.01)0.5:0.02,H4:0.2);")
-    recs = _records()
-    recs["bin_uri"] = ""
-    ev = te.compute_evidence(TAX, recs, SEQS, tree).set_index("haplotype_id")
-    h3 = ev.loc["H3"]
-    assert h3["tree_sister_taxon"] == "Genus alpha" and h3["tree_sister_support"] == 0.5
-    assert h3["suggested_sp"] == ""
+    h3 = te.compute_evidence(TAX, _no_bins(), SEQS, tree).set_index("haplotype_id").loc["H3"]
+    assert h3["tree_sister_taxon"] == "" and h3["suggested_sp"] == ""
     assert h3["suggestion_basis"] == ("insufficient evidence (distance Genus alpha only; "
-                                      "tree support 0.50 below 0.70)")
+                                      "tree: no supported clade names one taxon)")
     tree.write_text("((H3:0.01,(H1:0.01,H2:0.01)0.9:0.01)0.7:0.02,H4:0.2);")
-    ev = te.compute_evidence(TAX, recs, SEQS, tree).set_index("haplotype_id")
-    assert ev.loc["H3", "suggestion_basis"] == "distance, tree agree"
+    ev = te.compute_evidence(TAX, _no_bins(), SEQS, tree)
+    assert ev.set_index("haplotype_id").loc["H3", "suggestion_basis"] == "distance, tree agree"

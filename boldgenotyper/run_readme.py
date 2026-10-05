@@ -178,13 +178,13 @@ FILE_DOCS = [
          "label_sources": "per member label: records, BOLD projects (processid prefix; GenBank "
                           "accession prefix for records mined from GenBank) and institutions. "
                           "Approximate: one study can span several projects",
-         "tree_sister_taxon": "walking from the haplotype's tip toward the root of "
-                              "phylogeny/tree.nwk, the first clade holding another species-level "
-                              "haplotype: their shared taxon; empty when they differ or no tree "
-                              "was built",
+         "tree_sister_taxon": "after collapsing branches of phylogeny/tree.nwk with support "
+                              "below 0.70, walking from the haplotype's tip toward the root: "
+                              "the first clade holding another species-level haplotype; their "
+                              "shared taxon. Empty when they differ, when only the root holds "
+                              "one, or when no tree was built",
          "tree_sister_support": "that clade's support value (FastTree SH-like local support, "
-                                "0 to 1); below 0.70 the tree does not count toward a "
-                                "suggestion",
+                                "0.70 or more)",
          "suggested_sp": "for haplotypes neither at species level nor curated: a taxon named "
                          "by at least two evidence lines and contradicted by none (see "
                          "Taxonomy). Never applied",
