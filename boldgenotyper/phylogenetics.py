@@ -737,6 +737,15 @@ def run_phyml(
     pass
 
 
+# FastTree writes supports with three decimals; Biopython's default ("%1.2f")
+# would round them, e.g. 0.697 to 0.70, across the tree evidence threshold.
+SUPPORT_FORMAT = "%1.3f"
+
+
+def _write_newick(tree, path) -> None:
+    Phylo.write(tree, str(path), "newick", format_confidence=SUPPORT_FORMAT)
+
+
 def _tips_below(tree) -> Dict[int, frozenset]:
     """id(clade) -> names of the tips below it."""
     below = {}
@@ -827,7 +836,7 @@ def midpoint_root_tree_file(tree_file: str, output_file: Optional[str] = None) -
     try:
         tree = Phylo.read(tree_file, "newick")
         midpoint_root_tree(tree)
-        Phylo.write(tree, output_path, "newick")
+        _write_newick(tree, output_path)
         logger.info(f"  Midpoint-rooted tree: {output_path}")
         return str(output_path)
     except Exception as e:
@@ -1016,7 +1025,7 @@ def relabel_tree_and_alignment(
                 logger.warning(f"No mapping found for tree tip: {original_name}")
 
         # Write relabeled tree
-        Phylo.write(tree, output_tree, "newick")
+        _write_newick(tree, output_tree)
         logger.info(f"Relabeled {n_relabeled} tree tips, wrote to: {output_tree}")
 
     except Exception as e:
@@ -1085,7 +1094,7 @@ def reroot_tree_by_tips(tree_file: str, tip_names, output_file: Optional[str] = 
             logger.warning(f"The {description} tips are not a clade of the tree; rooted on the smallest "
                            f"clade holding them, which has {n_extra} other tip(s)",
                            extra={"step_failure": "8 phylogeny reroot"})
-        Phylo.write(tree, output_path, "newick")
+        _write_newick(tree, output_path)
         logger.info(f"  Rooted tree on the {description} ({len(tip_names)} tip(s)): {output_path}")
         return str(output_path)
     except Exception as e:

@@ -84,3 +84,20 @@ def test_file_level_rooting(tmp_path, caplog):
     assert ph.reroot_tree_by_tips(str(f), ["A", "C"], description="outgroup FASTA") == str(f)
     assert any("not a clade" in r.getMessage() for r in caplog.records)
     assert ph.reroot_tree_by_label(str(f), "missing") is None
+
+
+def test_rooted_and_relabeled_files_keep_three_decimal_supports(tmp_path):
+    """FastTree writes supports with three decimals; Biopython's default would round 0.697 to 0.70,
+    across the tree evidence threshold."""
+    f = tmp_path / "t.nwk"
+    f.write_text(NWK.replace("0.73", "0.697"))
+    ph.midpoint_root_tree_file(str(f))
+    assert 0.697 in _splits(Phylo.read(f, "newick")).values()
+    f.write_text(NWK.replace("0.73", "0.697"))
+    ph.reroot_tree_by_tips(str(f), ["G"])
+    assert 0.697 in _splits(Phylo.read(f, "newick")).values()
+    aln, taxonomy, out = tmp_path / "aln.fasta", tmp_path / "taxonomy.csv", tmp_path / "labeled.nwk"
+    aln.write_text("".join(f">{t}\nACGT\n" for t in "ABCDEFG"))
+    taxonomy.write_text("haplotype_id,haplotype_sp\n" + "".join(f"{t},Taxon {t}\n" for t in "ABCDEFG"))
+    ph.relabel_tree_and_alignment(str(f), str(aln), str(taxonomy), str(out), str(tmp_path / "labeled.fasta"))
+    assert ")0.697:" in out.read_text()
