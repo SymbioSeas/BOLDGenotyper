@@ -790,7 +790,10 @@ def assign_consensus_taxonomy(
     count against. Ties for most common species fall back to genus.
 
     Returns:
-      - assign_table: one row per consensus_group with chosen assigned_sp (+metadata)
+      - assign_table: one row per consensus_group with chosen assigned_sp (+metadata);
+        leading_species and n_species_labels are the rule's leading species-level
+        label ('' when there is none or two tie) and the number of distinct
+        species-level labels (read by taxon_evidence.apply_evidence)
       - species_counts: long table of counts per (consensus_group, species)
 
     Parameters
@@ -842,6 +845,8 @@ def assign_consensus_taxonomy(
                 "assignment_notes": (f"majority {frac:.2f} ({pooled.n_leading} of "
                                      f"{pooled.n_species_level} counted labels)"),
                 "majority_fraction": frac,
+                "leading_species": pooled.leading_species or "",
+                "n_species_labels": pooled.n_distinct_species,
             }
         # fallback: mode genus among members of this group
         members = group_df[genus_col].replace("", np.nan).dropna()
@@ -858,6 +863,8 @@ def assign_consensus_taxonomy(
             "assignment_level": "genus" if assigned_sp else "unassigned",
             "assignment_notes": f"{reason}; fell back to genus" if assigned_sp else f"{reason}; no genus available",
             "majority_fraction": frac if frac is not None else np.nan,
+            "leading_species": pooled.leading_species or "",
+            "n_species_labels": pooled.n_distinct_species,
         }
 
     # Build assignment list by iterating through groups explicitly
@@ -884,10 +891,13 @@ def assign_consensus_taxonomy(
                 "assignment_level": "unassigned",
                 "assignment_notes": "no samples assigned; added to retain label",
                 "majority_fraction": 0.0,
+                "leading_species": "",
+                "n_species_labels": 0,
             })
 
     assign = pd.DataFrame(assign_list, columns=[group_col, "assigned_sp", "assignment_level",
-                                                "assignment_notes", "majority_fraction"])
+                                                "assignment_notes", "majority_fraction",
+                                                "leading_species", "n_species_labels"])
 
     # Ensure column order and types
     expected_cols = [group_col, "assigned_sp", "assignment_level", "assignment_notes", "majority_fraction"]

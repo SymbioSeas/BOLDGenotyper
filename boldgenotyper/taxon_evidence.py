@@ -1,7 +1,9 @@
 """Evidence for a haplotype's taxon, reported beside the label rule's call.
 
-Evidence is never applied. A suggested taxon prompts a check of the haplotype;
-a call the user accepts goes in a curation file (taxon_curation) with its reason.
+Evidence is applied only by apply_evidence: a genus-level haplotype takes the
+species its evidence names when it is the haplotype's own leading label, in the
+genus the label rule assigned. Other suggestions are written to a curation file
+(suggestions_table) for the user to accept or reject.
 
 Columns (EVIDENCE_COLUMNS), one row per haplotype::
 
@@ -40,7 +42,7 @@ definition behind nearest_distance and the label-conflict evidence.
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -278,3 +280,65 @@ def compute_evidence(taxonomy: pd.DataFrame, records: pd.DataFrame,
     out = pd.DataFrame(rows, columns=["haplotype_id"] + EVIDENCE_COLUMNS)
     out["within_taxon_spread"] = out["within_taxon_spread"].astype(object)
     return out
+
+
+EVIDENCE_SOURCE = "evidence"
+NOT_APPLIED_COLUMNS = ["haplotype_id", "suggested_sp", "suggestion_basis", "why_not_applied"]
+
+
+def _str(value) -> str:
+    return "" if value is None or (not isinstance(value, str) and pd.isna(value)) else str(value)
+
+
+def apply_evidence(taxonomy: pd.DataFrame, evidence: pd.DataFrame,
+                   apply: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Evidence taxa (design addendum of 2026-10-05, section 1).
+
+    taxonomy: the label rule's table after curation (haplotype_id, assigned_sp,
+    assignment_level, assignment_notes, assignment_source, leading_species,
+    n_species_labels). evidence: compute_evidence output for that table.
+    A haplotype the label rule left at genus (not curated) takes its
+    suggested_sp when that is its leading species label, in the genus the
+    label rule assigned: assignment_level species, assignment_source
+    'evidence', notes 'evidence: <basis>; labels: <label rule note>'.
+    Returns (taxonomy, suggestions not applied with why_not_applied). With
+    apply False no taxon changes and every suggestion is returned.
+    """
+    from .taxon_labels import genus_of
+
+    tax = taxonomy.copy()
+    if "assignment_source" not in tax.columns:
+        tax["assignment_source"] = "labels"
+    if "assignment_notes" not in tax.columns:
+        tax["assignment_notes"] = ""
+    tax["assignment_notes"] = tax["assignment_notes"].astype(object)
+    ev = evidence.set_index("haplotype_id")
+    not_applied = []
+    for idx, row in tax.iterrows():
+        h = row["haplotype_id"]
+        if h not in ev.index or row["assignment_level"] == "species" or row["assignment_source"] != "labels":
+            continue
+        suggested, basis = _str(ev.at[h, "suggested_sp"]), _str(ev.at[h, "suggestion_basis"])
+        if not suggested:
+            continue
+        leading = _str(row.get("leading_species"))
+        n_species = pd.to_numeric(pd.Series([row.get("n_species_labels")]), errors="coerce").fillna(0).iloc[0]
+        if not apply:
+            why = "evidence taxa off"
+        elif not leading:
+            why = "leading label tied" if n_species > 0 else "no species-level label"
+        elif suggested != leading:
+            why = "not the leading label"
+        elif genus_of(suggested) != _str(row["assigned_sp"]).split(" ")[0]:
+            why = "another genus than the label rule's"
+        else:
+            previous = _str(row["assignment_notes"])
+            tax.at[idx, "assigned_sp"] = suggested
+            tax.at[idx, "assignment_level"] = "species"
+            tax.at[idx, "assignment_source"] = EVIDENCE_SOURCE
+            tax.at[idx, "assignment_notes"] = f"evidence: {basis}" + (f"; labels: {previous}" if previous else "")
+            continue
+        not_applied.append({"haplotype_id": h, "suggested_sp": suggested,
+                            "suggestion_basis": basis, "why_not_applied": why})
+    return tax, pd.DataFrame(not_applied, columns=NOT_APPLIED_COLUMNS)

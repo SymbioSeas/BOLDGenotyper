@@ -146,9 +146,9 @@ def apply_curation(taxonomy: pd.DataFrame, applied: pd.DataFrame) -> pd.DataFram
     return tax
 
 
-def curated_taxa(taxonomy: pd.DataFrame) -> Dict[str, str]:
-    """haplotype_id -> assigned_sp for haplotypes whose assignment_source is curated."""
+def taxa_not_from_labels(taxonomy: pd.DataFrame) -> Dict[str, str]:
+    """haplotype_id -> assigned_sp for haplotypes whose taxon is curated or set by evidence."""
     if taxonomy is None or "assignment_source" not in taxonomy.columns:
         return {}
-    cur = taxonomy[taxonomy["assignment_source"] == "curated"]
-    return dict(zip(cur["haplotype_id"], cur["assigned_sp"]))
+    chosen = taxonomy[taxonomy["assignment_source"].isin(["curated", "evidence"])]
+    return dict(zip(chosen["haplotype_id"], chosen["assigned_sp"]))

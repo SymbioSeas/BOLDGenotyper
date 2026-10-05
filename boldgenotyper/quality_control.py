@@ -502,8 +502,9 @@ def add_label_columns(
     n_missing_label, majority_fraction, label_conflict, depositor_keyword_hits
     (';'-joined), has_depositor_keyword_hit, depositor_notes. Records without a
     haplotype get empty haplotype columns and label_conflict False.
-    curated_taxa (haplotype_id -> curated taxon): members of those haplotypes
-    are compared with the curated taxon instead of the majority label.
+    curated_taxa (haplotype_id -> taxon not from labels: curated or set by
+    evidence): members of those haplotypes are compared with that taxon
+    instead of the majority label.
     """
     df = df.copy()
     df['label'] = record_labels(df, species_col, genus_col)

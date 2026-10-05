@@ -151,3 +151,41 @@ def test_weakly_supported_tree_sister_does_not_count(tmp_path):
     tree.write_text("((H3:0.01,(H1:0.01,H2:0.01)0.9:0.01)0.7:0.02,H4:0.2);")
     ev = te.compute_evidence(TAX, _no_bins(), SEQS, tree)
     assert ev.set_index("haplotype_id").loc["H3", "suggestion_basis"] == "distance, tree agree"
+
+
+GENUS_NOTE = "majority 0.67 not above 0.70; fell back to genus"
+TAX_RULE = pd.DataFrame({
+    "haplotype_id": ["H1", "H2", "H3", "H4", "H5", "H6", "H7"],
+    "assigned_sp": ["Genus alpha", "Genus", "Genus", "Genus", "Genus", "Other", "Genus alpha"],
+    "assignment_level": ["species"] + ["genus"] * 5 + ["species"],
+    "assignment_notes": ["majority 1.00 (5 of 5 counted labels)"] + [GENUS_NOTE] * 5 + ["curated: x"],
+    "assignment_source": ["labels"] * 6 + ["curated"],
+    "leading_species": ["Genus alpha", "Genus alpha", "Genus beta", "", "", "Genus alpha", "Genus alpha"],
+    "n_species_labels": [1, 2, 2, 2, 0, 2, 2],
+})
+EV_RULE = pd.DataFrame({"haplotype_id": TAX_RULE["haplotype_id"],
+                        "suggested_sp": ["", "Genus alpha", "Genus alpha", "Genus alpha",
+                                         "Genus alpha", "Genus alpha", ""],
+                        "suggestion_basis": [""] + ["distance, tree agree"] * 5 + [""]})
+
+
+def test_evidence_taxa_follow_the_leading_label():
+    tax, not_applied = te.apply_evidence(TAX_RULE, EV_RULE)
+    t = tax.set_index("haplotype_id")
+    assert t.loc["H2", "assigned_sp"] == "Genus alpha" and t.loc["H2", "assignment_level"] == "species"
+    assert t.loc["H2", "assignment_source"] == "evidence"
+    assert t.loc["H2", "assignment_notes"] == f"evidence: distance, tree agree; labels: {GENUS_NOTE}"
+    assert t.loc[["H3", "H4", "H5", "H6"], "assignment_source"].tolist() == ["labels"] * 4
+    assert t.loc["H7", "assignment_source"] == "curated"
+    assert list(not_applied.columns) == te.NOT_APPLIED_COLUMNS
+    assert dict(zip(not_applied["haplotype_id"], not_applied["why_not_applied"])) == {
+        "H3": "not the leading label", "H4": "leading label tied",
+        "H5": "no species-level label", "H6": "another genus than the label rule's"}
+
+
+def test_evidence_taxa_off_changes_nothing():
+    tax, not_applied = te.apply_evidence(TAX_RULE, EV_RULE, apply=False)
+    assert tax["assigned_sp"].tolist() == TAX_RULE["assigned_sp"].tolist()
+    assert tax["assignment_source"].tolist() == TAX_RULE["assignment_source"].tolist()
+    assert not_applied["haplotype_id"].tolist() == ["H2", "H3", "H4", "H5", "H6"]
+    assert set(not_applied["why_not_applied"]) == {"evidence taxa off"}

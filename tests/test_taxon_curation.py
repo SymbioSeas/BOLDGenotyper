@@ -74,3 +74,10 @@ def test_match_cleans_row_sequences():
                          "reason": "x", "curator": "", "date": ""}])
     applied, _ = tc.match_curation(cur, HAPS, SEQS)
     assert applied["haplotype_id"].tolist() == ["H0002"]
+
+
+def test_taxa_not_from_labels():
+    tax = pd.DataFrame({"haplotype_id": ["H1", "H2", "H3"], "assigned_sp": ["A a", "B b", "C c"],
+                        "assignment_source": ["labels", "curated", "evidence"]})
+    assert tc.taxa_not_from_labels(tax) == {"H2": "B b", "H3": "C c"}
+    assert tc.taxa_not_from_labels(tax.drop(columns="assignment_source")) == {}

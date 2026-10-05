@@ -98,7 +98,7 @@ def build_records_table(
     labeled = quality_control.add_label_columns(
         records.assign(haplotype_id=out["haplotype_id"].values),
         group_col="haplotype_id", notes_col="notes",
-        curated_taxa=taxon_curation.curated_taxa(taxonomy))
+        curated_taxa=taxon_curation.taxa_not_from_labels(taxonomy))
     out["label"] = labeled["label"].values
     out["label_conflict"] = labeled["label_conflict"].values
     out["depositor_keyword_hits"] = labeled["depositor_keyword_hits"].values

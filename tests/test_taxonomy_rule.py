@@ -63,3 +63,13 @@ def test_notes_say_what_happened():
     assert assign.loc["H0001", "assignment_notes"] == "majority 1.00 (5 of 5 counted labels)"
     assert "tie" in assign.loc["H0002", "assignment_notes"]
     assert "no species-level label" in assign.loc["H0003", "assignment_notes"]
+
+
+def test_label_rule_reports_its_leading_species():
+    assign, _ = _assign({"H1": [("Genus alpha", "Genus")] * 2 + [("Genus beta", "Genus")],
+                         "H2": [("Genus alpha", "Genus"), ("Genus beta", "Genus")],
+                         "H3": [("", "Genus")] * 2})
+    assert assign.loc["H1", "assignment_level"] == "genus"
+    assert assign.loc["H1", "leading_species"] == "Genus alpha" and assign.loc["H1", "n_species_labels"] == 2
+    assert assign.loc["H2", "leading_species"] == "" and assign.loc["H2", "n_species_labels"] == 2
+    assert assign.loc["H3", "leading_species"] == "" and assign.loc["H3", "n_species_labels"] == 0
