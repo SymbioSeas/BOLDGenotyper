@@ -48,6 +48,12 @@ def test_timeline_marks_each_query_year_once(tmp_path):
     assert "Queries without a collection date: q4" in svg
 
 
+def test_queries_at_one_site_share_a_star_and_label():
+    queries = [("q1", 10, -20), ("q2", 10.0, -20.0), ("q3", 5, 5)] + [(f"x{i}", 1, 1) for i in range(4)]
+    assert qv._query_sites(queries) == [(10.0, -20.0, "q1, q2"), (5.0, 5.0, "q3"),
+                                        (1.0, 1.0, "x0, x1, x2\nx3")]
+
+
 def _halves(path):
     import geopandas as gpd
     from shapely.geometry import box

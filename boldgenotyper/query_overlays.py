@@ -338,6 +338,19 @@ def _haplotype_colors(counts: pd.Series) -> dict:
     return {h: colors.get(h, "#6e6e6e") for h in counts.index}
 
 
+def _query_sites(queries) -> list:
+    """
+    [(lat, lon, label)], one per site of [(query, lat, lon)], in first-seen
+    order; the label names the site's queries, three per line (one label per
+    query wrote queries at the same site over each other).
+    """
+    sites = {}
+    for q, lat, lon in queries:
+        sites.setdefault((float(lat), float(lon)), []).append(q)
+    return [(lat, lon, "\n".join(", ".join(qs[i:i + 3]) for i in range(0, len(qs), 3)))
+            for (lat, lon), qs in sites.items()]
+
+
 def plot_query_map(calls: pd.DataFrame, meta: Optional[pd.DataFrame],
                    reference: Optional[ReferenceRun], out_dir) -> List[Path]:
     """
@@ -392,10 +405,10 @@ def plot_query_map(calls: pd.DataFrame, meta: Optional[pd.DataFrame],
             ax.scatter(sites["lon"], sites["lat"], s=20 + 12 * np.sqrt(sites["n"]),
                        c=colors.get(hid, "#6e6e6e"), edgecolors="white", linewidths=0.5,
                        transform=ccrs.PlateCarree(), label=f"{hid} ({fp.count(len(g), 'record')})", zorder=4)
-        for q, lat, lon in q_ok:
+        for lat, lon, text in _query_sites(q_ok):
             ax.scatter([lon], [lat], marker="*", s=220, c=ACCENT, edgecolors="black", linewidths=0.6,
                        transform=ccrs.PlateCarree(), zorder=6)
-            ax.annotate(q, (lon, lat), xytext=(6, 6), textcoords="offset points", fontsize=8,
+            ax.annotate(text, (lon, lat), xytext=(6, 6), textcoords="offset points", fontsize=8,
                         color=ACCENT, transform=ccrs.PlateCarree(), zorder=7)
         handles, labels = ax.get_legend_handles_labels()
         if handles:
