@@ -290,6 +290,115 @@ def region_column_clash(input_columns, geo_category: str) -> Optional[str]:
             f"name (e.g. '{geo_category}_region') to keep both.")
 
 
+def _build_tree(cfg, organism, dirs, haplotype_fasta, haplotype_stats, prov, step_warnings):
+    """
+    Build and root the haplotype tree (pipeline step 5.3; taxon evidence needs it
+    before any step reads a taxon). Returns (tree path or None, intermediate
+    prefix, output prefix). Failures are recorded as warnings, never raised.
+    """
+    intermediate_prefix = dirs['intermediate_phylo'] / organism
+    output_prefix = dirs['phylogenetic'] / organism
+    if not cfg.phylogenetic.build_tree:
+        logger.info("  Phylogenetic tree building disabled in config")
+        return None, intermediate_prefix, output_prefix
+    try:
+        logger.info("5.3: Building phylogenetic tree from haplotypes...")
+        if not utils.check_external_tool("mafft"):
+            step_warnings.record("5 tree", "MAFFT not found; tree not built")
+            return None, intermediate_prefix, output_prefix
+        if not utils.check_external_tool("fasttree"):
+            step_warnings.record("5 tree", "FastTree not found; tree not built")
+            return None, intermediate_prefix, output_prefix
+
+        # Choose tips explicitly (P0-7): every haplotype with at least
+        # --tree-min-members members and the minimum length, except
+        # suspect haplotypes. Exclusions are listed with their reasons.
+        records = list(SeqIO.parse(haplotype_fasta, "fasta"))
+        suspect = {}
+        if 'is_suspect' in haplotype_stats.columns:
+            flagged = haplotype_stats[haplotype_stats['is_suspect'].fillna(False).astype(bool)]
+            reasons = flagged['suspect_reasons'] if 'suspect_reasons' in flagged.columns else None
+            suspect = {
+                hid: (reasons.loc[i] if reasons is not None and isinstance(reasons.loc[i], str)
+                      and reasons.loc[i] else 'flagged')
+                for i, hid in flagged['haplotype_id'].items()
+            }
+        kept, excluded = phylogenetics.select_tree_haplotypes(
+            records, cfg.phylogenetic.min_cluster_size,
+            cfg.phylogenetic.min_consensus_length, suspect)
+        excluded_path = dirs['phylogenetic'] / f"{organism}_excluded_tips.txt"
+        with open(excluded_path, 'w') as f:
+            f.write("haplotype_id\treason\n")
+            for hid, reason in excluded:
+                f.write(f"{hid}\t{reason}\n")
+        tree_input = dirs['intermediate_phylo'] / f"{organism}_tree_input.fasta"
+        SeqIO.write(kept, tree_input, "fasta")
+        logger.info(f"  Tree tips: {len(kept)} of {len(records)} haplotypes "
+                    f"({len(excluded)} excluded; see {excluded_path.name}); "
+                    f"--tree-min-members {cfg.phylogenetic.min_cluster_size}, "
+                    f"minimum length {cfg.phylogenetic.min_consensus_length} bp")
+        prov.applied.update(
+            tree_min_members=cfg.phylogenetic.min_cluster_size,
+            tree_min_length_bp=cfg.phylogenetic.min_consensus_length,
+            n_tree_tips=len(kept),
+            n_tree_excluded=len(excluded),
+        )
+
+        # Tips are already selected, so build_phylogeny's own filter keeps everything.
+        tree = phylogenetics.build_phylogeny(
+            consensus_fasta=str(tree_input),
+            output_prefix=str(intermediate_prefix),
+            threads=cfg.n_threads,
+            min_consensus_length=0,
+            min_cluster_size=1,
+            outgroup_fasta=str(cfg.phylogenetic.outgroup_fasta) if cfg.phylogenetic.outgroup_fasta else None,
+            trim_alignment=cfg.phylogenetic.trim_alignment,
+            trim_method=cfg.phylogenetic.trim_method
+        )
+        intermediate_tree = f"{intermediate_prefix}_tree.nwk"
+        tree_path = f"{output_prefix}_tree.nwk"
+        if Path(intermediate_tree).exists():
+            Path(intermediate_tree).rename(tree_path)
+        if tree is None or not Path(tree_path).exists():
+            step_warnings.record("5 tree", f"tree building finished but {tree_path} was not written")
+            return None, intermediate_prefix, output_prefix
+
+        # Root on the outgroup when one is given, else at the midpoint;
+        # support values stay on their branches (phylogenetics.root_on_tips)
+        phy = cfg.phylogenetic
+        rooting, rooted = {"method": "none"}, None
+        if phy.outgroup_label:
+            rooting = {"method": "outgroup_label", "outgroup": phy.outgroup_label}
+            rooted = phylogenetics.reroot_tree_by_label(
+                tree_file=tree_path, outgroup_label=phy.outgroup_label, output_file=tree_path)
+        elif phy.outgroup_taxon:
+            rooting = {"method": "outgroup_taxon", "outgroup": phy.outgroup_taxon}
+            rooted = phylogenetics.reroot_tree_by_taxon(
+                tree_file=tree_path,
+                taxonomy_csv=str(dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"),
+                taxon_query=phy.outgroup_taxon, output_file=tree_path)
+        elif phy.outgroup_fasta:
+            rooting = {"method": "outgroup_fasta", "outgroup": str(phy.outgroup_fasta)}
+            rooted = phylogenetics.reroot_tree_by_tips(
+                tree_path, [r.id for r in SeqIO.parse(str(phy.outgroup_fasta), "fasta")],
+                output_file=tree_path, description="outgroup FASTA")
+        if rooting["method"] != "none" and rooted is None:
+            step_warnings.record(
+                "5 tree reroot",
+                f"rooting on {rooting['method']} '{rooting['outgroup']}' failed"
+                + ("; midpoint-rooted instead" if phy.midpoint_root else "; tree left unrooted"))
+            rooting = {"method": "none"}
+        if rooting["method"] == "none" and phy.midpoint_root:
+            if phylogenetics.midpoint_root_tree_file(tree_path):
+                rooting = {"method": "midpoint"}
+        prov.applied["tree_rooting"] = rooting
+        logger.info(f"  Built phylogenetic tree: {tree_path}")
+        return tree_path, intermediate_prefix, output_prefix
+    except Exception as e:
+        step_warnings.record("5 tree", e)
+        return None, intermediate_prefix, output_prefix
+
+
 def run_pipeline(
     tsv_path: Path,
     organism: str,
@@ -850,6 +959,10 @@ def run_pipeline(
         species_counts.to_csv(species_counts_out, index=False)
         assign_table.to_csv(assign_table_out, index=False)
 
+        # 5.3: the tree (taxon evidence needs it before any step reads a taxon)
+        tree_path, intermediate_prefix, output_prefix = _build_tree(
+            cfg, organism, dirs, haplotype_fasta, haplotype_stats, prov, step_warnings)
+
         # Merge taxonomy back into main dataframe
         df_with_haplotypes = df_with_haplotypes.merge(
             assign_table[["haplotype_id", "assigned_sp", "haplotype_sp", "assignment_level",
@@ -1082,189 +1195,81 @@ def run_pipeline(
     logger.info("PHASE 8: Phylogenetic Analysis")
     logger.info("-" * 80)
 
-    tree_path = None
-    if cfg.phylogenetic.build_tree:
+    # The tree is built in step 5.3 (_build_tree); this phase writes its other outputs
+    if tree_path:
+        # Create relabeled versions with haplotype_sp labels
+        logger.info("8.2: Creating relabeled tree and alignment files...")
         try:
-            logger.info("8.1: Building phylogenetic tree from haplotypes...")
+            alignment_path = f"{intermediate_prefix}_aligned.fasta"
+            taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"
 
-            # Check for required tools
-            if not utils.check_external_tool("mafft"):
-                step_warnings.record("8 phylogeny", "MAFFT not found; tree not built")
-            elif not utils.check_external_tool("fasttree"):
-                step_warnings.record("8 phylogeny", "FastTree not found; tree not built")
+            if Path(alignment_path).exists() and taxonomy_csv_path.exists():
+                relabeled_tree_path = f"{output_prefix}_tree_relabeled.nwk"
+                relabeled_alignment_path = f"{intermediate_prefix}_aligned_relabeled.fasta"
+
+                phylogenetics.relabel_tree_and_alignment(
+                    tree_file=tree_path,
+                    alignment_file=alignment_path,
+                    taxonomy_csv=str(taxonomy_csv_path),
+                    output_tree=relabeled_tree_path,
+                    output_alignment=relabeled_alignment_path,
+                    label_column="haplotype_sp",
+                    id_column="haplotype_id",
+                )
+                logger.info(f"  Created relabeled tree: {relabeled_tree_path}")
+                logger.info(f"  Created relabeled alignment (intermediate): {relabeled_alignment_path}")
             else:
-                # Build phylogenetic tree using haplotypes
-                # Save alignment files to intermediate, tree files to final phylogenetic directory
-                intermediate_prefix = dirs['intermediate_phylo'] / organism
-                output_prefix = dirs['phylogenetic'] / organism
-
-                # Choose tips explicitly (P0-7): every haplotype with at least
-                # --tree-min-members members and the minimum length, except
-                # suspect haplotypes. Exclusions are listed with their reasons.
-                records = list(SeqIO.parse(haplotype_fasta, "fasta"))
-                suspect = {}
-                if 'is_suspect' in haplotype_stats.columns:
-                    flagged = haplotype_stats[haplotype_stats['is_suspect'].fillna(False).astype(bool)]
-                    reasons = flagged['suspect_reasons'] if 'suspect_reasons' in flagged.columns else None
-                    suspect = {
-                        hid: (reasons.loc[i] if reasons is not None and isinstance(reasons.loc[i], str)
-                              and reasons.loc[i] else 'flagged')
-                        for i, hid in flagged['haplotype_id'].items()
-                    }
-                kept, excluded = phylogenetics.select_tree_haplotypes(
-                    records, cfg.phylogenetic.min_cluster_size,
-                    cfg.phylogenetic.min_consensus_length, suspect)
-                excluded_path = dirs['phylogenetic'] / f"{organism}_excluded_tips.txt"
-                with open(excluded_path, 'w') as f:
-                    f.write("haplotype_id\treason\n")
-                    for hid, reason in excluded:
-                        f.write(f"{hid}\t{reason}\n")
-                tree_input = dirs['intermediate_phylo'] / f"{organism}_tree_input.fasta"
-                SeqIO.write(kept, tree_input, "fasta")
-                logger.info(f"  Tree tips: {len(kept)} of {len(records)} haplotypes "
-                            f"({len(excluded)} excluded; see {excluded_path.name}); "
-                            f"--tree-min-members {cfg.phylogenetic.min_cluster_size}, "
-                            f"minimum length {cfg.phylogenetic.min_consensus_length} bp")
-                prov.applied.update(
-                    tree_min_members=cfg.phylogenetic.min_cluster_size,
-                    tree_min_length_bp=cfg.phylogenetic.min_consensus_length,
-                    n_tree_tips=len(kept),
-                    n_tree_excluded=len(excluded),
-                )
-
-                # Tips are already selected, so build_phylogeny's own filter keeps everything.
-                tree = phylogenetics.build_phylogeny(
-                    consensus_fasta=str(tree_input),
-                    output_prefix=str(intermediate_prefix),
-                    threads=cfg.n_threads,
-                    min_consensus_length=0,
-                    min_cluster_size=1,
-                    outgroup_fasta=str(cfg.phylogenetic.outgroup_fasta) if cfg.phylogenetic.outgroup_fasta else None,
-                    trim_alignment=cfg.phylogenetic.trim_alignment,
-                    trim_method=cfg.phylogenetic.trim_method
-                )
-
-                # Move tree files from intermediate to final directory
-                intermediate_tree = f"{intermediate_prefix}_tree.nwk"
-                tree_path = f"{output_prefix}_tree.nwk"
-                if Path(intermediate_tree).exists():
-                    Path(intermediate_tree).rename(tree_path)
-
-                # Verify tree file was actually created
-                if tree is not None and Path(tree_path).exists():
-                    # Root on the outgroup when one is given, else at the midpoint;
-                    # support values stay on their branches (phylogenetics.root_on_tips)
-                    phy = cfg.phylogenetic
-                    rooting, rooted = {"method": "none"}, None
-                    if phy.outgroup_label:
-                        rooting = {"method": "outgroup_label", "outgroup": phy.outgroup_label}
-                        rooted = phylogenetics.reroot_tree_by_label(
-                            tree_file=tree_path, outgroup_label=phy.outgroup_label,
-                            output_file=tree_path)
-                    elif phy.outgroup_taxon:
-                        rooting = {"method": "outgroup_taxon", "outgroup": phy.outgroup_taxon}
-                        rooted = phylogenetics.reroot_tree_by_taxon(
-                            tree_file=tree_path,
-                            taxonomy_csv=str(dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"),
-                            taxon_query=phy.outgroup_taxon, output_file=tree_path)
-                    elif phy.outgroup_fasta:
-                        rooting = {"method": "outgroup_fasta", "outgroup": str(phy.outgroup_fasta)}
-                        rooted = phylogenetics.reroot_tree_by_tips(
-                            tree_path, [r.id for r in SeqIO.parse(str(phy.outgroup_fasta), "fasta")],
-                            output_file=tree_path, description="outgroup FASTA")
-                    if rooting["method"] != "none" and rooted is None:
-                        step_warnings.record(
-                            "8 phylogeny reroot",
-                            f"rooting on {rooting['method']} '{rooting['outgroup']}' failed"
-                            + ("; midpoint-rooted instead" if phy.midpoint_root else "; tree left unrooted"))
-                        rooting = {"method": "none"}
-                    if rooting["method"] == "none" and phy.midpoint_root:
-                        if phylogenetics.midpoint_root_tree_file(tree_path):
-                            rooting = {"method": "midpoint"}
-                    prov.applied["tree_rooting"] = rooting
-
-                    logger.info(f"  Built phylogenetic tree: {tree_path}")
-
-                    # Create relabeled versions with haplotype_sp labels
-                    logger.info("8.2: Creating relabeled tree and alignment files...")
-                    try:
-                        alignment_path = f"{intermediate_prefix}_aligned.fasta"
-                        taxonomy_csv_path = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"
-
-                        if Path(alignment_path).exists() and taxonomy_csv_path.exists():
-                            relabeled_tree_path = f"{output_prefix}_tree_relabeled.nwk"
-                            relabeled_alignment_path = f"{intermediate_prefix}_aligned_relabeled.fasta"
-
-                            phylogenetics.relabel_tree_and_alignment(
-                                tree_file=tree_path,
-                                alignment_file=alignment_path,
-                                taxonomy_csv=str(taxonomy_csv_path),
-                                output_tree=relabeled_tree_path,
-                                output_alignment=relabeled_alignment_path,
-                                label_column="haplotype_sp",
-                                id_column="haplotype_id",
-                            )
-                            logger.info(f"  Created relabeled tree: {relabeled_tree_path}")
-                            logger.info(f"  Created relabeled alignment (intermediate): {relabeled_alignment_path}")
-                        else:
-                            step_warnings.record("8.2 tree relabeling", "alignment or taxonomy file not found")
-                    except Exception as e:
-                        step_warnings.record("8.2 tree relabeling", e)
-
-                    # MSA chunk plots: --extended only (P2)
-                    if cfg.msa.enabled and cfg.extended:
-                        logger.info("8.3: Generating MSA visualization...")
-                        try:
-                            # Use the alignment file that exists (prefer trimmed if available)
-                            alignment_file = None
-                            if Path(f"{intermediate_prefix}_aligned_trimmed.fasta").exists():
-                                alignment_file = Path(f"{intermediate_prefix}_aligned_trimmed.fasta")
-                            elif Path(f"{intermediate_prefix}_aligned.fasta").exists():
-                                alignment_file = Path(f"{intermediate_prefix}_aligned.fasta")
-
-                            if importlib.util.find_spec("pymsaviz") is None:
-                                # msa_visualization swallows its own ImportError;
-                                # check first so the optional extra is not a warning
-                                raise ImportError("pymsaviz")
-                            if alignment_file and alignment_file.exists():
-                                msa_plots = msa_visualization.create_phylo_ordered_msa(
-                                    alignment_path=alignment_file,
-                                    tree_path=Path(tree_path),
-                                    output_dir=dirs['phylogenetic'],
-                                    organism=organism,
-                                    chunk_size=cfg.msa.chunk_size,
-                                    max_sequences=cfg.msa.max_sequences,
-                                    color_scheme=cfg.msa.color_scheme,
-                                    show_consensus=cfg.msa.show_consensus,
-                                    show_logo=cfg.msa.show_logo,
-                                    output_formats=cfg.msa.output_formats
-                                )
-                                if msa_plots:
-                                    logger.info(f"  Generated {len(msa_plots)} MSA plot(s)")
-                                else:
-                                    step_warnings.record("8.3 MSA visualization", "no MSA plots generated")
-                            else:
-                                step_warnings.record("8.3 MSA visualization", "alignment file not found")
-                        except ImportError:
-                            # Optional dependency (extras_require["msa"]): not a step failure
-                            logger.info("  MSA visualization skipped: pymsaviz is not installed "
-                                        "(optional; pip install pymsaviz>=0.4.0)")
-                        except Exception as e:
-                            step_warnings.record("8.3 MSA visualization", e)
-                            logger.debug("Full traceback:", exc_info=True)
-                    elif cfg.msa.enabled:
-                        logger.info("  MSA chunk plots are written with --extended")
-                    else:
-                        logger.info("  MSA visualization disabled in config")
-
-                else:
-                    step_warnings.record("8 phylogeny", f"tree building finished but {tree_path} was not written")
-                    tree_path = None
-
+                step_warnings.record("8.2 tree relabeling", "alignment or taxonomy file not found")
         except Exception as e:
-            step_warnings.record("8 phylogeny", e)
+            step_warnings.record("8.2 tree relabeling", e)
+
+        # MSA chunk plots: --extended only (P2)
+        if cfg.msa.enabled and cfg.extended:
+            logger.info("8.3: Generating MSA visualization...")
+            try:
+                # Use the alignment file that exists (prefer trimmed if available)
+                alignment_file = None
+                if Path(f"{intermediate_prefix}_aligned_trimmed.fasta").exists():
+                    alignment_file = Path(f"{intermediate_prefix}_aligned_trimmed.fasta")
+                elif Path(f"{intermediate_prefix}_aligned.fasta").exists():
+                    alignment_file = Path(f"{intermediate_prefix}_aligned.fasta")
+
+                if importlib.util.find_spec("pymsaviz") is None:
+                    # msa_visualization swallows its own ImportError;
+                    # check first so the optional extra is not a warning
+                    raise ImportError("pymsaviz")
+                if alignment_file and alignment_file.exists():
+                    msa_plots = msa_visualization.create_phylo_ordered_msa(
+                        alignment_path=alignment_file,
+                        tree_path=Path(tree_path),
+                        output_dir=dirs['phylogenetic'],
+                        organism=organism,
+                        chunk_size=cfg.msa.chunk_size,
+                        max_sequences=cfg.msa.max_sequences,
+                        color_scheme=cfg.msa.color_scheme,
+                        show_consensus=cfg.msa.show_consensus,
+                        show_logo=cfg.msa.show_logo,
+                        output_formats=cfg.msa.output_formats
+                    )
+                    if msa_plots:
+                        logger.info(f"  Generated {len(msa_plots)} MSA plot(s)")
+                    else:
+                        step_warnings.record("8.3 MSA visualization", "no MSA plots generated")
+                else:
+                    step_warnings.record("8.3 MSA visualization", "alignment file not found")
+            except ImportError:
+                # Optional dependency (extras_require["msa"]): not a step failure
+                logger.info("  MSA visualization skipped: pymsaviz is not installed "
+                            "(optional; pip install pymsaviz>=0.4.0)")
+            except Exception as e:
+                step_warnings.record("8.3 MSA visualization", e)
+                logger.debug("Full traceback:", exc_info=True)
+        elif cfg.msa.enabled:
+            logger.info("  MSA chunk plots are written with --extended")
+        else:
+            logger.info("  MSA visualization disabled in config")
     else:
-        logger.info("  Phylogenetic tree building disabled in config")
+        logger.info("  No tree: relabeled tree and alignment plots skipped")
 
     # ========================================================================
     # PHASE 9: Divergence Analysis

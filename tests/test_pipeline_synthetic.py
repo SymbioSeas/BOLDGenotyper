@@ -611,3 +611,13 @@ def test_default_run_writes_tree_and_map_only(tmp_path):
     ok, out = run_synthetic(tmp_path, skip_geo=False)
     assert ok and "geography/distribution_map.svg" in _files(out)
     assert not (out / "extended").exists()
+
+
+@needs_fasttree
+def test_tree_is_built_before_the_taxon_steps(tmp_path):
+    ok, out = run_synthetic(tmp_path, phylogenetic__build_tree=True)
+    assert ok
+    assert (out / "phylogeny" / "tree.nwk").exists() and (out / "phylogeny" / "tree_labeled.nwk").exists()
+    log = (out / f"{ORGANISM}_pipeline.log").read_text()
+    assert log.index("5.3: Building phylogenetic tree") < log.index("PHASE 6:")
+    assert "8.2: Creating relabeled tree" in log

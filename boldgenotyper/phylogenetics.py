@@ -573,7 +573,7 @@ def build_phylogeny(
                 run_trimal(aligned_fasta, trimmed_fasta, method=trim_method)
                 tree_input = trimmed_fasta
             except RuntimeError as e:
-                logger.warning(f"trimAl failed: {e}", extra={"step_failure": "8 phylogeny"})
+                logger.warning(f"trimAl failed: {e}", extra={"step_failure": "5 tree"})
                 logger.warning("Proceeding with untrimmed alignment")
                 tree_input = aligned_fasta
         else:
@@ -841,7 +841,7 @@ def midpoint_root_tree_file(tree_file: str, output_file: Optional[str] = None) -
         return str(output_path)
     except Exception as e:
         logger.warning(f"Failed to midpoint-root the tree: {e}",
-                       extra={"step_failure": "8 phylogeny reroot"})
+                       extra={"step_failure": "5 tree reroot"})
         return None
 
 
@@ -1093,13 +1093,13 @@ def reroot_tree_by_tips(tree_file: str, tip_names, output_file: Optional[str] = 
         if n_extra:
             logger.warning(f"The {description} tips are not a clade of the tree; rooted on the smallest "
                            f"clade holding them, which has {n_extra} other tip(s)",
-                           extra={"step_failure": "8 phylogeny reroot"})
+                           extra={"step_failure": "5 tree reroot"})
         _write_newick(tree, output_path)
         logger.info(f"  Rooted tree on the {description} ({len(tip_names)} tip(s)): {output_path}")
         return str(output_path)
     except Exception as e:
         logger.warning(f"Failed to root the tree on the {description}: {e}",
-                       extra={"step_failure": "8 phylogeny reroot"})
+                       extra={"step_failure": "5 tree reroot"})
         return None
 
 
@@ -1149,7 +1149,7 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
     try:
         tax_df = pd.read_csv(tax_path)
     except Exception as e:
-        logger.warning(f"Cannot reroot by taxon: failed to read taxonomy CSV: {e}", extra={"step_failure": "8 phylogeny reroot"})
+        logger.warning(f"Cannot reroot by taxon: failed to read taxonomy CSV: {e}", extra={"step_failure": "5 tree reroot"})
         return None
 
     # Collect haplotype_ids whose assigned_sp or haplotype_sp contains the query
@@ -1180,7 +1180,7 @@ def reroot_tree_by_taxon(tree_file: str, taxonomy_csv: str, taxon_query: str, ou
         tip_matches = [tip.name for tip in tree.get_terminals()
                        if tip.name in candidates or _to_base(tip.name or "") in candidate_bases]
     except Exception as e:
-        logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}", extra={"step_failure": "8 phylogeny reroot"})
+        logger.warning(f"Failed to reroot tree on taxon '{taxon_query}': {e}", extra={"step_failure": "5 tree reroot"})
         return None
     if not tip_matches:
         logger.warning(f"No matching tips found in tree for outgroup taxon '{taxon_query}'")
