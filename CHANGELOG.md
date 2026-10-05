@@ -97,6 +97,7 @@ plan (`docs/plans/2026-09-30-v2.0.0-release-plan.md`).
 - Report tables said "Showing first N rows of N total" with the truncated count; they give the true count.
 - With pandas 3, text fields were not stripped of surrounding whitespace on input (pandas 3 reads text as the `str` dtype); all-empty ORF columns were kept.
 - Rooting on an outgroup put support values on the wrong branches (Biopython moves supports with nodes, not branches, when it reroots) and made an internal outgroup clade the root itself; rooting now keeps each support on its split and places a two-way root on the outgroup's branch. Trees rooted with `--phylo-outgroup-label` or `--phylo-outgroup-taxon` in 1.0.0 have misplaced supports along the path to the root.
+- Rooted and relabeled trees (`tree.nwk`, `tree_labeled.nwk`) keep FastTree's three-decimal support values; 1.0.0's `tree_labeled.nwk` rounded them to two.
 
 ## [1.0.0] - 2025
 
