@@ -189,3 +189,22 @@ def test_evidence_taxa_off_changes_nothing():
     assert tax["assignment_source"].tolist() == TAX_RULE["assignment_source"].tolist()
     assert not_applied["haplotype_id"].tolist() == ["H2", "H3", "H4", "H5", "H6"]
     assert set(not_applied["why_not_applied"]) == {"evidence taxa off"}
+
+
+def test_suggestions_table_is_a_curation_file(tmp_path):
+    from boldgenotyper import taxon_curation as tc
+    not_applied = pd.DataFrame({"haplotype_id": ["H3"], "suggested_sp": ["Genus alpha"],
+                                "suggestion_basis": ["distance, BIN agree"],
+                                "why_not_applied": ["not the leading label"]})
+    haps = pd.DataFrame({"haplotype_id": ["H3"], "seq_md5": ["abc"], "assigned_sp": ["Genus"],
+                         "labels": ["Genus beta 4; Genus alpha 4"]})
+    table = te.suggestions_table(not_applied, haps, {"H3": "ac-gt"})
+    assert list(table.columns) == te.SUGGESTION_COLUMNS
+    row = table.iloc[0]
+    assert row["sequence"] == "ACGT" and row["taxon"] == "Genus alpha" and row["curator"] == ""
+    assert row["reason"] == ("suggested by evidence: distance, BIN agree; "
+                             "labels: Genus beta 4; Genus alpha 4")
+    path = tmp_path / te.SUGGESTIONS_FILE
+    table.to_csv(path, index=False)
+    cur = tc.load_curation(path)
+    assert cur.loc[0, "seq_md5"] == "abc" and cur.loc[0, "taxon"] == "Genus alpha"

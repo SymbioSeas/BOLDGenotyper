@@ -203,6 +203,23 @@ FILE_DOCS = [
          "distance_to_nearest_with_label": "p-distance from the record's haplotype to that haplotype",
          "depositor_note": "the depositor's notes field",
      }},
+    {"pattern": "taxon_curation_suggestions.csv",
+     "text": "Suggested taxa the run did not apply (see Taxonomy), as a curation file: delete "
+             "the rows you reject, fill curator and date, and pass the file to --taxon-curation. "
+             "Written only when there is such a suggestion.",
+     "columns": {
+         "seq_md5": "the haplotype's seq_md5 (the curation key)",
+         "sequence": "its core sequence, ungapped (a key for another dataset's haplotypes)",
+         "taxon": "the suggested taxon (suggested_sp in haplotypes.csv)",
+         "reason": "the evidence lines that name it, and the haplotype's member labels",
+         "curator": "empty: yours to fill",
+         "date": "empty: yours to fill",
+         "haplotype_id": "the haplotype; for reading (--taxon-curation ignores it)",
+         "assigned_sp": "its taxon in this run",
+         "why_not_applied": "not the leading label, leading label tied, another genus than "
+                            "the label rule's, no species-level label, or evidence taxa off "
+                            "(--no-evidence-taxa)",
+     }},
     {"pattern": "metadata_coverage.csv",
      "text": "Coverage of BOLD metadata fields after normalization (see Metadata). Default "
              "fields: sex, life_stage, reproduction, habitat, country/ocean, province/state; "

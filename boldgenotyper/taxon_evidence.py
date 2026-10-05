@@ -342,3 +342,37 @@ def apply_evidence(taxonomy: pd.DataFrame, evidence: pd.DataFrame,
         not_applied.append({"haplotype_id": h, "suggested_sp": suggested,
                             "suggestion_basis": basis, "why_not_applied": why})
     return tax, pd.DataFrame(not_applied, columns=NOT_APPLIED_COLUMNS)
+
+
+SUGGESTIONS_FILE = "taxon_curation_suggestions.csv"
+SUGGESTION_COLUMNS = ["seq_md5", "sequence", "taxon", "reason", "curator", "date",
+                      "haplotype_id", "assigned_sp", "why_not_applied"]
+
+
+def suggestions_table(not_applied: pd.DataFrame, haplotypes: pd.DataFrame,
+                      sequences: Dict[str, str]) -> pd.DataFrame:
+    """
+    Suggestions not applied, as a curation file (taxon_curation): delete the
+    rows to reject and pass the file to --taxon-curation. haplotypes has
+    haplotype_id, seq_md5, assigned_sp and labels; sequences maps haplotype_id
+    to its core sequence. The last three columns are for reading;
+    load_curation ignores them.
+    """
+    haps = haplotypes.set_index("haplotype_id")
+
+    def cell(h, col):
+        return _str(haps.at[h, col]) if h in haps.index and col in haps.columns else ""
+
+    rows = []
+    for r in not_applied.to_dict("records"):
+        h, labels = r["haplotype_id"], cell(r["haplotype_id"], "labels")
+        rows.append({
+            "seq_md5": cell(h, "seq_md5"),
+            "sequence": sequences.get(h, "").replace("-", "").upper(),
+            "taxon": r["suggested_sp"],
+            "reason": f"suggested by evidence: {r['suggestion_basis']}" + (f"; labels: {labels}" if labels else ""),
+            "curator": "", "date": "",
+            "haplotype_id": h, "assigned_sp": cell(h, "assigned_sp"),
+            "why_not_applied": r["why_not_applied"],
+        })
+    return pd.DataFrame(rows, columns=SUGGESTION_COLUMNS)
