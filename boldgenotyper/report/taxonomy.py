@@ -8,6 +8,8 @@ from .page import Section, counts, esc, num, table
 EVIDENCE_TABLE = ["haplotype_id", "assigned_sp", "n_members", "labels", "nearest_species_haplotype",
                   "nearest_species_distance", "within_taxon_spread", "bin_taxon", "tree_sister_taxon",
                   "tree_sister_support", "suggested_sp", "suggestion_basis"]
+EVIDENCE_TAXA_TABLE = ["haplotype_id", "assigned_sp", "n_members", "labels", "majority_fraction",
+                       "suggestion_basis"]
 
 
 def _conflicts_by_label(lc: pd.DataFrame) -> pd.DataFrame:
@@ -32,18 +34,21 @@ def build(run: RunData) -> Section:
     source = haps.get("assignment_source", pd.Series("labels", index=haps.index)).astype(str)
     threshold = (run.config.get("taxonomy") or {}).get("majority_species_threshold")
     html = (f"<p>A haplotype's taxon is the species carried by more than {num(threshold, '{}')} of its "
-            "members' counted labels, otherwise the genus; a curation file can replace it "
-            "(<code>assignment_source</code> curated). Evidence for each taxon is in "
-            "<code>haplotypes.csv</code>.</p>\n"
+            "members' counted labels, otherwise the genus. A genus-level haplotype takes the species "
+            "its evidence names when that species is its own leading label "
+            "(<code>assignment_source</code> evidence); a curation file can replace any taxon "
+            "(curated). Evidence for each taxon is in <code>haplotypes.csv</code>.</p>\n"
             + counts([("species level", num(int((level == "species").sum()))),
                       ("genus level or unassigned", num(int((level != "species").sum()))),
+                      ("set by evidence", num(int((source == "evidence").sum()))),
                       ("curated", num(int((source == "curated").sum())))]))
 
     html += "<h3>Needs attention</h3>\n"
     not_species = haps[level != "species"].sort_values("n_members", ascending=False)
     html += ("<h4>Haplotypes not assigned at species level</h4>\n"
-             '<p class="note">With the evidence and any suggested taxon (never applied; record an '
-             "accepted call in a curation file).</p>\n"
+             '<p class="note">With the evidence and any suggested taxon not applied (also in '
+             "<code>taxon_curation_suggestions.csv</code>, a curation file to edit and pass to "
+             "<code>--taxon-curation</code>).</p>\n"
              + table(not_species, EVIDENCE_TABLE, file="haplotypes.csv"))
     html += ("<h4>Label conflicts</h4>\n"
              '<p class="note">Per haplotype and conflicting label, most records first; the evidence for '
@@ -52,6 +57,12 @@ def build(run: RunData) -> Section:
                      ["haplotype_id", "haplotype_taxon", "label", "n_records", "majority_label",
                       "majority_fraction", "nearest_haplotype_with_label", "distance_to_nearest_with_label"],
                      file="label_conflicts.csv"))
+    evidence = haps[source == "evidence"]
+    if len(evidence):
+        html += ("<h4>Taxa set by evidence</h4>\n"
+                 '<p class="note">Haplotypes the label rule left at genus whose evidence names their '
+                 "leading label; a curation row overrides any of them.</p>\n"
+                 + table(evidence, EVIDENCE_TAXA_TABLE, file="haplotypes.csv"))
     curated = haps[source == "curated"]
     if len(curated):
         html += "<h4>Curated haplotypes</h4>\n" + table(

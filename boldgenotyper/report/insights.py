@@ -81,7 +81,8 @@ def key_findings(run: RunData) -> List[Finding]:
             out.append(Finding("not_species_level",
                                f"{_n(len(not_species), 'haplotype')} {_verb(len(not_species), 'is', 'are')} "
                                f"not assigned at species level; {with_suggestion:,} "
-                               f"{_verb(with_suggestion, 'has', 'have')} a suggested taxon (never applied).",
+                               f"{_verb(with_suggestion, 'has', 'have')} a suggested taxon "
+                               f"(not applied; see taxon_curation_suggestions.csv).",
                                len(not_species), "#section-taxonomy"))
         if "n_label_conflicts" in haps.columns:
             conflicts = pd.to_numeric(haps["n_label_conflicts"], errors="coerce").fillna(0)
@@ -105,6 +106,11 @@ def key_findings(run: RunData) -> List[Finding]:
                 out.append(Finding("curated", f"{_n(n_cur, 'haplotype')} {_verb(n_cur, 'has', 'have')} a "
                                               f"curated taxon.", n_cur,
                                    "#section-taxonomy"))
+            n_ev = int((haps["assignment_source"] == "evidence").sum())
+            if n_ev:
+                out.append(Finding("evidence", f"{_n(n_ev, 'haplotype')} left at genus by the label "
+                                               f"rule {_verb(n_ev, 'was', 'were')} given a species by "
+                                               f"evidence.", n_ev, "#section-taxonomy"))
     n_not_applied = _int((run.applied.get("taxon_curation") or {}).get("n_not_applied"))
     if n_not_applied:
         out.append(Finding("curation_not_applied", f"{_n(n_not_applied, 'curation row')} "

@@ -110,3 +110,14 @@ def test_files_section_covers_every_file(html, run_dir):
         if p.is_file():
             entry = run_readme._entry_for(p.relative_to(run_dir).as_posix())
             assert entry is None or page.esc(entry["pattern"]) in files, p
+
+
+@needs_tools
+def test_report_lists_evidence_taxa(tmp_path):
+    ok, out = run_synthetic(tmp_path, split_labels=True, report=True)
+    assert ok
+    html = (out / "report.html").read_text(encoding="utf-8")
+    assert "Taxa set by evidence" in html and "took the species of their leading label" in html
+    assert "no tree was built, so distance and BIN had to agree" in html
+    found = {f.key: f for f in insights.key_findings(rdata.load_run(out, "Synth"))}
+    assert found["evidence"].count == 1

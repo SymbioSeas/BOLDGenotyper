@@ -144,9 +144,11 @@ FILE_DOCS = [
          "assignment_level": "species, genus or unassigned (see Taxonomy)",
          "assignment_notes": "how assigned_sp was chosen: the majority and its counted labels, or "
                              "why it fell back to genus; for a curated taxon, the curation "
-                             "reason followed by the label rule's note",
-         "assignment_source": "labels (the label rule) or curated (a row of the --taxon-curation "
-                              "file; see Taxonomy)",
+                             "reason followed by the label rule's note; for an evidence taxon, "
+                             "the lines that agree followed by the label rule's note",
+         "assignment_source": "labels (the label rule), evidence (the evidence named the "
+                              "haplotype's leading label; see Taxonomy) or curated (a row of the "
+                              "--taxon-curation file)",
          "labels": "every member label with its count, most common first; "
                    "'(no species label)' counts members without one",
          "n_missing_label": "members without a species or genus",
@@ -185,19 +187,21 @@ FILE_DOCS = [
                               "one, or when no tree was built",
          "tree_sister_support": "that clade's support value (FastTree SH-like local support, "
                                 "0.70 or more)",
-         "suggested_sp": "for haplotypes neither at species level nor curated: a taxon named "
-                         "by at least two evidence lines and contradicted by none (see "
-                         "Taxonomy). Never applied",
+         "suggested_sp": "for haplotypes the label rule left below species level and not "
+                         "curated: a taxon named by at least two evidence lines and contradicted "
+                         "by none (see Taxonomy). Applied when it is the haplotype's leading "
+                         "label in the label rule's genus; otherwise listed in "
+                         "taxon_curation_suggestions.csv",
          "suggestion_basis": "the lines that agree, or why there is no suggestion",
      }},
     {"pattern": "label_conflicts.csv",
      "text": "One row per record whose label conflicts with its haplotype's majority label, or "
-             "with its haplotype's curated taxon (see Taxonomy), with the evidence. A conflict is "
-             "not a verdict on which label is right.",
+             "with its haplotype's curated or evidence taxon (see Taxonomy), with the evidence. A "
+             "conflict is not a verdict on which label is right.",
      "columns": {
          "haplotype_taxon": "the haplotype's assigned_sp",
-         "assignment_source": "labels or curated; when curated, the record's label is compared "
-                              "with haplotype_taxon rather than majority_label",
+         "assignment_source": "labels, evidence or curated; unless labels, the record's label is "
+                              "compared with haplotype_taxon rather than majority_label",
          "nearest_haplotype_with_label": "nearest other haplotype with at least one member carrying "
                                          "the record's label; empty when none",
          "distance_to_nearest_with_label": "p-distance from the record's haplotype to that haplotype",
@@ -528,24 +532,30 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "reason and the label rule's note. A row names a haplotype by `seq_md5`, or by a "
               "sequence equal to, containing or contained in its core sequence; rows that match no "
               "haplotype or several, or that disagree for one haplotype, are not applied. "
-              "run_provenance.json records the file's md5 and every row not applied, with why.",
+              "run_provenance.json records the file's md5 and every row not applied, with why. "
+              "A curated taxon takes precedence over an evidence taxon.",
               "",
               "The evidence columns of haplotypes.csv weigh a haplotype's taxon against three "
               "lines that do not use its own majority: distance (its nearest species-level "
               "haplotype lies within that taxon's spread, `within_taxon_spread`), BIN (the "
               "members' most common BIN has one species-level label at 0.70 or more of its "
-              "QC-passed records) and tree (`tree_sister_taxon`, when `tree_sister_support` is "
-              "0.70 or more). For a haplotype neither at "
-              "species level nor curated, `suggested_sp` is a taxon at least two lines name "
-              "and none contradicts. A suggestion is never applied: check it, and record an "
-              "accepted call in a curation file with its reason. The tree is midpoint-rooted "
+              "QC-passed records) and tree (`tree_sister_taxon`: after collapsing branches with "
+              "support below 0.70, the taxon of the species-level haplotypes in the smallest "
+              "clade that holds any). For a haplotype neither at species level nor curated, "
+              "`suggested_sp` is a taxon at least two lines name and none contradicts. When it "
+              "is the haplotype's leading species-level label and in the genus the label rule "
+              "assigned, it becomes the haplotype's taxon (`assignment_source` evidence; "
+              "`--no-evidence-taxa` turns this off). Other suggestions are written to "
+              "taxon_curation_suggestions.csv, a curation file: delete the rows you reject and "
+              "pass it to --taxon-curation. Evidence uses only the label rule's and curated "
+              "taxa, never another haplotype's evidence taxon. The tree is midpoint-rooted "
               "unless an outgroup was set, so a sister clade next to the root depends on where "
               "the root falls.",
               "",
               "A label conflict is a member whose species-level label differs from the majority "
               "label, any species-level member of a haplotype whose top labels are tied, or a "
-              "genus-only label of another genus. For a curated haplotype, labels are compared "
-              "with the curated taxon instead: a species-level label conflicts when it differs "
+              "genus-only label of another genus. For a haplotype whose taxon is curated or set by "
+              "evidence, labels are compared with that taxon instead: a species-level label conflicts when it differs "
               "from a species-level taxon, any other label when its genus differs.",
               "", "## Divergence", "",
               "Distances are uncorrected p-distances between aligned haplotype sequences. They are "

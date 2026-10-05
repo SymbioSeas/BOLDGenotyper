@@ -37,6 +37,7 @@ def build(run: RunData, version: str = "") -> Section:
         "none": "Unrooted, as written by FastTree",
     }.get(rooting.get("method"), "not recorded")
     curation = applied.get("taxon_curation") or {}
+    evidence = applied.get("taxon_evidence") or {}
     geo = applied.get("geographic_analysis", False)
     geo_cat = applied.get("geo_category") or "ocean_basin"
     custom_shp = applied.get("custom_shapefile")
@@ -99,10 +100,18 @@ def build(run: RunData, version: str = "") -> Section:
                             "genus; members without a species label are left out; ties not resolved); "
                             "otherwise the most common genus"),
         ("Label conflicts", "Members whose species-level label differs from the haplotype’s majority label "
-                            "(or from its curated taxon); listed with their evidence in label_conflicts.csv"),
+                            "(or from its curated or evidence taxon); listed with their evidence in "
+                            "label_conflicts.csv"),
         ("Divergence", "Uncorrected p-distance between aligned haplotype sequences, skipping gaps and Ns; "
                        "no taxonomic thresholds are applied"),
     ]
+    if evidence:
+        tax_rows.append(("Evidence taxa", (
+            f'{_v(evidence.get("n_applied"))} genus-level haplotype(s) given the species two of '
+            "distance, BIN and tree named (none against) when it was their leading label in the "
+            "label rule's genus" if evidence.get("apply") else
+            "Evidence reported but not applied (--no-evidence-taxa)")
+            + f'; {_v(evidence.get("n_suggested_not_applied"))} suggestion(s) not applied'))
     if curation:
         tax_rows.append(("Curated taxa", f'{_v(curation.get("n_applied"))} haplotype(s) given the taxon in the '
                                          f'curation file <code>{esc(curation.get("path", ""))}</code> '
@@ -153,6 +162,17 @@ def build(run: RunData, version: str = "") -> Section:
     if curation:
         text += (f"; {_v(curation.get('n_applied'))} haplotype(s) were given a curated taxon after review of "
                  f"distance, BIN and tree evidence (curation file md5 {esc(_v(curation.get('md5')))})")
+    if evidence.get("apply"):
+        text += (". Haplotypes left at genus by the label rule took the species of their leading "
+                 "label when at least two of three lines of evidence named that species and none "
+                 "named another: the nearest species-level haplotype lay within that species' observed "
+                 "spread; the majority label of the members' BOLD BIN reached 0.70; the smallest clade "
+                 "with SH-like support of 0.70 or more holding other species-level haplotypes held only "
+                 "that species"
+                 + ("" if evidence.get("tree") else " (no tree was built, so distance and BIN had to agree)")
+                 + f". {_v(evidence.get('n_applied'))} haplotype(s) were assigned this way")
+    elif evidence:
+        text += ". Evidence for haplotype taxa was reported but not applied (--no-evidence-taxa)"
     text += ". "
     if tree_built:
         text += ("A tree of the haplotypes was inferred with FastTree (Price et al., 2010) under the GTR+Gamma model"
