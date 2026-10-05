@@ -18,7 +18,7 @@ Key Functions:
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, Tuple, Optional, Any
 import pandas as pd
 import numpy as np
 from collections import defaultdict
@@ -264,66 +264,6 @@ def generate_species_geographic_summary(
 
     # Return basin summary as primary output
     return basin_summary if 'basin_summary' in locals() else pd.DataFrame()
-
-
-def get_species_sample_list(
-    species_assignments: pd.DataFrame,
-    species: str,
-    min_confidence: float = 0.7
-) -> List[str]:
-    """
-    Get list of sample processids for a given species.
-
-    Parameters
-    ----------
-    species_assignments : pd.DataFrame
-        Sample-level species assignments
-    species : str
-        Species name to filter for
-    min_confidence : float, optional
-        Minimum confidence threshold
-
-    Returns
-    -------
-    List[str]
-        List of processids assigned to this species
-    """
-    mask = (
-        (species_assignments['primary_species'] == species) &
-        (species_assignments['primary_species_pct'] >= min_confidence) &
-        (~species_assignments['is_ambiguous'].fillna(False).astype(bool))
-    )
-    return species_assignments[mask]['processid'].tolist()
-
-
-def get_species_haplotype_list(
-    species_assignments: pd.DataFrame,
-    species: str,
-    min_confidence: float = 0.7
-) -> List[str]:
-    """
-    Get list of haplotype IDs for a given species.
-
-    Parameters
-    ----------
-    species_assignments : pd.DataFrame
-        Sample-level species assignments
-    species : str
-        Species name to filter for
-    min_confidence : float, optional
-        Minimum confidence threshold
-
-    Returns
-    -------
-    List[str]
-        List of haplotype IDs assigned to this species
-    """
-    mask = (
-        (species_assignments['primary_species'] == species) &
-        (species_assignments['primary_species_pct'] >= min_confidence) &
-        (~species_assignments['is_ambiguous'].fillna(False).astype(bool))
-    )
-    return species_assignments[mask]['haplotype_id'].unique().tolist()
 
 
 # ============================================================================
