@@ -568,6 +568,7 @@ of the final run.
 | `haplotype_query.classify_match_quality` | removed (identity labels are no longer reported) |
 | `divergence_analysis.analyze_barcoding_gap` | removed; `compute_label_based_gap` (`--extended`) |
 | `haplotype_assignment` (identity-based assignment), `config.GenotypeAssignmentConfig` | removed: records are mapped directly from haplotype discovery |
+| `metadata.assign_genotypes`, `levenshtein_distance`, `calculate_edit_distance` | removed (unused by the pipeline; `edlib` is no longer a dependency) |
 | `visualization.plot_identity_distribution`, `plot_identity_by_status`, `plot_assignment_status`; `reports.generate_taxonomy_conflicts_report`, `generate_consensus_characterization`, `generate_sequence_quality_metrics` | removed (identity scores and the v1 files they read no longer exist) |
 | `visualization.plot_distribution_map`, `plot_ocean_basin_abundance(_total, _faceted)`, `plot_distribution_map_faceted`, `plot_species_*`, `plot_haplotypes_by_species_*`, `plot_phylogenetic_tree`; `metadata_summary.plot_*` | removed: `run_figures.write_run_figures` (and `tree_figures`, `metadata_figures`) draw the run's figures by species |
 | `haplotype_query.write_results`, `results_to_dataframe`, `write_json_results`, `write_text_report`, `write_query_summary` | `query_outputs` (`calls_table`, `candidates_table`, `write_calls`, `write_candidates`, `write_alignments`, `write_json`, `write_query_provenance`, `write_query_readme`) |

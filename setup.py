@@ -44,7 +44,6 @@ setup(
         "pandas>=1.3.0",
         "numpy>=1.21.0",
         "scipy>=1.7.0",
-        "edlib>=1.3.9",
         "matplotlib>=3.4.0",
         "seaborn>=0.11.0",
         "jinja2>=3.0.0",

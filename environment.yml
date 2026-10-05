@@ -37,7 +37,6 @@ dependencies:
 
   # pip-only packages
   - pip:
-    - edlib>=1.3.9
     # MSA visualization (phylogeny-ordered alignment plots with --build-tree);
     # also available as the pip extra: pip install -e ".[msa]"
     - pymsaviz>=0.4.0

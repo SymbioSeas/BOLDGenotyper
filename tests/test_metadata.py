@@ -30,8 +30,6 @@ from boldgenotyper.metadata import (
     parse_coordinates_column,
     filter_by_coordinate_quality,
     get_coordinate_quality_stats,
-    levenshtein_distance,
-    calculate_edit_distance,
     validate_metadata_for_analysis,
 )
 
@@ -412,70 +410,6 @@ class TestCoordinateStats:
 
 
 # ============================================================================
-# Test Edit Distance Calculations
-# ============================================================================
-
-class TestEditDistance:
-    """Tests for edit distance calculations."""
-
-    def test_levenshtein_identical(self):
-        """Test Levenshtein distance for identical sequences."""
-        dist = levenshtein_distance('ACTG', 'ACTG')
-        assert dist == 0
-
-    def test_levenshtein_one_substitution(self):
-        """Test Levenshtein distance with one substitution."""
-        dist = levenshtein_distance('ACTG', 'ACTC')
-        assert dist == 1
-
-    def test_levenshtein_one_insertion(self):
-        """Test Levenshtein distance with one insertion."""
-        dist = levenshtein_distance('ACTG', 'ACCTG')
-        assert dist == 1
-
-    def test_levenshtein_one_deletion(self):
-        """Test Levenshtein distance with one deletion."""
-        dist = levenshtein_distance('ACTG', 'ACG')
-        assert dist == 1
-
-    def test_levenshtein_empty_strings(self):
-        """Test Levenshtein distance with empty strings."""
-        assert levenshtein_distance('', '') == 0
-        assert levenshtein_distance('ACTG', '') == 4
-        assert levenshtein_distance('', 'ACTG') == 4
-
-    def test_levenshtein_completely_different(self):
-        """Test Levenshtein distance for completely different sequences."""
-        dist = levenshtein_distance('AAAA', 'TTTT')
-        assert dist == 4
-
-    def test_calculate_edit_distance_with_identity(self):
-        """Test edit distance calculation with identity score."""
-        dist, identity = calculate_edit_distance('ACTG', 'ACTG', use_edlib=False)
-        assert dist == 0
-        assert identity == 1.0
-
-    def test_calculate_edit_distance_one_diff(self):
-        """Test edit distance with one difference."""
-        dist, identity = calculate_edit_distance('ACTG', 'ACTC', use_edlib=False)
-        assert dist == 1
-        assert identity == 0.75  # 1 - (1/4)
-
-    def test_calculate_edit_distance_different_lengths(self):
-        """Test edit distance with different length sequences."""
-        dist, identity = calculate_edit_distance('ACTG', 'ACTGG', use_edlib=False)
-        assert dist == 1
-        # Identity based on max length: 1 - (1/5) = 0.8
-        assert abs(identity - 0.8) < 0.01
-
-    def test_calculate_edit_distance_case_insensitive(self):
-        """Test that edit distance is case-insensitive."""
-        dist, identity = calculate_edit_distance('actg', 'ACTG', use_edlib=False)
-        assert dist == 0
-        assert identity == 1.0
-
-
-# ============================================================================
 # Test Metadata Validation
 # ============================================================================
 
@@ -632,21 +566,6 @@ class TestEdgeCases:
 
         filtered = filter_by_coordinate_quality(df, exclude_centroids=True)
         assert len(filtered) == 1  # Only GPS remains
-
-    def test_very_long_sequence(self):
-        """Test edit distance with very long sequences."""
-        seq1 = 'ACTG' * 100  # 400bp
-        seq2 = 'ACTG' * 100
-
-        dist, identity = calculate_edit_distance(seq1, seq2, use_edlib=False)
-        assert dist == 0
-        assert identity == 1.0
-
-    def test_sequence_with_gaps(self):
-        """Test edit distance with gap characters."""
-        # Gaps should be treated as regular characters for edit distance
-        dist, identity = calculate_edit_distance('ACT-G', 'ACTAG', use_edlib=False)
-        assert dist == 1  # - replaced with A
 
 
 if __name__ == '__main__':
