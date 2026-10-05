@@ -951,17 +951,44 @@ def run_pipeline(
                 return hap_id if isinstance(hap_id, str) else ""
             return f"{sp} {hap_id}"
 
-        assign_table["haplotype_sp"] = assign_table.apply(_join_label, axis=1)
+        def _write_taxonomy():
+            assign_table["haplotype_sp"] = assign_table.apply(_join_label, axis=1)
+            species_counts.to_csv(dirs['taxonomy'] / f"{organism}_species_by_haplotype.csv", index=False)
+            assign_table.to_csv(dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv", index=False)
 
-        # Save taxonomy files
-        species_counts_out = dirs['taxonomy'] / f"{organism}_species_by_haplotype.csv"
-        assign_table_out = dirs['taxonomy'] / f"{organism}_haplotype_taxonomy.csv"
-        species_counts.to_csv(species_counts_out, index=False)
-        assign_table.to_csv(assign_table_out, index=False)
+        _write_taxonomy()                      # read by outgroup-taxon rooting
 
         # 5.3: the tree (taxon evidence needs it before any step reads a taxon)
         tree_path, intermediate_prefix, output_prefix = _build_tree(
             cfg, organism, dirs, haplotype_fasta, haplotype_stats, prov, step_warnings)
+
+        # 5.4: taxon evidence, then evidence taxa (design addendum of 2026-10-05).
+        # Evidence uses the label rule's and curated taxa only (one pass).
+        evidence, evidence_not_applied = None, None
+        try:
+            logger.info("5.4: Taxon evidence...")
+            evidence_records = layout.build_records_table(
+                df_with_basins, status_df, df_qc_all, assign_table, geo_category)
+            evidence = taxon_evidence.compute_evidence(
+                assign_table, evidence_records, {r.id: str(r.seq) for r in haplotype_records},
+                tree_path)
+            assign_table, evidence_not_applied = taxon_evidence.apply_evidence(
+                assign_table, evidence, apply=cfg.taxonomy.apply_evidence)
+            n_evidence = int((assign_table["assignment_source"] == taxon_evidence.EVIDENCE_SOURCE).sum())
+            prov.applied["taxon_evidence"] = {
+                "apply": bool(cfg.taxonomy.apply_evidence),
+                "tree": tree_path is not None,
+                "n_applied": n_evidence,
+                "n_suggested_not_applied": len(evidence_not_applied),
+                "suggestions_file": (taxon_evidence.SUGGESTIONS_FILE
+                                     if len(evidence_not_applied) else None),
+            }
+            logger.info(f"  Evidence taxa: {n_evidence} haplotype(s) set by evidence; "
+                        f"{len(evidence_not_applied)} suggestion(s) not applied")
+        except Exception as e:
+            step_warnings.record("5 taxon evidence", e)
+            logger.debug("Taxon evidence error details:", exc_info=True)
+        _write_taxonomy()
 
         # Merge taxonomy back into main dataframe
         df_with_haplotypes = df_with_haplotypes.merge(
@@ -1541,22 +1568,17 @@ def run_pipeline(
         tree_tips = None
         if tree_path and Path(tree_path).exists():
             tree_tips = {tip.name for tip in Phylo.read(str(tree_path), "newick").get_terminals()}
-        evidence = None
-        try:
-            evidence = taxon_evidence.compute_evidence(
-                assign_table, records_df, {r.id: str(r.seq) for r in haplotype_records},
-                tree_path if tree_path and Path(tree_path).exists() else None)
-            n_suggested = int((evidence["suggested_sp"] != "").sum())
-            logger.info(f"  Taxon evidence: {n_suggested} suggested taxa for haplotypes "
-                        f"not assigned at species level (not applied)")
-        except Exception as e:
-            step_warnings.record("13 taxon evidence", e)
-            logger.debug("Taxon evidence error details:", exc_info=True)
         haplotypes_df = layout.build_haplotypes_table(
             haplotype_stats, assign_table, records_df, geo_category, tree_tips=tree_tips,
-            evidence=evidence)
+            evidence=evidence)                 # evidence: step 5.4
         haplotypes_df.to_csv(output_dir / "haplotypes.csv", index=False)
         logger.info(f"  haplotypes.csv: {len(haplotypes_df)} haplotypes")
+        if evidence_not_applied is not None and len(evidence_not_applied):
+            taxon_evidence.suggestions_table(
+                evidence_not_applied, haplotypes_df, {r.id: str(r.seq) for r in haplotype_records}
+            ).to_csv(output_dir / taxon_evidence.SUGGESTIONS_FILE, index=False)
+            logger.info(f"  {taxon_evidence.SUGGESTIONS_FILE}: {len(evidence_not_applied)} "
+                        f"suggestion(s) not applied")
 
         if geo_analysis_performed:
             (output_dir / "geography").mkdir(exist_ok=True)
@@ -2105,6 +2127,14 @@ Notes:
     )
 
     parser.add_argument(
+        '--no-evidence-taxa',
+        action='store_true',
+        help='Report taxon evidence without applying it: a genus-level haplotype keeps the '
+             'genus even when two evidence lines name its leading species label (see the '
+             'run README, Taxonomy).'
+    )
+
+    parser.add_argument(
         '--version',
         action='version',
         version=f'BOLDGenotyper {__version__}'
@@ -2211,6 +2241,7 @@ def main():
         output_dir=output_dir,
         log_level=args.log_level,
         phylogenetic__build_tree=args.build_tree,
+        taxonomy__apply_evidence=not args.no_evidence_taxa,
         **({'phylogenetic__min_cluster_size': args.tree_min_members}
            if args.tree_min_members is not None else {}),
         phylogenetic__outgroup_fasta=args.phylo_outgroup_fasta,

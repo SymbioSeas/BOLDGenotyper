@@ -61,6 +61,7 @@ A = base_sequence()
 B = mutate(A, [10, 20])
 C = mutate(A, range(40, 48))
 D = mutate(A, range(60, 75))
+E = mutate(A, range(40, 52))   # 4 sites from C, 12 from A: Genus alpha's spread holds C
 
 # (processid, sequence, species label)
 _RECORDS = [(f"SYN{i:03d}", A, "Genus alpha") for i in range(1, 11)]
@@ -91,6 +92,11 @@ EXPECTED = {
     "members": {"A": 13, "B": 4, "C": 3, "D": 1},   # A: 12 exact + 1 corrected
 }
 
+# split_labels (Phase 14): C's labels become Genus alpha 2 / Genus beta 1 (0.67, genus
+# level) and a second Genus alpha haplotype E lies beside it, so distance and BIN name
+# Genus alpha, C's leading label
+_SPLIT_RECORDS = [("SYN026", E, "Genus alpha"), ("SYN027", E, "Genus alpha")]
+
 # Cycled over records: ok, ok (GPS), missing, country centroid, zero
 _COORDS = [
     ("[12.5, -45.25]", ""),
@@ -101,16 +107,20 @@ _COORDS = [
 ]
 
 
-def make_synthetic_bold_tsv(path, duplicate_at=None):
+def make_synthetic_bold_tsv(path, duplicate_at=None, split_labels=False):
     """
     Write the synthetic TSV to path and return it. The first record is repeated
     at the end, or at row duplicate_at (which leaves a gap in the row index
-    after duplicates are removed).
+    after duplicates are removed). split_labels: the Phase 14 variant (above).
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    records = list(_RECORDS)
+    if split_labels:
+        records = [(p, s, "Genus beta" if p == "SYN019" else lab) for p, s, lab in records]
+        records += _SPLIT_RECORDS
     rows = []
-    for i, (pid, seq, label) in enumerate(_RECORDS):
+    for i, (pid, seq, label) in enumerate(records):
         coord, source = _COORDS[i % len(_COORDS)]
         rows.append({
             "processid": pid,

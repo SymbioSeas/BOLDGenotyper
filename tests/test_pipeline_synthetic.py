@@ -22,10 +22,11 @@ ORGANISM = "Synth"
 def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_kit=False,
                   export_formats=None, report=False, duplicate_at=None, shapefile_path=None,
                   shapefile_field=None, geo_category="ocean_basin", taxon_curation=None,
-                  **cfg_updates):
+                  split_labels=False, **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
     workdir = Path(workdir)
-    tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv", duplicate_at=duplicate_at)
+    tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv", duplicate_at=duplicate_at,
+                                  split_labels=split_labels)
     out = workdir / "out"
     utils.setup_logging(log_level="INFO", log_file=str(out / f"{ORGANISM}_pipeline.log"))
     settings = dict(output_dir=out, n_threads=1, phylogenetic__build_tree=False)
@@ -547,7 +548,7 @@ def test_haplotypes_table_has_evidence_columns(synthetic_run):
     assert haps["nearest_species_haplotype"].notna().any() and haps["label_sources"].notna().all()
     assert haps["tree_sister_taxon"].isna().all()          # no tree in this run
     d = json.loads((synthetic_run / "run_provenance.json").read_text())
-    assert not [w for w in d["warnings"] if w["step"] == "13 taxon evidence"]
+    assert not [w for w in d["warnings"] if w["step"] == "5 taxon evidence"]
 
 
 def test_curation_file_sets_haplotype_taxon(tmp_path):
@@ -621,3 +622,58 @@ def test_tree_is_built_before_the_taxon_steps(tmp_path):
     log = (out / f"{ORGANISM}_pipeline.log").read_text()
     assert log.index("5.3: Building phylogenetic tree") < log.index("PHASE 6:")
     assert "8.2: Creating relabeled tree" in log
+
+
+def test_evidence_sets_a_split_haplotypes_taxon(tmp_path):
+    ok, out = run_synthetic(tmp_path, split_labels=True)
+    assert ok
+    h = pd.read_csv(out / "haplotypes.csv").set_index("haplotype_id").loc["H0003"]
+    assert h["assigned_sp"] == "Genus alpha" and h["assignment_level"] == "species"
+    assert h["assignment_source"] == "evidence" and h["haplotype_label"] == "Genus alpha H0003"
+    assert h["assignment_notes"] == ("evidence: distance, BIN agree; labels: "
+                                     "majority 0.67 not above 0.70; fell back to genus")
+    # evidence was computed before it was applied: the suggestion is kept
+    assert h["suggested_sp"] == "Genus alpha" and h["suggestion_basis"] == "distance, BIN agree"
+    rec = pd.read_csv(out / "records.csv").set_index("processid")
+    assert rec.loc["SYN017", "assigned_sp"] == "Genus alpha"
+    conflicts = pd.read_csv(out / "label_conflicts.csv").set_index("processid")
+    assert conflicts.loc["SYN019", "haplotype_taxon"] == "Genus alpha"
+    assert conflicts.loc["SYN019", "assignment_source"] == "evidence"
+    applied = json.loads((out / "run_provenance.json").read_text())["applied"]["taxon_evidence"]
+    assert applied == {"apply": True, "tree": False, "n_applied": 1,
+                       "n_suggested_not_applied": 0, "suggestions_file": None}
+    assert not (out / "taxon_curation_suggestions.csv").exists()
+
+
+def test_no_evidence_taxa_writes_suggestions_that_curate(tmp_path):
+    ok, out = run_synthetic(tmp_path / "off", split_labels=True, taxonomy__apply_evidence=False)
+    assert ok
+    h = pd.read_csv(out / "haplotypes.csv").set_index("haplotype_id").loc["H0003"]
+    assert h["assignment_level"] == "genus" and h["assignment_source"] == "labels"
+    sug = pd.read_csv(out / "taxon_curation_suggestions.csv")
+    assert sug["haplotype_id"].tolist() == ["H0003"]
+    assert sug.loc[0, "taxon"] == "Genus alpha" and sug.loc[0, "why_not_applied"] == "evidence taxa off"
+    applied = json.loads((out / "run_provenance.json").read_text())["applied"]["taxon_evidence"]
+    assert applied["apply"] is False and applied["n_applied"] == 0
+    assert applied["suggestions_file"] == "taxon_curation_suggestions.csv"
+    assert _undocumented(out) == []
+    ok, cur = run_synthetic(tmp_path / "cur", split_labels=True, taxonomy__apply_evidence=False,
+                            taxon_curation=out / "taxon_curation_suggestions.csv")
+    assert ok
+    h = pd.read_csv(cur / "haplotypes.csv").set_index("haplotype_id").loc["H0003"]
+    assert h["assigned_sp"] == "Genus alpha" and h["assignment_source"] == "curated"
+
+
+@needs_fasttree
+def test_evidence_taxon_labels_the_tree(tmp_path):
+    ok, out = run_synthetic(tmp_path, split_labels=True, phylogenetic__build_tree=True)
+    assert ok
+    assert "Genus alpha H0003" in (out / "phylogeny" / "tree_labeled.nwk").read_text()
+    h = pd.read_csv(out / "haplotypes.csv").set_index("haplotype_id").loc["H0003"]
+    assert h["assignment_source"] == "evidence" and h["suggestion_basis"] == "distance, BIN, tree agree"
+    assert json.loads((out / "run_provenance.json").read_text())["applied"]["taxon_evidence"]["tree"] is True
+
+
+def test_no_evidence_taxa_flag():
+    assert cli._build_main_parser().parse_args(["in.tsv", "--no-evidence-taxa"]).no_evidence_taxa
+    assert config.get_default_config().taxonomy.apply_evidence is True

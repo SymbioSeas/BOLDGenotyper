@@ -431,6 +431,11 @@ class TaxonomyConfig:
         Fraction of members in a consensus_group that must share the same
         reported species to call a metadata majority species.
 
+    apply_evidence : bool
+        Give a genus-level haplotype the species its evidence names when that
+        species is its leading label, in the genus the label rule assigned
+        (taxon_evidence.apply_evidence). False: evidence is reported only.
+
     allow_ambiguous_N_pct : float
         Maximum percent of ambiguous bases (N) tolerated in the *query* when
         making species calls. Above this, downgrade to genus or unassigned.
@@ -449,6 +454,7 @@ class TaxonomyConfig:
     min_query_cov_pct: float = 90.0
     top2_min_delta_pct: float = 0.5
     majority_species_threshold: float = 0.70
+    apply_evidence: bool = True
     allow_ambiguous_N_pct: float = 2.0
     classifier: str = "blastn"
     db_name: str = "BOLD_COI"
