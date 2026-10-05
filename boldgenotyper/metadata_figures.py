@@ -233,7 +233,7 @@ def _coverage_entry(rec, haps, fields, settings, out_dir) -> Dict:
         hl = _group_labels(haps, ids, settings.max_colored_items)
         m = share(rec.loc[sub, "haplotype_id"].map(hl))
         return fp.heatmap(m, f"{group}: metadata coverage by haplotype",
-                          f"Share of each haplotype's records with a value ({int(sub.sum()):,} records).",
+                          f"Share of each haplotype's records with a value ({fp.count(int(sub.sum()), 'record')}).",
                           "% of records", vmax=100)
 
     return fp.write_paged_figure("metadata_coverage", out_dir, overview, page, fp.species_groups(haps))

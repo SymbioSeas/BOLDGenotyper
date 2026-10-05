@@ -16,7 +16,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from . import metadata, metadata_summary
+from . import figure_pages as fp, metadata, metadata_summary
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +391,7 @@ def plot_query_map(calls: pd.DataFrame, meta: Optional[pd.DataFrame],
             sites = g.groupby(["lat", "lon"]).size().reset_index(name="n")
             ax.scatter(sites["lon"], sites["lat"], s=20 + 12 * np.sqrt(sites["n"]),
                        c=colors.get(hid, "#6e6e6e"), edgecolors="white", linewidths=0.5,
-                       transform=ccrs.PlateCarree(), label=f"{hid} ({len(g)} records)", zorder=4)
+                       transform=ccrs.PlateCarree(), label=f"{hid} ({fp.count(len(g), 'record')})", zorder=4)
         for q, lat, lon in q_ok:
             ax.scatter([lon], [lat], marker="*", s=220, c=ACCENT, edgecolors="black", linewidths=0.6,
                        transform=ccrs.PlateCarree(), zorder=6)

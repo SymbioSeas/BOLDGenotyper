@@ -44,6 +44,11 @@ def article(word) -> str:
     return "an" if str(word)[:1].lower() in "aeiou" else "a"
 
 
+def count(n: int, word: str, plural: str = "") -> str:
+    """'1 record', '1,234 records' (plural defaults to word + 's')."""
+    return f"{n:,} {word if n == 1 else (plural or word + 's')}"
+
+
 def add_caption(ax, text: str) -> None:
     """A small caption between the title and the panel (a fixed 4 points above
     the panel, so tall figures keep it below the title)."""

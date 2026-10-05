@@ -61,3 +61,9 @@ def test_visualization_config_thresholds():
     v = config.get_default_config().visualization
     assert (v.max_overview_haplotypes, v.max_colored_items, v.max_overview_species,
             v.max_heatmap_species) == (40, 12, 15, 30)
+
+
+def test_count_agrees_in_number():
+    assert fp.count(1, "record") == "1 record"
+    assert fp.count(1234, "record") == "1,234 records"
+    assert fp.count(2, "taxon", "taxa") == "2 taxa"

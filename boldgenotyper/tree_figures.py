@@ -57,13 +57,13 @@ def collapse_groups(tree, taxon_of: Dict[str, str], records_of: Dict[str, int]):
         tips = groups[taxon]
         n_records = sum(records_of.get(x.name, 0) for x in tips)
         if len(tips) == 1:
-            tips[0].name = f"{taxon} (1 haplotype, {n_records} records)"
+            tips[0].name = f"{taxon} (1 haplotype, {fp.count(n_records, 'record')})"
             continue
         names = {x.name for x in tips}
         ancestor = t.common_ancestor(tips)
         if ancestor is not t.root and {x.name for x in ancestor.get_terminals()} == names:
             ancestor.clades = []
-            ancestor.name = f"{taxon} ({len(tips)} haplotypes, {n_records} records)"
+            ancestor.name = f"{taxon} ({len(tips)} haplotypes, {fp.count(n_records, 'record')})"
         else:
             not_clade.append(taxon)
     return t, not_clade
