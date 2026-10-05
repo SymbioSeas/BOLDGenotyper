@@ -250,12 +250,26 @@ def _caption(fig, lines: List[str]) -> None:
         fig.text(0.01, -0.02, text, ha="left", va="top", fontsize=8, wrap=True)
 
 
+def _pruned_to(tree, keep):
+    """
+    A copy of the tree pruned to the tips in keep, with the stem of their common
+    ancestor (pruning alone adds every branch from the old root into one stem).
+    """
+    import copy
+
+    sub = copy.deepcopy(tree)
+    for t in list(sub.get_terminals()):
+        if t.name not in keep:
+            sub.prune(t)
+    sub.root.branch_length = tree.common_ancestor(sorted(keep)).branch_length
+    return sub
+
+
 def plot_query_tree(calls: pd.DataFrame, reference: Optional[ReferenceRun], out_dir) -> List[Path]:
     """
     One page per genus of the called sets' haplotypes: the reference tree
     pruned to that genus, each query written beside its set's tips.
     """
-    import copy
     import matplotlib.pyplot as plt
     from Bio import Phylo
 
@@ -284,10 +298,7 @@ def plot_query_tree(calls: pd.DataFrame, reference: Optional[ReferenceRun], out_
         keep = {t for t in tips if genus(t) == g}
         if not keep:
             continue
-        sub = copy.deepcopy(tree)
-        for t in list(sub.get_terminals()):
-            if t.name not in keep:
-                sub.prune(t)
+        sub = _pruned_to(tree, keep)
         n = sub.count_terminals()
         fig, ax = plt.subplots(figsize=(10, max(3.0, 0.28 * n + 1.5)))
 

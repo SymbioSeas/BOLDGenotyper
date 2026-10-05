@@ -22,6 +22,17 @@ META = ("query_id,coord,collection_date,region\n"
         'extra,"[1, 1]",2020-01-01,\n')
 
 
+def test_pruned_genus_tree_keeps_its_own_stem():
+    """Pruning alone adds every branch from the old root into one stem (5.5 here)."""
+    from io import StringIO
+    from Bio import Phylo
+    tree = Phylo.read(StringIO("(((A:1,B:1)0.9:0.5,E:3)0.8:5,(C:1,D:1)0.7:2);"), "newick")
+    sub = qv._pruned_to(tree, {"A", "B"})
+    assert sorted(t.name for t in sub.get_terminals()) == ["A", "B"]
+    assert sub.root.branch_length == 0.5 and sub.root.confidence == 0.9
+    assert tree.count_terminals() == 5
+
+
 def _halves(path):
     import geopandas as gpd
     from shapely.geometry import box
