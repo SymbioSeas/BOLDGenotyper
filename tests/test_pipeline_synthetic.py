@@ -58,7 +58,7 @@ def synthetic_run(tmp_path_factory):
 DEFAULT_FILES = {
     f"{ORGANISM}_pipeline.log", "run_provenance.json", "summary.csv", "records.csv",
     "records_qc_passed.fasta", "haplotypes.fasta", "haplotypes.csv", "label_conflicts.csv",
-    "metadata_coverage.csv", "divergence/haplotypes_aligned.fasta",
+    "label_variants.csv", "metadata_coverage.csv", "divergence/haplotypes_aligned.fasta",
     "divergence/pairwise_p_distance.csv", "README.md",
 }
 
@@ -737,3 +737,24 @@ def test_main_parser_input_flags():
     assert args.marker == "COI-3P" and args.allow_malformed_rows is True
     args = cli._build_main_parser().parse_args(["in.tsv"])
     assert args.marker == "COI-5P" and args.allow_malformed_rows is False
+
+
+# --- Spelling variants (pre-tag A3) ----------------------------------------------
+
+def _misspell_one_alpha(tsv):
+    """SYN003 (haplotype A, Genus alpha) is deposited as 'Genus alpah'."""
+    lines = tsv.read_text().splitlines()
+    header = lines[0].split("\t")
+    idx = next(i for i, line in enumerate(lines) if line.startswith("SYN003\t"))
+    row = lines[idx].split("\t")
+    row[header.index("species")] = "Genus alpah"
+    lines[idx] = "\t".join(row)
+    tsv.write_text("\n".join(lines) + "\n")
+
+
+def test_label_variants_file(tmp_path):
+    ok, out = run_synthetic(tmp_path, edit_tsv=_misspell_one_alpha)
+    assert ok
+    variants = pd.read_csv(out / "label_variants.csv")
+    row = variants[(variants.label_a == "Genus alpha") & (variants.label_b == "Genus alpah")]
+    assert len(row) == 1 and row.iloc[0]["n_shared_haplotypes"] == 1

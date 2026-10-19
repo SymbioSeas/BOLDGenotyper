@@ -49,7 +49,7 @@ from . import (
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
     run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays, query_report,
-    run_figures,
+    run_figures, label_variants,
 )
 from . import report as run_report
 from . import taxon_curation as taxon_curation_mod
@@ -553,6 +553,14 @@ def run_pipeline(
         input_rows.update({k: df.attrs[k] for k in (
             "n_other_marker_rows", "n_malformed_rows", "malformed_lines", "n_duplicate_rows")})
         prov.applied["input_rows"] = input_rows
+        n_cleaned = 0
+        for col in ("species", "genus"):
+            if col in df.columns:
+                given = df[col]
+                cleaned = given.where(given.isna(), given.map(label_variants.clean_label))
+                n_cleaned += int((cleaned.fillna("") != given.fillna("")).sum())
+                df[col] = cleaned
+        prov.data_notes["n_labels_cleaned"] = n_cleaned
         logger.info(f"  Loaded {len(df)} samples with {len(df.columns)} columns")
         clash = None if skip_geo else region_column_clash(df.columns, geo_category)
         if clash:
@@ -1615,6 +1623,13 @@ def run_pipeline(
             ).to_csv(output_dir / taxon_evidence.SUGGESTIONS_FILE, index=False)
             logger.info(f"  {taxon_evidence.SUGGESTIONS_FILE}: {len(evidence_not_applied)} "
                         f"suggestion(s) not applied")
+
+        try:
+            variants = label_variants.detect_label_variants(records_df)
+            variants.to_csv(output_dir / "label_variants.csv", index=False)
+            logger.info(f"  label_variants.csv: {len(variants)} possible spelling variant(s)")
+        except Exception as e:
+            step_warnings.record("13 label variants", e)
 
         if geo_analysis_performed:
             (output_dir / "geography").mkdir(exist_ok=True)

@@ -200,6 +200,23 @@ FILE_DOCS = [
                          "taxon_curation_suggestions.csv",
          "suggestion_basis": "the lines that agree, or why there is no suggestion",
      }},
+    {"pattern": "label_variants.csv",
+     "text": "Pairs of species labels in one genus that may be one name written differently: "
+             "epithets one or two letters apart, a changed gender ending, or one label that is "
+             "the other plus more words. Listed only; nothing is merged. Valid species can be "
+             "two letters apart and share haplotypes, so check each pair, and list the ones to "
+             "merge in a label map (--label-map; see Taxonomy).",
+     "columns": {
+         "label_a": "the more frequent label (as deposited)",
+         "label_b": "the other label (as deposited)",
+         "n_a": "records with label_a",
+         "n_b": "records with label_b",
+         "edit_distance": "letters that differ between the epithets",
+         "ending_change": "the epithets differ only in a gender ending (e.g. -us/-a)",
+         "qualifier_form": "one label is the other plus more words (e.g. 'complex')",
+         "n_shared_haplotypes": "haplotypes with members carrying both labels",
+         "in_label_map": "either label is a 'from' in the run's label map",
+     }},
     {"pattern": "label_conflicts.csv",
      "text": "One row per record whose label conflicts with its haplotype's majority label, or "
              "with its haplotype's curated or evidence taxon (see Taxonomy), with the evidence. A "
