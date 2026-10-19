@@ -49,6 +49,7 @@ def run_single_threshold(
     genetic_code: int = 2,
     marker: Optional[str] = 'COI-5P',
     allow_malformed_rows: bool = False,
+    label_map: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Run BOLDGenotyper pipeline with a single min_singleton_distance value.
@@ -111,6 +112,7 @@ def run_single_threshold(
             export_plot_data=False,
             marker=marker,
             allow_malformed_rows=allow_malformed_rows,
+            label_map=label_map,
         )
 
         if not success:
@@ -714,6 +716,7 @@ def run_parameter_sweep(
     genetic_code: int = 2,
     marker: Optional[str] = 'COI-5P',
     allow_malformed_rows: bool = False,
+    label_map: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Complete parameter sweep workflow.
@@ -783,6 +786,7 @@ def run_parameter_sweep(
             genetic_code=genetic_code,
             marker=marker,
             allow_malformed_rows=allow_malformed_rows,
+            label_map=label_map,
         )
 
         if metrics:

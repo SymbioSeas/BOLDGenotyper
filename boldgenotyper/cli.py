@@ -414,6 +414,15 @@ def _add_input_row_arguments(parser: argparse.ArgumentParser) -> None:
         help='Drop data rows whose number of fields differs from the header\'s, and count '
              'them, instead of stopping (default: stop and name the first such line).'
     )
+    parser.add_argument(
+        '--label-map',
+        type=Path,
+        default=None,
+        metavar='FILE',
+        help='CSV/TSV of confirmed label replacements (from, to, reason; optional source), '
+             'applied before labels are pooled and recorded in run_provenance.json. '
+             'label_variants.csv lists candidates; nothing is merged without this file.'
+    )
 
 
 def run_pipeline(
@@ -437,6 +446,7 @@ def run_pipeline(
     taxon_curation: Optional[Path] = None,
     marker: Optional[str] = 'COI-5P',
     allow_malformed_rows: bool = False,
+    label_map: Optional[Path] = None,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -480,6 +490,9 @@ def run_pipeline(
     allow_malformed_rows : bool, optional
         Drop and count rows whose field count differs from the header's
         instead of stopping (default: False)
+    label_map : Path, optional
+        Confirmed label map (label_variants.load_label_map): deposited
+        species labels replaced before labels are pooled; recorded by md5
 
     Returns
     -------
@@ -494,6 +507,14 @@ def run_pipeline(
     logger.info("")
 
     # A curation file that cannot be used stops the run before it writes anything
+    label_map_df = None
+    if label_map:
+        try:
+            label_map_df = label_variants.load_label_map(label_map)
+        except label_variants.LabelMapError as e:
+            logger.error(f"Label map: {e}")
+            return False
+
     curation = None
     if taxon_curation:
         try:
@@ -561,6 +582,17 @@ def run_pipeline(
                 n_cleaned += int((cleaned.fillna("") != given.fillna("")).sum())
                 df[col] = cleaned
         prov.data_notes["n_labels_cleaned"] = n_cleaned
+        if label_map_df is not None:
+            df, usage = label_variants.apply_label_map(df, label_map_df)
+            prov.applied["label_map"] = {
+                "path": str(label_map),
+                "md5": provenance.file_md5(label_map),
+                "n_rows": len(label_map_df),
+                "n_records_changed": int(usage["n_records"].sum()),
+                "unused": usage.loc[usage["n_records"] == 0, "from"].tolist(),
+            }
+            logger.info(f"  Label map: {int(usage['n_records'].sum())} record label(s) replaced "
+                        f"({len(label_map_df)} map rows)")
         logger.info(f"  Loaded {len(df)} samples with {len(df.columns)} columns")
         clash = None if skip_geo else region_column_clash(df.columns, geo_category)
         if clash:
@@ -1625,7 +1657,7 @@ def run_pipeline(
                         f"suggestion(s) not applied")
 
         try:
-            variants = label_variants.detect_label_variants(records_df)
+            variants = label_variants.detect_label_variants(records_df, label_map=label_map_df)
             variants.to_csv(output_dir / "label_variants.csv", index=False)
             logger.info(f"  label_variants.csv: {len(variants)} possible spelling variant(s)")
         except Exception as e:
@@ -1829,6 +1861,7 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
             genetic_code=args.genetic_code,
             marker=args.marker,
             allow_malformed_rows=args.allow_malformed_rows,
+            label_map=args.label_map,
         )
 
         print("\n✓ Parameter sweep complete!")
@@ -2363,6 +2396,7 @@ def main():
             taxon_curation=args.taxon_curation,
             marker=args.marker,
             allow_malformed_rows=args.allow_malformed_rows,
+            label_map=args.label_map,
         )
 
         return 0 if success else 1

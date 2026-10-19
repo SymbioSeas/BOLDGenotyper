@@ -125,6 +125,8 @@ FILE_DOCS = [
                          "assigned_corrected",
          "nearest_haplotype": "for error-filtered singletons, the nearest retained haplotype(s)",
          "distance_to_nearest": "p-distance to nearest_haplotype",
+         "label_mapped_from": "the deposited label, when the run's label map (--label-map) replaced "
+                              "it; empty otherwise",
          "label_conflict": "True when the record's species-level label differs from its haplotype's "
                            "majority label, or the haplotype's top labels are tied (see Labels)",
          "qc_pass": "passed pre-alignment QC; empty for records without a sequence",
@@ -549,6 +551,15 @@ def _sections(region_col: str, has_metadata_extras: bool) -> List[str]:
               "`assigned_sp` is `majority_label` when `majority_fraction` is more than the majority "
               "threshold (0.70 by default; run_provenance.json); otherwise, or when the top labels "
               "are tied, the most common genus (`assignment_level` genus).",
+              "",
+              "Labels are tidied as they are read (whitespace, underscores, the case of genus and "
+              "epithet); names are not changed. label_variants.csv lists pairs of labels that may "
+              "be one name written differently; nothing is merged unless a label map is given "
+              "(`--label-map FILE`: from, to, reason, optional source). The map replaces deposited "
+              "species labels before any label is counted, so it affects majority labels, label "
+              "conflicts, evidence and queries. The species and genus columns of records.csv are "
+              "the values the run used; `label_mapped_from` keeps the deposited label. "
+              "run_provenance.json records the map's md5 and any rows that matched no record.",
               "",
               "With `--taxon-curation FILE`, a row of that file replaces the label rule's taxon for "
               "the haplotype it names (`assignment_source` curated); `assignment_notes` keeps the "

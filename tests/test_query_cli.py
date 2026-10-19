@@ -238,3 +238,13 @@ def test_query_on_an_evidence_taxon(tmp_path):
     assert row["species_call"] == "Genus alpha"
     prov = json.loads((out / "query_provenance.json").read_text())
     assert prov["reference_taxon_evidence"] == {"apply": True, "n_applied": 1}
+
+
+def test_query_inherits_label_map(tmp_path):
+    from tests.test_pipeline_synthetic import _misspell_one_alpha
+    label_map = tmp_path / "label_map.csv"
+    label_map.write_text("from,to,reason\nGenus alpah,Genus alpha,misspelling\n")
+    ok, mapped_run = run_synthetic(tmp_path / "mapped", edit_tsv=_misspell_one_alpha, label_map=label_map)
+    assert ok
+    s, _ = _query(tmp_path, mapped_run, {"window": WINDOW})
+    assert "Genus alpah" not in s.loc["window", "pooled_member_labels"]

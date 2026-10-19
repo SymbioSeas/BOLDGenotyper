@@ -1,6 +1,7 @@
 """Label cleanup and spelling-variant detection (pre-tag A3). Nothing is merged automatically."""
 
 import pandas as pd
+import pytest
 
 from boldgenotyper import label_variants as lv
 
@@ -67,3 +68,57 @@ def test_deposited_label_used_when_mapped():
     rec["label_mapped_from"] = ["", "", "", "", "", "Leptidea sinapsis"]
     out = lv.detect_label_variants(rec)
     assert out.iloc[0]["label_b"] == "Leptidea sinapsis" and out.iloc[0]["n_b"] == 1
+
+
+# --- Label map (pre-tag A3) --------------------------------------------------------
+
+def _map(tmp_path, text, name="map.csv"):
+    path = tmp_path / name
+    path.write_text(text)
+    return path
+
+
+def test_load_label_map_requires_columns(tmp_path):
+    with pytest.raises(lv.LabelMapError):
+        lv.load_label_map(_map(tmp_path, "from,to\nLeptidea sinapsis,Leptidea sinapis\n"))
+
+
+def test_label_map_rejects_chains_self_and_duplicates(tmp_path):
+    chain = _map(tmp_path, "from,to,reason\nGenus a,Genus b,x\nGenus b,Genus c,y\n", "chain.csv")
+    with pytest.raises(lv.LabelMapError, match="line"):
+        lv.load_label_map(chain)
+    self_map = _map(tmp_path, "from,to,reason\nGenus a,Genus a,x\n", "self.csv")
+    with pytest.raises(lv.LabelMapError, match="2"):
+        lv.load_label_map(self_map)
+    dup = _map(tmp_path, "from,to,reason\nGenus a,Genus b,x\nGenus a,Genus c,y\n", "dup.csv")
+    with pytest.raises(lv.LabelMapError, match="3"):
+        lv.load_label_map(dup)
+
+
+def test_label_map_matches_after_cleanup(tmp_path):
+    label_map = lv.load_label_map(_map(tmp_path, "from,to,reason\nLeptidea  sinapsis,Leptidea sinapis,typo\n"))
+    assert label_map.loc[0, "from"] == "Leptidea sinapsis" and label_map.loc[0, "row"] == 2
+    df = pd.DataFrame({"processid": ["P1"], "species": ["leptidea_sinapsis"], "genus": ["Leptidea"]})
+    out, usage = lv.apply_label_map(df, label_map)
+    assert out.loc[0, "species"] == "Leptidea sinapis"
+    assert usage.loc[0, "n_records"] == 1
+
+
+def test_apply_sets_species_genus_and_keeps_deposited(tmp_path):
+    label_map = lv.load_label_map(_map(tmp_path, "from,to,reason,source\nPontia callidice,Pieris callidice,genus moved,backbone\n"))
+    df = pd.DataFrame({"processid": ["P1", "P2", "P3"],
+                       "species": ["Pontia callidice", "Pontia callidice", "Pontia edusa"],
+                       "genus": ["Pontia", "Pontia", "Pontia"]})
+    out, usage = lv.apply_label_map(df, label_map)
+    assert out["species"].tolist() == ["Pieris callidice", "Pieris callidice", "Pontia edusa"]
+    assert out["genus"].tolist() == ["Pieris", "Pieris", "Pontia"]
+    assert out["species_as_deposited"].tolist() == ["Pontia callidice", "Pontia callidice", "Pontia edusa"]
+    assert usage.set_index("from").loc["Pontia callidice", "n_records"] == 2
+    assert df["species"].tolist()[0] == "Pontia callidice"          # input unchanged
+
+
+def test_unused_map_rows_reported(tmp_path):
+    label_map = lv.load_label_map(_map(tmp_path, "from,to,reason\nColias croceus,Colias crocea,gender\n"))
+    df = pd.DataFrame({"processid": ["P1"], "species": ["Pieris rapae"], "genus": ["Pieris"]})
+    _, usage = lv.apply_label_map(df, label_map)
+    assert usage.loc[0, "n_records"] == 0

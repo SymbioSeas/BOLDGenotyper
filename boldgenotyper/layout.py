@@ -39,7 +39,7 @@ KEY_BOLD_FIELDS = [
 
 _RECORD_FRONT = [
     "processid", "status", "status_note", "haplotype_id", "haplotype_label", "assigned_sp",
-    "label", "label_conflict", "nearest_haplotype", "distance_to_nearest",
+    "label", "label_mapped_from", "label_conflict", "nearest_haplotype", "distance_to_nearest",
     "qc_pass", "qc_fail_reason", "sequence_length", "depositor_keyword_hits",
     "lat", "lon", "coord_status",
 ]
@@ -100,6 +100,12 @@ def build_records_table(
         group_col="haplotype_id", notes_col="notes",
         curated_taxa=taxon_curation.taxa_not_from_labels(taxonomy))
     out["label"] = labeled["label"].values
+    out["label_mapped_from"] = ""
+    if "species_as_deposited" in records.columns:
+        deposited = quality_control.record_labels(
+            records.assign(species=records["species_as_deposited"]), "species", "genus")
+        mapped = deposited.values != out["label"].fillna("").values
+        out.loc[mapped, "label_mapped_from"] = deposited.values[mapped]
     out["label_conflict"] = labeled["label_conflict"].values
     out["depositor_keyword_hits"] = labeled["depositor_keyword_hits"].values
 

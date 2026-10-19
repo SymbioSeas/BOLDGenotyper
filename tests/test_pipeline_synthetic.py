@@ -23,7 +23,7 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_ki
                   export_formats=None, report=False, duplicate_at=None, shapefile_path=None,
                   shapefile_field=None, geo_category="ocean_basin", taxon_curation=None,
                   split_labels=False, edit_tsv=None, marker="COI-5P", allow_malformed_rows=False,
-                  **cfg_updates):
+                  label_map=None, **cfg_updates):
     """Run the pipeline on the synthetic TSV; return (success, output_dir).
 
     edit_tsv(path), when given, edits the synthetic TSV before the run."""
@@ -43,7 +43,7 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_ki
         export_popgen_formats=export_formats, metadata_summary_enabled=metadata_summary_enabled,
         temporal_analysis=True, shapefile_path=shapefile_path, shapefile_field=shapefile_field,
         geo_category=geo_category, taxon_curation=taxon_curation,
-        marker=marker, allow_malformed_rows=allow_malformed_rows,
+        marker=marker, allow_malformed_rows=allow_malformed_rows, label_map=label_map,
     )
     return ok, out
 
@@ -758,3 +758,31 @@ def test_label_variants_file(tmp_path):
     variants = pd.read_csv(out / "label_variants.csv")
     row = variants[(variants.label_a == "Genus alpha") & (variants.label_b == "Genus alpah")]
     assert len(row) == 1 and row.iloc[0]["n_shared_haplotypes"] == 1
+
+
+def _alpah_map(tmp_path, text="from,to,reason\nGenus alpah,Genus alpha,misspelling\n"):
+    path = tmp_path / "label_map.csv"
+    path.write_text(text)
+    return path
+
+
+def test_label_map_merges_variant(tmp_path):
+    ok, out = run_synthetic(tmp_path, edit_tsv=_misspell_one_alpha, label_map=_alpah_map(tmp_path))
+    assert ok
+    haps = pd.read_csv(out / "haplotypes.csv")
+    assert not haps["labels"].fillna("").str.contains("Genus alpah").any()
+    rec = _records(out).set_index("processid")
+    assert rec.loc["SYN003", "label_mapped_from"] == "Genus alpah"
+    assert rec.loc["SYN003", "label"] == "Genus alpha"
+    applied = json.loads((out / "run_provenance.json").read_text())["applied"]["label_map"]
+    assert applied["md5"] and applied["n_records_changed"] == 1 and applied["unused"] == []
+    variants = pd.read_csv(out / "label_variants.csv")
+    row = variants[(variants.label_a == "Genus alpha") & (variants.label_b == "Genus alpah")]
+    assert len(row) == 1 and bool(row.iloc[0]["in_label_map"]) is True
+
+
+def test_invalid_label_map_stops_before_output(tmp_path):
+    bad = _alpah_map(tmp_path, "from,to,reason\nGenus alpah,Genus alpha,x\nGenus alpha,Genus beta,y\n")
+    ok, out = run_synthetic(tmp_path, edit_tsv=_misspell_one_alpha, label_map=bad)
+    assert ok is False
+    assert not (out / "records.csv").exists()

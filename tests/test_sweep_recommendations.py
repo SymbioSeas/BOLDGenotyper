@@ -118,3 +118,19 @@ def test_sweep_passes_input_flags(tmp_path, monkeypatch):
     assert cli.main_sweep([str(tsv), "--marker", "COI-3P", "--allow-malformed-rows",
                            "--output", str(tmp_path / "s")]) == 0
     assert seen["marker"] == "COI-3P" and seen["allow_malformed_rows"] is True
+
+
+def test_sweep_passes_label_map(tmp_path, monkeypatch):
+    from boldgenotyper import cli
+    seen = {}
+    monkeypatch.setattr(cli, "run_pipeline", lambda **kw: seen.update(kw) or False)
+    ps.run_single_threshold(tmp_path / "in.tsv", "Synth", 0.01, tmp_path / "run",
+                            label_map=tmp_path / "map.csv")
+    assert seen["label_map"] == tmp_path / "map.csv"
+    tsv = tmp_path / "in.tsv"
+    tsv.write_text("processid\n")
+    seen.clear()
+    monkeypatch.setattr(ps, "run_parameter_sweep", lambda **kw: seen.update(kw) or {})
+    assert cli.main_sweep([str(tsv), "--label-map", str(tmp_path / "map.csv"),
+                           "--output", str(tmp_path / "s")]) == 0
+    assert seen["label_map"] == tmp_path / "map.csv"

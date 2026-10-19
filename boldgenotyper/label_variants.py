@@ -11,7 +11,8 @@ merging, and the run records it.
 """
 
 import re
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Tuple
 
 import pandas as pd
 
@@ -110,3 +111,87 @@ def detect_label_variants(records: pd.DataFrame,
         out = out.sort_values(["n_shared_haplotypes", "edit_distance", "label_a"],
                               ascending=[False, True, True]).reset_index(drop=True)
     return out
+
+
+# --- Label map --------------------------------------------------------------------
+
+LABEL_MAP_COLUMNS = ["row", "from", "to", "reason", "source"]
+_MAP_REQUIRED = ("from", "to", "reason")
+
+
+class LabelMapError(ValueError):
+    """The label map cannot be used."""
+
+
+def load_label_map(path) -> pd.DataFrame:
+    """Read and check a label map: one row per deposited label to replace.
+
+    CSV, or TSV for .tsv/.txt; columns from, to, reason (required) and source
+    (optional); extra columns are ignored. Labels pass through clean_label.
+    row is the line in the file. A map with an empty field, a label mapped to
+    itself, a repeated `from`, or a `to` that is another row's `from` (a
+    chain) is rejected as a whole.
+    """
+    path = Path(path)
+    sep = "\t" if path.suffix.lower() in (".tsv", ".txt") else ","
+    try:
+        df = pd.read_csv(path, sep=sep, dtype=str, keep_default_na=False)
+    except (OSError, pd.errors.ParserError) as e:
+        raise LabelMapError(f"{path}: cannot be read ({e})")
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    missing = [c for c in _MAP_REQUIRED if c not in df.columns]
+    if missing:
+        raise LabelMapError(f"{path}: missing column(s): {', '.join(missing)}")
+    if "source" not in df.columns:
+        df["source"] = ""
+    df["row"] = df.index + 2          # line in the file; the header is line 1
+    for c in ("from", "to"):
+        df[c] = df[c].map(clean_label)
+    for c in ("reason", "source"):
+        df[c] = df[c].fillna("").astype(str).str.strip()
+
+    def _lines(mask):
+        return ", ".join(map(str, df.loc[mask, "row"]))
+
+    problems = []
+    empty = (df["from"] == "") | (df["to"] == "") | (df["reason"] == "")
+    if empty.any():
+        problems.append(f"line(s) {_lines(empty)} need a from, a to and a reason")
+    same = (df["from"] == df["to"]) & ~empty
+    if same.any():
+        problems.append(f"line(s) {_lines(same)} map a label to itself")
+    repeated = df["from"].duplicated(keep=False) & ~empty
+    if repeated.any():
+        problems.append(f"line(s) {_lines(repeated)} repeat a 'from' label")
+    chained = df["to"].isin(set(df["from"])) & ~empty & ~same
+    if chained.any():
+        problems.append(f"line(s) {_lines(chained)} map to a label that is itself mapped (chain)")
+    if problems:
+        raise LabelMapError(f"{path}: " + "; ".join(problems))
+    return df[LABEL_MAP_COLUMNS].reset_index(drop=True)
+
+
+def apply_label_map(df: pd.DataFrame, label_map: pd.DataFrame, species_col: str = "species",
+                    genus_col: str = "genus") -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Replace mapped species labels; keep the deposited ones.
+
+    Returns (a copy of df with species_col replaced where the cleaned deposited
+    label is a `from`, genus_col set to the first word of `to` when it differs,
+    and species_as_deposited holding the cleaned deposited label; a usage
+    table with from, to and n_records).
+    """
+    out = df.copy()
+    given = out[species_col] if species_col in out.columns else pd.Series(pd.NA, index=out.index)
+    deposited = given.where(given.isna(), given.map(clean_label))
+    out["species_as_deposited"] = deposited
+    mapping = dict(zip(label_map["from"], label_map["to"]))
+    new = deposited.map(lambda v: mapping.get(v, v) if isinstance(v, str) else v)
+    changed = deposited.notna() & (new != deposited)
+    out.loc[changed, species_col] = new[changed]
+    if genus_col in out.columns:
+        new_genus = new[changed].map(lambda v: v.split(" ")[0])
+        out.loc[changed, genus_col] = new_genus
+    counts = deposited[changed].value_counts()
+    usage = pd.DataFrame({"from": label_map["from"], "to": label_map["to"],
+                          "n_records": [int(counts.get(f, 0)) for f in label_map["from"]]})
+    return out, usage
