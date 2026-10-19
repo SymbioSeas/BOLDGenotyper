@@ -47,6 +47,8 @@ def run_single_threshold(
     threads: int = 4,
     keep_intermediates: bool = False,
     genetic_code: int = 2,
+    marker: Optional[str] = 'COI-5P',
+    allow_malformed_rows: bool = False,
 ) -> Dict[str, Any]:
     """
     Run BOLDGenotyper pipeline with a single min_singleton_distance value.
@@ -106,7 +108,9 @@ def run_single_threshold(
             cfg=cfg,
             no_report=True,  # Skip HTML report
             skip_geo=True,   # Skip geographic analysis
-            export_plot_data=False
+            export_plot_data=False,
+            marker=marker,
+            allow_malformed_rows=allow_malformed_rows,
         )
 
         if not success:
@@ -708,6 +712,8 @@ def run_parameter_sweep(
     threads: int = 4,
     keep_intermediates: bool = False,
     genetic_code: int = 2,
+    marker: Optional[str] = 'COI-5P',
+    allow_malformed_rows: bool = False,
 ) -> Dict[str, Any]:
     """
     Complete parameter sweep workflow.
@@ -775,6 +781,8 @@ def run_parameter_sweep(
             threads=threads,
             keep_intermediates=keep_intermediates,
             genetic_code=genetic_code,
+            marker=marker,
+            allow_malformed_rows=allow_malformed_rows,
         )
 
         if metrics:

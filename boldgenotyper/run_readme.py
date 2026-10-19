@@ -85,7 +85,13 @@ FILE_DOCS = [
      "text": "One row: record counts at each step, assignment percentages and species counts.",
      "columns": {
          "n_input": "data rows in the input TSV",
-         "n_unique": "unique records (duplicate processids removed; first kept)",
+         "n_other_marker_rows": "rows of markers other than the target marker (--marker, "
+                                "default COI-5P), removed before duplicates",
+         "n_malformed_rows": "data rows whose number of fields differs from the header's, "
+                             "dropped with --allow-malformed-rows (otherwise the run stops)",
+         "n_duplicate_rows": "rows repeating a processid of the target marker (first kept)",
+         "n_unique": "unique records of the target marker (rows of other markers and duplicate "
+                     "processids removed; first kept)",
          "n_no_sequence": "records with status no_sequence",
          "n_failed_qc": "records with status failed_qc",
          "n_qc_pass": "records that passed QC (n_unique - n_no_sequence - n_failed_qc); the "

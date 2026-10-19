@@ -22,11 +22,16 @@ ORGANISM = "Synth"
 def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_kit=False,
                   export_formats=None, report=False, duplicate_at=None, shapefile_path=None,
                   shapefile_field=None, geo_category="ocean_basin", taxon_curation=None,
-                  split_labels=False, **cfg_updates):
-    """Run the pipeline on the synthetic TSV; return (success, output_dir)."""
+                  split_labels=False, edit_tsv=None, marker="COI-5P", allow_malformed_rows=False,
+                  **cfg_updates):
+    """Run the pipeline on the synthetic TSV; return (success, output_dir).
+
+    edit_tsv(path), when given, edits the synthetic TSV before the run."""
     workdir = Path(workdir)
     tsv = make_synthetic_bold_tsv(workdir / "Synth.tsv", duplicate_at=duplicate_at,
                                   split_labels=split_labels)
+    if edit_tsv is not None:
+        edit_tsv(tsv)
     out = workdir / "out"
     utils.setup_logging(log_level="INFO", log_file=str(out / f"{ORGANISM}_pipeline.log"))
     settings = dict(output_dir=out, n_threads=1, phylogenetic__build_tree=False)
@@ -38,6 +43,7 @@ def run_synthetic(workdir, skip_geo=True, metadata_summary_enabled=True, plot_ki
         export_popgen_formats=export_formats, metadata_summary_enabled=metadata_summary_enabled,
         temporal_analysis=True, shapefile_path=shapefile_path, shapefile_field=shapefile_field,
         geo_category=geo_category, taxon_curation=taxon_curation,
+        marker=marker, allow_malformed_rows=allow_malformed_rows,
     )
     return ok, out
 
@@ -140,7 +146,7 @@ def test_run_provenance_written_and_complete(synthetic_run):
     assert d["applied"]["core_region_length_bp"] > 0
     assert d["tools"]["mafft"]
     assert d["input"]["n_rows"] == EXPECTED["n_input"]
-    assert d["data_notes"]["n_duplicate_processids"] == 1
+    assert d["applied"]["input_rows"]["n_duplicate_rows"] == 1
     assert not (synthetic_run / f"{ORGANISM}_pipeline_parameters.json").exists()
 
 
@@ -677,3 +683,57 @@ def test_evidence_taxon_labels_the_tree(tmp_path):
 def test_no_evidence_taxa_flag():
     assert cli._build_main_parser().parse_args(["in.tsv", "--no-evidence-taxa"]).no_evidence_taxa
     assert config.get_default_config().taxonomy.apply_evidence is True
+
+
+# --- Input rows: marker selection and malformed rows (pre-tag A1, A2) -----------
+
+def _insert_other_marker_row(tsv):
+    """A 12S row for SYN002, placed before its COI row."""
+    lines = tsv.read_text().splitlines()
+    header = lines[0].split("\t")
+    idx = next(i for i, line in enumerate(lines) if line.startswith("SYN002\t"))
+    row = lines[idx].split("\t")
+    row[header.index("marker_code")] = "12S"
+    row[header.index("nuc")] = "TTTTAAAACCCCGGGG" * 12
+    lines.insert(idx, "\t".join(row))
+    tsv.write_text("\n".join(lines) + "\n")
+
+
+def _append_malformed_row(tsv):
+    lines = tsv.read_text().splitlines()
+    lines.append(lines[2] + "\textra1\textra2")
+    tsv.write_text("\n".join(lines) + "\n")
+    return len(lines)          # file line number of the malformed row
+
+
+def test_other_marker_row_first_keeps_coi(tmp_path):
+    ok, out = run_synthetic(tmp_path, edit_tsv=_insert_other_marker_row)
+    assert ok
+    assert _records(out).set_index("processid").loc["SYN002", "status"] == "assigned"
+    s = pd.read_csv(out / "summary.csv").iloc[0]
+    assert s["n_other_marker_rows"] == 1
+    assert s["n_duplicate_rows"] == 1          # the planted duplicate
+
+
+def test_malformed_row_stops_run(tmp_path):
+    ok, out = run_synthetic(tmp_path, edit_tsv=_append_malformed_row)
+    assert ok is False
+    assert not (out / "records.csv").exists()
+    assert "--allow-malformed-rows" in (out / f"{ORGANISM}_pipeline.log").read_text()
+
+
+def test_allow_malformed_rows_counts(tmp_path):
+    lines = {}
+    ok, out = run_synthetic(tmp_path, allow_malformed_rows=True,
+                            edit_tsv=lambda t: lines.setdefault("n", _append_malformed_row(t)))
+    assert ok
+    assert pd.read_csv(out / "summary.csv").iloc[0]["n_malformed_rows"] == 1
+    rows = json.loads((out / "run_provenance.json").read_text())["applied"]["input_rows"]
+    assert rows["malformed_lines"] == [lines["n"]] and rows["marker"] == "COI-5P"
+
+
+def test_main_parser_input_flags():
+    args = cli._build_main_parser().parse_args(["in.tsv", "--marker", "COI-3P", "--allow-malformed-rows"])
+    assert args.marker == "COI-3P" and args.allow_malformed_rows is True
+    args = cli._build_main_parser().parse_args(["in.tsv"])
+    assert args.marker == "COI-5P" and args.allow_malformed_rows is False

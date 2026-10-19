@@ -96,3 +96,25 @@ def test_sweep_cli_passes_genetic_code(tmp_path, monkeypatch):
     assert seen["genetic_code"] == 5
     assert cli.main_sweep([str(tsv), "--output", str(tmp_path / "s")]) == 0
     assert seen["genetic_code"] == 2
+
+
+def test_sweep_passes_input_flags(tmp_path, monkeypatch):
+    from boldgenotyper import cli
+    seen = {}
+
+    def fake_pipeline(**kwargs):
+        seen.update(kwargs)
+        return False
+
+    monkeypatch.setattr(cli, "run_pipeline", fake_pipeline)
+    ps.run_single_threshold(tmp_path / "in.tsv", "Synth", 0.01, tmp_path / "run",
+                            marker="COI-3P", allow_malformed_rows=True)
+    assert seen["marker"] == "COI-3P" and seen["allow_malformed_rows"] is True
+
+    tsv = tmp_path / "in.tsv"
+    tsv.write_text("processid\n")
+    seen.clear()
+    monkeypatch.setattr(ps, "run_parameter_sweep", lambda **kw: seen.update(kw) or {})
+    assert cli.main_sweep([str(tsv), "--marker", "COI-3P", "--allow-malformed-rows",
+                           "--output", str(tmp_path / "s")]) == 0
+    assert seen["marker"] == "COI-3P" and seen["allow_malformed_rows"] is True

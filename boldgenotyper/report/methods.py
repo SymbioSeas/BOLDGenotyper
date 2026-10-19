@@ -9,6 +9,16 @@ from .data import RunData
 from .page import Section, esc, kv_table
 
 
+def _input_rows_text(rows) -> str:
+    """Rows removed while reading the input (run_provenance.json applied.input_rows)."""
+    if not rows:
+        return "not recorded"
+    return (f'{_v(rows.get("n_other_marker_rows"), "{:,}")} rows of markers other than '
+            f'{esc(_v(rows.get("marker")))} removed; {_v(rows.get("n_malformed_rows"), "{:,}")} '
+            f'malformed rows dropped; {_v(rows.get("n_duplicate_rows"), "{:,}")} duplicate '
+            f'processids removed (first record kept)')
+
+
 def _v(value, fmt="{}", missing="not recorded") -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return missing
@@ -55,7 +65,7 @@ def build(run: RunData, version: str = "") -> Section:
         ("Command", f'<code>{esc(_v(prov.get("command_line")))}</code>'),
     ])
     html += "<h3>Quality control</h3>\n" + kv_table([
-        ("Duplicate processids", f'{_v(notes.get("n_duplicate_processids"), "{:,}")} removed (first record kept)'),
+        ("Input rows", _input_rows_text(applied.get("input_rows") or {})),
         ("Orientation and reading frame",
          f"Sequences oriented and checked for an open reading frame with genetic code {_v(code)} "
          f"({code_name}): ORF coverage at least {_v(coi.get('orf_min_coverage'))}, at most "

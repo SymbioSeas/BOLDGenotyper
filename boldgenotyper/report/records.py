@@ -18,7 +18,6 @@ def build(run: RunData) -> Section:
     d = (run.config.get("haplotype") or {}).get("min_singleton_distance")
     corrected, tied, far = (int(s.get(c) or 0) for c in
                             ("n_assigned_corrected", "n_excluded_error_tied", "n_excluded_error_far"))
-    dup = (run.provenance.get("data_notes") or {}).get("n_duplicate_processids")
     html = ("<p>Every unique input record has one status (definitions in <code>README.md</code>; "
             "per record in <code>records.csv</code>).</p>\n"
             + bars(items)
@@ -31,6 +30,8 @@ def build(run: RunData) -> Section:
                 ("Unassigned: two or more haplotypes equally near", num(tied)),
                 ("Unassigned: no haplotype within the distance", num(far)),
                 ("Haplotypes retained", num(s.get("n_haplotypes"))),
-                ("Duplicate processids removed (first record kept)", num(dup) if dup is not None else "0"),
+                ("Rows of other markers removed", num(s.get("n_other_marker_rows") or 0)),
+                ("Malformed rows dropped", num(s.get("n_malformed_rows") or 0)),
+                ("Duplicate processids removed (first record kept)", num(s.get("n_duplicate_rows") or 0)),
             ]))
     return Section("records", "Records and haplotypes", html)

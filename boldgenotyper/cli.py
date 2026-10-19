@@ -399,6 +399,23 @@ def _build_tree(cfg, organism, dirs, haplotype_fasta, haplotype_stats, prov, ste
         return None, intermediate_prefix, output_prefix
 
 
+def _add_input_row_arguments(parser: argparse.ArgumentParser) -> None:
+    """--marker and --allow-malformed-rows, shared by boldgenotyper and boldgenotyper-sweep."""
+    parser.add_argument(
+        '--marker',
+        default='COI-5P',
+        metavar='MARKER',
+        help='Marker to analyze (BOLD marker_code; default: COI-5P). Rows of other markers '
+             'are removed before duplicate processids, and counted.'
+    )
+    parser.add_argument(
+        '--allow-malformed-rows',
+        action='store_true',
+        help='Drop data rows whose number of fields differs from the header\'s, and count '
+             'them, instead of stopping (default: stop and name the first such line).'
+    )
+
+
 def run_pipeline(
     tsv_path: Path,
     organism: str,
@@ -418,6 +435,8 @@ def run_pipeline(
     argv: Optional[list] = None,
     download_date: Optional[str] = None,
     taxon_curation: Optional[Path] = None,
+    marker: Optional[str] = 'COI-5P',
+    allow_malformed_rows: bool = False,
 ) -> bool:
     """
     Run the complete BOLDGenotyper pipeline.
@@ -455,6 +474,12 @@ def run_pipeline(
     taxon_curation : Path, optional
         Curation file of accepted haplotype taxa (see taxon_curation), applied
         after the label rule
+    marker : str, optional
+        Target marker (BOLD marker_code; default 'COI-5P'). Rows of other
+        markers are removed before duplicate processids and counted.
+    allow_malformed_rows : bool, optional
+        Drop and count rows whose field count differs from the header's
+        instead of stopping (default: False)
 
     Returns
     -------
@@ -522,8 +547,12 @@ def run_pipeline(
     try:
         # Parse BOLD TSV
         logger.info("1.1: Parsing BOLD TSV metadata...")
-        df = metadata.parse_bold_tsv(tsv_path)
-        prov.data_notes["n_duplicate_processids"] = prov.input["n_rows"] - len(df)
+        df = metadata.parse_bold_tsv(tsv_path, marker=marker,
+                                     allow_malformed_rows=allow_malformed_rows)
+        input_rows = {"marker": marker}
+        input_rows.update({k: df.attrs[k] for k in (
+            "n_other_marker_rows", "n_malformed_rows", "malformed_lines", "n_duplicate_rows")})
+        prov.applied["input_rows"] = input_rows
         logger.info(f"  Loaded {len(df)} samples with {len(df.columns)} columns")
         clash = None if skip_geo else region_column_clash(df.columns, geo_category)
         if clash:
@@ -638,6 +667,12 @@ def run_pipeline(
         basins_tsv = dirs['intermediate_geographic'] / f"samples_with_{geo_category}.tsv"
         df_with_basins.to_csv(basins_tsv, sep='\t', index=False)
 
+    except metadata.MalformedTSVError as e:
+        logger.error(f"Phase 1 stopped: {e}")
+        step_warnings.detach()
+        prov.finish(success=False)
+        prov.write(prov_path)
+        return False
     except Exception as e:
         logger.error(f"Phase 1 failed: {e}", exc_info=True)
         step_warnings.detach()
@@ -1534,6 +1569,7 @@ def run_pipeline(
             species_counts=species_counts,
             n_excluded_error_tied=details.n_excluded_error_tied,
             n_excluded_error_far=details.n_excluded_error_far,
+            input_counts=prov.applied.get("input_rows"),
         )
 
         # Verify file was created
@@ -1739,6 +1775,8 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
              'Use the code of the final run (5 for most invertebrates).'
     )
 
+    _add_input_row_arguments(parser)
+
     parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
@@ -1774,6 +1812,8 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
             threads=args.threads,
             keep_intermediates=args.keep_intermediates,
             genetic_code=args.genetic_code,
+            marker=args.marker,
+            allow_malformed_rows=args.allow_malformed_rows,
         )
 
         print("\n✓ Parameter sweep complete!")
@@ -2126,6 +2166,8 @@ Notes:
              'in run_provenance.json; see the run README.'
     )
 
+    _add_input_row_arguments(parser)
+
     parser.add_argument(
         '--no-evidence-taxa',
         action='store_true',
@@ -2304,6 +2346,8 @@ def main():
             argv=sys.argv,
             download_date=args.download_date,
             taxon_curation=args.taxon_curation,
+            marker=args.marker,
+            allow_malformed_rows=args.allow_malformed_rows,
         )
 
         return 0 if success else 1

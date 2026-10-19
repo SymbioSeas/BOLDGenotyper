@@ -12,8 +12,9 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+INPUT_ROW_COLUMNS = ["n_other_marker_rows", "n_malformed_rows", "n_duplicate_rows"]
 SUMMARY_COLUMNS = [
-    "n_input", "n_unique", "n_no_sequence", "n_failed_qc", "n_qc_pass",
+    "n_input", "n_other_marker_rows", "n_malformed_rows", "n_duplicate_rows", "n_unique", "n_no_sequence", "n_failed_qc", "n_qc_pass",
     "n_excluded_core", "n_core_ok", "n_assigned", "n_assigned_corrected",
     "n_excluded_error", "n_excluded_error_tied", "n_excluded_error_far", "n_haplotypes",
     "pct_assigned", "pct_assigned_exact",
@@ -34,7 +35,8 @@ _STATUS_COLUMNS = {
 
 
 def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
-                               n_excluded_error_tied=0, n_excluded_error_far=0):
+                               n_excluded_error_tied=0, n_excluded_error_far=0,
+                               input_counts: Optional[Dict[str, int]] = None):
     """Assignment summary with explicit denominators.
 
     Percentages are of QC-passed records (n_qc_pass = unique records minus
@@ -66,6 +68,8 @@ def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
     }
     for key in SPECIES_COUNT_COLUMNS:
         summary[key] = int((species_counts or {}).get(key, 0))
+    for key in INPUT_ROW_COLUMNS:
+        summary[key] = int((input_counts or {}).get(key, 0))
     return {k: summary[k] for k in SUMMARY_COLUMNS}
 
 
@@ -78,6 +82,7 @@ def generate_assignment_summary(
     species_counts: Optional[Dict[str, int]] = None,
     n_excluded_error_tied: int = 0,
     n_excluded_error_far: int = 0,
+    input_counts: Optional[Dict[str, int]] = None,
 ) -> Dict[str, object]:
     """
     Write the assignment summary: one row with explicit denominators.
@@ -103,6 +108,9 @@ def generate_assignment_summary(
         Error-singleton records left unassigned because they are equidistant
         from two or more haplotypes, or because no retained haplotype is within
         the error-filter threshold
+    input_counts : dict, optional
+        Rows removed while reading the input (n_other_marker_rows,
+        n_malformed_rows, n_duplicate_rows)
 
     Returns
     -------
@@ -117,7 +125,8 @@ def generate_assignment_summary(
         n_haplotypes = diag["assigned_haplotype"].dropna().nunique() if "assigned_haplotype" in diag else 0
 
     summary = compute_assignment_summary(diag, n_input, n_haplotypes, species_counts,
-                                         n_excluded_error_tied, n_excluded_error_far)
+                                         n_excluded_error_tied, n_excluded_error_far,
+                                         input_counts)
     pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(out, index=False)
     logger.info(f"Assignment summary saved: {out}")
     return summary
