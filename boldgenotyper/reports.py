@@ -149,7 +149,7 @@ def update_summary(output_csv, values: Dict[str, object]) -> Dict[str, object]:
     out = Path(output_csv)
     if not out.exists():
         return {}
-    summary = pd.read_csv(out).iloc[0].to_dict()
-    summary.update(values)
-    pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(out, index=False)
-    return {k: summary[k] for k in SUMMARY_COLUMNS}
+    # Set columns on the frame: a row taken with .iloc would cast every count to float.
+    summary = pd.read_csv(out).assign(**values).reindex(columns=SUMMARY_COLUMNS)
+    summary.to_csv(out, index=False)
+    return summary.to_dict("records")[0]

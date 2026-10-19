@@ -35,3 +35,17 @@ def test_summary_csv_has_no_empty_columns(tmp_path):
     assert list(df.columns) == reports.SUMMARY_COLUMNS
     assert df.notna().all(axis=None)
     assert df.loc[0, "pct_assigned"] == 100.0
+
+
+def test_update_summary_keeps_integer_counts(tmp_path):
+    """Pre-tag fix: values filled in Phase 13 leave the counts written in Phase 12 as integers."""
+    out = tmp_path / "summary.csv"
+    row = {c: 0 for c in reports.SUMMARY_COLUMNS}
+    row.update(n_input=9785, n_unique=9221, pct_assigned=83.26)
+    pd.DataFrame([row], columns=reports.SUMMARY_COLUMNS).to_csv(out, index=False)
+    updated = reports.update_summary(out, {"n_singleton_label_absent": 39})
+    written = pd.read_csv(out, dtype=str).iloc[0]
+    assert (written["n_input"], written["n_unique"]) == ("9785", "9221")
+    assert written["pct_assigned"] == "83.26"
+    assert written["n_singleton_label_absent"] == "39"
+    assert updated["n_input"] == 9785 and isinstance(updated["n_input"], int)
