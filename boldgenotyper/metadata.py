@@ -43,6 +43,8 @@ import re
 import pandas as pd
 import numpy as np
 import csv
+import io
+from collections import Counter
 
 from . import utils
 
@@ -54,16 +56,42 @@ logger = logging.getLogger(__name__)
 # BOLD TSV Parsing
 # ============================================================================
 
+MALFORMED_LINES_KEPT = 20   # line numbers kept in MalformedTSVError and df.attrs
+
+
+class MalformedTSVError(ValueError):
+    """Data rows whose field count differs from the header's (A2)."""
+
+    def __init__(self, path, n_malformed: int, n_total: int, line_numbers: List[int],
+                 expected_fields: int, observed_fields: int):
+        self.n_malformed = n_malformed
+        self.line_numbers = line_numbers
+        self.expected_fields = expected_fields
+        super().__init__(
+            f"{path}: {n_malformed} of {n_total} data rows have {observed_fields} fields "
+            f"instead of {expected_fields} (first at line {line_numbers[0]}). Re-download the "
+            f"file, or pass --allow-malformed-rows to drop these rows.")
+
+
+def _decode_tsv(path: Path, encoding: str) -> str:
+    raw = path.read_bytes()
+    enc = "utf-8-sig" if encoding.lower().replace("-", "") == "utf8" else encoding
+    try:
+        return raw.decode(enc)
+    except UnicodeDecodeError:
+        logger.warning(f"{encoding} decoding failed; retrying with latin-1 encoding.")
+        return raw.decode("latin-1")
+
+
 def parse_bold_tsv(
     tsv_path: Union[str, Path],
     required_columns: Optional[List[str]] = None,
     encoding: str = 'utf-8',
+    marker: Optional[str] = 'COI-5P',
+    allow_malformed_rows: bool = False,
 ) -> pd.DataFrame:
     """
-    Parse BOLD TSV file and validate required fields.
-
-    Handles various BOLD export formats, encoding issues, and missing columns.
-    This validates your BOLD data and ensure it contains the necessary information for genotyping and geographic analysis.
+    Parse a BOLD TSV file: every data row is read or reported.
 
     Parameters
     ----------
@@ -73,37 +101,39 @@ def parse_bold_tsv(
         List of required column names. If None, uses default ['processid', 'nuc']
     encoding : str
         File encoding (default: 'utf-8', falls back to 'latin-1' if needed)
+    marker : str or None
+        Target marker (default 'COI-5P'). When the file has a marker_code
+        column, rows of other markers are removed before duplicate processids,
+        so a specimen whose other-marker row comes first keeps its COI row.
+        None keeps every marker.
+    allow_malformed_rows : bool
+        Data rows whose field count differs from the header's stop the parse
+        (MalformedTSVError) unless this is True; they are then dropped and
+        counted.
 
     Returns
     -------
     pd.DataFrame
-        Parsed metadata with validated fields
+        One row per unique processid. df.attrs holds the counts: n_rows (data
+        rows in the file), n_malformed_rows, malformed_lines (file line
+        numbers, first 20), n_other_marker_rows, n_duplicate_rows.
 
     Raises
     ------
     FileNotFoundError
         If TSV file doesn't exist
+    MalformedTSVError
+        If rows have the wrong number of fields and allow_malformed_rows is False
     ValueError
-        If required fields are missing or processid is not unique
+        If required fields are missing
     pd.errors.EmptyDataError
         If file is empty
 
-    Examples
-    --------
-    >>> df = parse_bold_tsv("Sphyrna_lewini.tsv")
-    >>> print(df.shape)
-    (1500, 86)
-    >>> print(df['processid'].nunique())
-    1500
-
     Notes
     -----
-    BOLD TSV files typically contain ~86 columns. This function:
-    - Handles encoding issues (tries UTF-8, falls back to Latin-1)
-    - Validates required columns exist
-    - Checks for duplicate processids
-    - Converts dtypes where appropriate
-    - Logs warnings for data quality issues
+    BOLD TSVs are not quote-escaped, so fields are read with no quoting: a
+    field that starts with a quote character keeps it and cannot swallow the
+    lines that follow.
     """
     path = Path(tsv_path)
 
@@ -116,52 +146,53 @@ def parse_bold_tsv(
 
     logger.info(f"Reading BOLD TSV file: {path}")
 
-    def _read_with_fallback(enc: str) -> pd.DataFrame:
-        """Read TSV with fallbacks for malformed rows."""
-        try:
-            return pd.read_csv(
-                path,
-                sep='\t',
-                encoding=enc,
-                dtype=str,  # Read all as strings initially
-                low_memory=False
-            )
-        except pd.errors.ParserError as e:
-            logger.warning(
-                f"Standard TSV parse failed (encoding={enc}): {e}. "
-                "Retrying with Python engine and skipping malformed rows."
-            )
-            return pd.read_csv(
-                path,
-                sep='\t',
-                encoding=enc,
-                dtype=str,
-                engine='python',
-                on_bad_lines='skip',
-                quoting=csv.QUOTE_MINIMAL
-            )
-
-    # Try reading with specified encoding, fallback to latin-1 if needed
-    try:
-        df = _read_with_fallback(encoding)
-    except UnicodeDecodeError:
-        logger.warning("UTF-8 decoding failed; retrying with latin-1 encoding.")
-        df = _read_with_fallback('latin-1')
-
-    # Check if file is empty
-    if df.empty:
+    lines = [(i, line.rstrip("\r")) for i, line in enumerate(_decode_tsv(path, encoding).split("\n"), 1)]
+    lines = [(i, line) for i, line in lines if line.strip()]
+    if len(lines) < 2:
         raise pd.errors.EmptyDataError(f"BOLD TSV file is empty: {path}")
+    header, data = lines[0][1], lines[1:]
+    expected = header.count("\t") + 1
+    bad = [(i, line.count("\t") + 1) for i, line in data if line.count("\t") + 1 != expected]
+    if bad:
+        observed = Counter(n for _, n in bad).most_common(1)[0][0]
+        bad_lines = [i for i, _ in bad]
+        if not allow_malformed_rows:
+            raise MalformedTSVError(path, len(bad), len(data), bad_lines[:MALFORMED_LINES_KEPT],
+                                    expected, observed)
+        logger.warning(f"Dropped {len(bad)} of {len(data)} data rows with {observed} fields instead "
+                       f"of {expected} (first at line {bad_lines[0]}).")
+        bad_set = set(bad_lines)
+        data = [(i, line) for i, line in data if i not in bad_set]
+    else:
+        bad_lines = []
+
+    text = "\n".join([header] + [line for _, line in data])
+    df = pd.read_csv(io.StringIO(text), sep='\t', dtype=str, quoting=csv.QUOTE_NONE,
+                     low_memory=False)
+    df.columns = [str(c).lstrip("\ufeff") for c in df.columns]
 
     logger.info(f"Read {len(df)} rows and {len(df.columns)} columns")
 
     # Validate required columns
     validate_required_columns(df, required_columns)
 
+    # Keep the target marker before removing duplicates (A1)
+    n_other_marker = 0
+    if marker and 'marker_code' in df.columns:
+        is_marker = df['marker_code'].fillna('').str.strip() == marker
+        n_other_marker = int((~is_marker).sum())
+        if n_other_marker:
+            logger.info(f"Removed {n_other_marker} rows of markers other than {marker}")
+            df = df[is_marker].copy()
+    elif marker:
+        logger.info(f"No marker_code column; all rows used (target marker {marker} not checked)")
+
     # Check for duplicate processids and remove them (keep first occurrence)
+    n_duplicates = 0
     if 'processid' in df.columns:
         duplicates = df['processid'].duplicated()
         if duplicates.any():
-            n_duplicates = duplicates.sum()
+            n_duplicates = int(duplicates.sum())
             dup_ids = df.loc[duplicates, 'processid'].head(5).tolist()
             logger.warning(
                 f"Found {n_duplicates} duplicate processids. "
@@ -180,6 +211,13 @@ def parse_bold_tsv(
     # Log data quality statistics
     _log_data_quality(df)
 
+    df.attrs.update(
+        n_rows=len(lines) - 1,
+        n_malformed_rows=len(bad_lines),
+        malformed_lines=bad_lines[:MALFORMED_LINES_KEPT],
+        n_other_marker_rows=n_other_marker,
+        n_duplicate_rows=n_duplicates,
+    )
     return df
 
 
