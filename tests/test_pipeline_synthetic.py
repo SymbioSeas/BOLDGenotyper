@@ -58,7 +58,7 @@ def synthetic_run(tmp_path_factory):
 DEFAULT_FILES = {
     f"{ORGANISM}_pipeline.log", "run_provenance.json", "summary.csv", "records.csv",
     "records_qc_passed.fasta", "haplotypes.fasta", "haplotypes.csv", "label_conflicts.csv",
-    "label_variants.csv", "metadata_coverage.csv", "divergence/haplotypes_aligned.fasta",
+    "label_variants.csv", "sources.csv", "metadata_coverage.csv", "divergence/haplotypes_aligned.fasta",
     "divergence/pairwise_p_distance.csv", "README.md",
 }
 
@@ -786,3 +786,36 @@ def test_invalid_label_map_stops_before_output(tmp_path):
     ok, out = run_synthetic(tmp_path, edit_tsv=_misspell_one_alpha, label_map=bad)
     assert ok is False
     assert not (out / "records.csv").exists()
+
+
+# --- Error-filter diagnostics (pre-tag A4) ---------------------------------------
+
+def _relabel_syn021(tsv):
+    """SYN021 (planted assigned_corrected) gets a species found in no retained haplotype."""
+    lines = tsv.read_text().splitlines()
+    header = lines[0].split("\t")
+    idx = next(i for i, line in enumerate(lines) if line.startswith("SYN021\t"))
+    row = lines[idx].split("\t")
+    row[header.index("species")] = "Genus delta"
+    lines[idx] = "\t".join(row)
+    tsv.write_text("\n".join(lines) + "\n")
+
+
+def test_error_filter_diagnostics_in_run(tmp_path):
+    ok, out = run_synthetic(tmp_path, edit_tsv=_relabel_syn021)
+    assert ok
+    rec = _records(out).set_index("processid")
+    assert rec.loc["SYN021", "label_in_retained"] in (False, "False")
+    assert rec.loc["SYN022", "label_in_retained"] in (True, "True")
+    s = pd.read_csv(out / "summary.csv").iloc[0]
+    assert s["n_singleton_label_absent"] == 1
+    assert (out / "sources.csv").exists()
+    assert "may have removed species" in (out / f"{ORGANISM}_pipeline.log").read_text()
+
+
+def test_corrected_share_warning(tmp_path, monkeypatch):
+    from boldgenotyper import error_filter_diagnostics
+    monkeypatch.setattr(error_filter_diagnostics, "CORRECTED_SHARE_WARNING", 0.01)
+    ok, out = run_synthetic(tmp_path)
+    assert ok
+    assert "corrected singletons" in (out / f"{ORGANISM}_pipeline.log").read_text()

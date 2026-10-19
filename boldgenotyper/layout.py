@@ -19,7 +19,7 @@ from typing import Dict, Iterable, List, Optional, Set
 import numpy as np
 import pandas as pd
 
-from . import quality_control, taxon_curation
+from . import quality_control, taxon_curation, error_filter_diagnostics
 from .taxon_evidence import EVIDENCE_COLUMNS
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ KEY_BOLD_FIELDS = [
 _RECORD_FRONT = [
     "processid", "status", "status_note", "haplotype_id", "haplotype_label", "assigned_sp",
     "label", "label_mapped_from", "label_conflict", "nearest_haplotype", "distance_to_nearest",
+    "label_in_retained",
     "qc_pass", "qc_fail_reason", "sequence_length", "depositor_keyword_hits",
     "lat", "lon", "coord_status",
 ]
@@ -101,6 +102,8 @@ def build_records_table(
         curated_taxa=taxon_curation.taxa_not_from_labels(taxonomy))
     out["label"] = labeled["label"].values
     out["label_mapped_from"] = ""
+    out["label_in_retained"] = error_filter_diagnostics.label_in_retained(
+        out.assign(label=labeled["label"].values)).values
     if "species_as_deposited" in records.columns:
         deposited = quality_control.record_labels(
             records.assign(species=records["species_as_deposited"]), "species", "genus")

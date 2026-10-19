@@ -49,7 +49,7 @@ from . import (
     popgen_export, species_analysis, msa_visualization,
     metadata_summary, shapefile_registry, provenance, record_status, taxon_labels, layout,
     run_readme, haplotype_ids, taxon_evidence, query_outputs, query_overlays, query_report,
-    run_figures, label_variants,
+    run_figures, label_variants, error_filter_diagnostics,
 )
 from . import report as run_report
 from . import taxon_curation as taxon_curation_mod
@@ -423,6 +423,41 @@ def _add_input_row_arguments(parser: argparse.ArgumentParser) -> None:
              'applied before labels are pooled and recorded in run_provenance.json. '
              'label_variants.csv lists candidates; nothing is merged without this file.'
     )
+
+
+def _write_error_filter_diagnostics(records_df, df_input, output_dir, summary_csv, prov) -> None:
+    """sources.csv, the error-filter summary values and their warnings (pre-tag A4)."""
+    efd = error_filter_diagnostics
+    seqs = df_input[["processid", "nuc"]] if "nuc" in df_input.columns else df_input[["processid"]]
+    sources = efd.source_diagnostics(records_df.merge(seqs, on="processid", how="left"))
+    sources.to_csv(output_dir / "sources.csv", index=False)
+    statuses = records_df["status"]
+    share = efd.corrected_share(int((statuses == "assigned").sum()),
+                                int((statuses == "assigned_corrected").sum()))
+    n_absent = int((records_df["label_in_retained"] == False).sum())  # noqa: E712 (object column)
+    n_haplotype_only = int(sources["haplotype_only"].sum()) if len(sources) else 0
+    if share > efd.CORRECTED_SHARE_WARNING:
+        logger.warning(f"  {share * 100:.1f}% of assigned records were corrected singletons; if "
+                       f"sources deposit one sequence per haplotype, true rare haplotypes may have "
+                       f"been treated as errors (see sources.csv).")
+    if n_absent:
+        logger.warning(f"  {n_absent} error-filtered records carry a species label found in no "
+                       f"retained haplotype; the filter may have removed species (records.csv "
+                       f"label_in_retained).")
+    prov.data_notes["error_filter"] = {
+        "pct_corrected": round(share * 100, 2),
+        "n_singleton_label_absent": n_absent,
+        "n_haplotype_only_sources": n_haplotype_only,
+        "corrected_share_warning": efd.CORRECTED_SHARE_WARNING,
+        "haplotype_only_min_records": efd.HAPLOTYPE_ONLY_MIN_RECORDS,
+        "haplotype_only_min_distinct": efd.HAPLOTYPE_ONLY_MIN_DISTINCT,
+    }
+    updated = reports.update_summary(summary_csv, {
+        "n_singleton_label_absent": n_absent, "n_haplotype_only_sources": n_haplotype_only})
+    if updated:
+        prov.applied["assignment_summary"] = updated
+    logger.info(f"  sources.csv: {len(sources)} sources, {n_haplotype_only} depositing one sequence "
+                f"per haplotype")
 
 
 def run_pipeline(
@@ -1662,6 +1697,12 @@ def run_pipeline(
             logger.info(f"  label_variants.csv: {len(variants)} possible spelling variant(s)")
         except Exception as e:
             step_warnings.record("13 label variants", e)
+
+        try:
+            _write_error_filter_diagnostics(records_df, df_with_basins, output_dir,
+                                            summary_output, prov)
+        except Exception as e:
+            step_warnings.record("13 error-filter diagnostics", e)
 
         if geo_analysis_performed:
             (output_dir / "geography").mkdir(exist_ok=True)

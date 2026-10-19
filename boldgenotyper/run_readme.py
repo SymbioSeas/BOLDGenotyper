@@ -90,6 +90,12 @@ FILE_DOCS = [
          "n_malformed_rows": "data rows whose number of fields differs from the header's, "
                              "dropped with --allow-malformed-rows (otherwise the run stops)",
          "n_duplicate_rows": "rows repeating a processid of the target marker (first kept)",
+         "pct_corrected": "assigned_corrected as a percentage of all assigned records (assigned + "
+                          "assigned_corrected)",
+         "n_singleton_label_absent": "error-filtered singleton records whose species label no "
+                                     "assigned record carries (records.csv label_in_retained False): "
+                                     "the filter may have removed a species",
+         "n_haplotype_only_sources": "sources in sources.csv flagged haplotype_only",
          "n_unique": "unique records of the target marker (rows of other markers and duplicate "
                      "processids removed; first kept)",
          "n_no_sequence": "records with status no_sequence",
@@ -125,6 +131,10 @@ FILE_DOCS = [
                          "assigned_corrected",
          "nearest_haplotype": "for error-filtered singletons, the nearest retained haplotype(s)",
          "distance_to_nearest": "p-distance to nearest_haplotype",
+         "label_in_retained": "for error-filtered singletons (assigned_corrected, "
+                              "excluded_error_singleton) with a species-level label: True when an "
+                              "assigned record carries the same label, False when none does; empty "
+                              "otherwise",
          "label_mapped_from": "the deposited label, when the run's label map (--label-map) replaced "
                               "it; empty otherwise",
          "label_conflict": "True when the record's species-level label differs from its haplotype's "
@@ -201,6 +211,23 @@ FILE_DOCS = [
                          "label in the label rule's genus; otherwise listed in "
                          "taxon_curation_suggestions.csv",
          "suggestion_basis": "the lines that agree, or why there is no suggestion",
+     }},
+    {"pattern": "sources.csv",
+     "text": "One row per source of records seen by the singleton error filter (assigned, "
+             "assigned_corrected, excluded_error_singleton): the BOLD project (processid prefix), "
+             "or the GenBank accession prefix for records mined from GenBank. A source that "
+             "deposits one sequence per haplotype makes true rare haplotypes look like errors to "
+             "the filter; haplotype_only flags it (at least 10 records, at least 90% distinct "
+             "sequences). Check the error filter's results for such datasets.",
+     "columns": {
+         "source": "BOLD project code or GenBank accession prefix",
+         "n_records": "records from the source seen by the error filter",
+         "n_distinct_sequences": "distinct deposited sequences among them",
+         "distinct_fraction": "n_distinct_sequences / n_records",
+         "n_assigned": "records with status assigned",
+         "n_corrected": "records with status assigned_corrected",
+         "n_excluded_error": "records with status excluded_error_singleton",
+         "haplotype_only": "n_records >= 10 and distinct_fraction >= 0.90",
      }},
     {"pattern": "label_variants.csv",
      "text": "Pairs of species labels in one genus that may be one name written differently: "

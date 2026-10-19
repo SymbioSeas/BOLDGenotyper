@@ -17,7 +17,8 @@ SUMMARY_COLUMNS = [
     "n_input", "n_other_marker_rows", "n_malformed_rows", "n_duplicate_rows", "n_unique", "n_no_sequence", "n_failed_qc", "n_qc_pass",
     "n_excluded_core", "n_core_ok", "n_assigned", "n_assigned_corrected",
     "n_excluded_error", "n_excluded_error_tied", "n_excluded_error_far", "n_haplotypes",
-    "pct_assigned", "pct_assigned_exact",
+    "pct_assigned", "pct_assigned_exact", "pct_corrected",
+    "n_singleton_label_absent", "n_haplotype_only_sources",
     "n_species_labels_input", "n_species_labels_species_level", "n_species_labels_qc_passed",
     "n_species_haplotype_assigned", "n_species_confident",
 ]
@@ -65,6 +66,10 @@ def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
         "n_haplotypes": int(n_haplotypes),
         "pct_assigned": round((c("assigned") + c("assigned_corrected")) / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
         "pct_assigned_exact": round(c("assigned") / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
+        "pct_corrected": (round(c("assigned_corrected") / (c("assigned") + c("assigned_corrected")) * 100, 2)
+                          if c("assigned") + c("assigned_corrected") else 0.0),
+        "n_singleton_label_absent": 0,      # filled by update_summary (Phase 13)
+        "n_haplotype_only_sources": 0,
     }
     for key in SPECIES_COUNT_COLUMNS:
         summary[key] = int((species_counts or {}).get(key, 0))
@@ -130,3 +135,15 @@ def generate_assignment_summary(
     pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(out, index=False)
     logger.info(f"Assignment summary saved: {out}")
     return summary
+
+
+def update_summary(output_csv, values: Dict[str, object]) -> Dict[str, object]:
+    """Set values in an existing summary.csv (columns written later in the run);
+    returns the updated summary, or {} when the file does not exist."""
+    out = Path(output_csv)
+    if not out.exists():
+        return {}
+    summary = pd.read_csv(out).iloc[0].to_dict()
+    summary.update(values)
+    pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(out, index=False)
+    return {k: summary[k] for k in SUMMARY_COLUMNS}
