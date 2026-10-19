@@ -276,7 +276,7 @@ suggestion_basis` (new in v2; see 5.6).
 | `pct_no_sequence` | removed |
 | `n_haplotypes` | same |
 | `n_species_identified` | `n_species_haplotype_assigned`; see also `n_species_labels_input`, `n_species_labels_species_level`, `n_species_labels_qc_passed`, `n_species_confident` |
-| — | `n_failed_qc`, `n_qc_pass`, `n_excluded_core`, `n_core_ok`, `n_assigned_corrected`, `n_excluded_error`, `n_excluded_error_tied`, `n_excluded_error_far`, `pct_assigned_exact`, `pct_corrected`, `n_singleton_label_absent`, `n_haplotype_only_sources` |
+| — | `n_failed_qc`, `n_qc_pass`, `n_excluded_core`, `n_core_ok`, `n_assigned_corrected`, `n_excluded_error`, `n_excluded_error_tied`, `n_excluded_error_far`, `pct_assigned_exact`, `pct_error_filtered`, `n_singleton_label_absent`, `n_haplotype_only_groups`, `n_singletons_exempt` |
 
 ### 4.5 Label and QC tables
 
@@ -584,7 +584,7 @@ of the final run.
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |
 | `utils.assign_consensus_taxonomy` | label-based rule (5.6) |
 | `metadata.parse_bold_tsv(tsv_path, required_columns=None, encoding="utf-8")` | adds `marker="COI-5P"`, `allow_malformed_rows=False`; raises `MalformedTSVError`; counts in `df.attrs` |
-| — | `label_variants` (`clean_label`, `detect_label_variants`, `load_label_map`, `apply_label_map`), `label_backbone` (`suggest_label_map`), `error_filter_diagnostics` (`source_diagnostics`, `label_in_retained`) |
+| — | `label_variants` (`clean_label`, `detect_label_variants`, `load_label_map`, `apply_label_map`), `label_backbone` (`suggest_label_map`), `error_filter_diagnostics` (`record_groups`, `haplotype_only_groups`, `sources_table`, `label_in_retained`) |
 | — | `layout` (`build_records_table`, `build_haplotypes_table`, `FILE_MAP`), `run_readme`, `provenance`, `record_status`, `haplotype_ids`, `taxon_labels`, `taxon_evidence`, `taxon_curation` |
 
 ---

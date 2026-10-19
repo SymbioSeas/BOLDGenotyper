@@ -813,9 +813,38 @@ def test_error_filter_diagnostics_in_run(tmp_path):
     assert "may have removed species" in (out / f"{ORGANISM}_pipeline.log").read_text()
 
 
-def test_corrected_share_warning(tmp_path, monkeypatch):
+def test_filtered_share_warning(tmp_path, monkeypatch):
     from boldgenotyper import error_filter_diagnostics
-    monkeypatch.setattr(error_filter_diagnostics, "CORRECTED_SHARE_WARNING", 0.01)
+    monkeypatch.setattr(error_filter_diagnostics, "FILTERED_SHARE_WARNING", 0.01)
     ok, out = run_synthetic(tmp_path)
     assert ok
-    assert "corrected singletons" in (out / f"{ORGANISM}_pipeline.log").read_text()
+    assert "treated as errors" in (out / f"{ORGANISM}_pipeline.log").read_text()
+
+
+def _add_haplotype_only_study(tsv):
+    """Ten GenBank records of Genus alpha from one study, each a distinct sequence one base from A."""
+    from tests.synthetic_data import A, mutate
+    lines = tsv.read_text().splitlines()
+    header = lines[0].split("\t") + ["inst", "insdc_acs"]
+    out = ["\t".join(header)] + [line + "\t\t" for line in lines[1:]]
+    for k in range(10):
+        row = dict.fromkeys(header, "")
+        row.update(processid=f"GBSTU{k:03d}-15", sampleid=f"GB-{k}", species="Genus alpha", genus="Genus",
+                   family="Syntheticidae", marker_code="COI-5P", inst="Mined from GenBank, NCBI",
+                   insdc_acs=f"KC835{k:03d}", nuc=mutate(A, [100 + k]))
+        out.append("\t".join(row[c] for c in header))
+    tsv.write_text("\n".join(out) + "\n")
+
+
+def test_haplotype_only_study_keeps_its_singletons(tmp_path):
+    ok, out = run_synthetic(tmp_path, edit_tsv=_add_haplotype_only_study)
+    assert ok
+    rec = _records(out).set_index("processid")
+    study = rec.loc[[f"GBSTU{k:03d}-15" for k in range(10)]]
+    assert (study["status"] == "assigned").all() and study["haplotype_id"].nunique() == 10
+    s = pd.read_csv(out / "summary.csv").iloc[0]
+    assert s["n_haplotype_only_groups"] == 1 and s["n_singletons_exempt"] == 10
+    sources = pd.read_csv(out / "sources.csv")
+    row = sources[(sources.source == "GenBank:KC835") & (sources.label == "Genus alpha")].iloc[0]
+    assert bool(row["haplotype_only"]) is True and row["n_records"] == 10
+    assert "one sequence per haplotype" in (out / f"{ORGANISM}_pipeline.log").read_text()

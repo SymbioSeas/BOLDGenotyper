@@ -425,39 +425,45 @@ def _add_input_row_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _write_error_filter_diagnostics(records_df, df_input, output_dir, summary_csv, prov) -> None:
-    """sources.csv, the error-filter summary values and their warnings (pre-tag A4)."""
+def _write_error_filter_diagnostics(records_df, df_input, details, output_dir, summary_csv,
+                                    prov, cfg) -> None:
+    """sources.csv, the error-filter summary values and their warnings (pre-tag A4, A4b)."""
     efd = error_filter_diagnostics
-    seqs = df_input[["processid", "nuc"]] if "nuc" in df_input.columns else df_input[["processid"]]
-    sources = efd.source_diagnostics(records_df.merge(seqs, on="processid", how="left"))
-    sources.to_csv(output_dir / "sources.csv", index=False)
+    groups = details.haplotype_only_groups if details is not None else None
+    groups = groups if groups is not None else pd.DataFrame(columns=efd.GROUP_COLUMNS)
+    by_record = efd.record_groups(df_input).merge(records_df[["processid", "status"]], on="processid")
+    efd.sources_table(groups, by_record).to_csv(output_dir / "sources.csv", index=False)
     statuses = records_df["status"]
-    share = efd.corrected_share(int((statuses == "assigned").sum()),
-                                int((statuses == "assigned_corrected").sum()))
+    share = efd.filtered_share(int((statuses == "assigned").sum()),
+                               int((statuses == "assigned_corrected").sum()),
+                               int((statuses == "excluded_error_singleton").sum()))
     n_absent = int((records_df["label_in_retained"] == False).sum())  # noqa: E712 (object column)
-    n_haplotype_only = int(sources["haplotype_only"].sum()) if len(sources) else 0
-    if share > efd.CORRECTED_SHARE_WARNING:
-        logger.warning(f"  {share * 100:.1f}% of assigned records were corrected singletons; if "
-                       f"sources deposit one sequence per haplotype, true rare haplotypes may have "
-                       f"been treated as errors (see sources.csv).")
+    group_values = efd.summary_values(groups, details.n_singletons_exempt if details is not None else 0)
+    if group_values["n_haplotype_only_groups"]:
+        logger.warning(f"  {group_values['n_haplotype_only_groups']} source-and-label group(s) deposit one "
+                       f"sequence per haplotype (sources.csv); {group_values['n_singletons_exempt']} of "
+                       f"their singletons were kept as haplotypes, not treated as errors.")
+    if share > efd.FILTERED_SHARE_WARNING:
+        logger.warning(f"  {share * 100:.1f}% of the records the error filter saw were treated as errors "
+                       f"(corrected or left unassigned); if studies deposit one sequence per haplotype, "
+                       f"true rare haplotypes may have been treated as errors (see sources.csv).")
     if n_absent:
         logger.warning(f"  {n_absent} error-filtered records carry a species label found in no "
                        f"retained haplotype; the filter may have removed species (records.csv "
                        f"label_in_retained).")
     prov.data_notes["error_filter"] = {
-        "pct_corrected": round(share * 100, 2),
+        "pct_error_filtered": round(share * 100, 2),
         "n_singleton_label_absent": n_absent,
-        "n_haplotype_only_sources": n_haplotype_only,
-        "corrected_share_warning": efd.CORRECTED_SHARE_WARNING,
-        "haplotype_only_min_records": efd.HAPLOTYPE_ONLY_MIN_RECORDS,
-        "haplotype_only_min_distinct": efd.HAPLOTYPE_ONLY_MIN_DISTINCT,
+        **group_values,
+        "filtered_share_warning": efd.FILTERED_SHARE_WARNING,
+        "haplotype_only_min_records": cfg.haplotype.haplotype_only_min_records,
+        "haplotype_only_min_distinct": cfg.haplotype.haplotype_only_min_distinct,
     }
-    updated = reports.update_summary(summary_csv, {
-        "n_singleton_label_absent": n_absent, "n_haplotype_only_sources": n_haplotype_only})
+    updated = reports.update_summary(summary_csv, {"n_singleton_label_absent": n_absent, **group_values})
     if updated:
         prov.applied["assignment_summary"] = updated
-    logger.info(f"  sources.csv: {len(sources)} sources, {n_haplotype_only} depositing one sequence "
-                f"per haplotype")
+    logger.info(f"  sources.csv: {len(groups)} source-and-label groups, "
+                f"{group_values['n_haplotype_only_groups']} depositing one sequence per haplotype")
 
 
 def run_pipeline(
@@ -895,6 +901,9 @@ def run_pipeline(
             min_sequence_coverage=cfg.core_region.min_sequence_coverage,
             assign_corrected=cfg.haplotype.assign_corrected,
             return_details=True,
+            record_groups=error_filter_diagnostics.record_groups(df_qc_passed),
+            haplotype_only_min_records=cfg.haplotype.haplotype_only_min_records,
+            haplotype_only_min_distinct=cfg.haplotype.haplotype_only_min_distinct,
         )
 
         logger.info(f"  Identified {len(haplotype_records)} high-confidence haplotypes (after error filtering)")
@@ -1699,8 +1708,8 @@ def run_pipeline(
             step_warnings.record("13 label variants", e)
 
         try:
-            _write_error_filter_diagnostics(records_df, df_with_basins, output_dir,
-                                            summary_output, prov)
+            _write_error_filter_diagnostics(records_df, df_with_basins, details, output_dir,
+                                            summary_output, prov, cfg)
         except Exception as e:
             step_warnings.record("13 error-filter diagnostics", e)
 

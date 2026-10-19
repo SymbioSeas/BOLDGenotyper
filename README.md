@@ -590,9 +590,10 @@ The run folder's `README.md` defines every output; this section describes the st
   (`assigned_corrected`), otherwise left unassigned (`excluded_error_singleton`)
 - Haplotypes that differ only at gaps or Ns are merged; distant singletons, distance
   outliers and reading-frame failures are flagged as suspect
-- The run reports where the error filter may be removing real variation: sources that
-  deposit one sequence per haplotype (`sources.csv`), and error-filtered singletons whose
-  species label no retained haplotype carries (`label_in_retained` in `records.csv`); see
+- Studies that deposit one sequence per haplotype (a source and label with at least 10
+  records, at least 90% of them distinct) are not error-filtered: their singletons stay as
+  haplotypes (`sources.csv`). The run also flags error-filtered singletons whose species
+  label no retained haplotype carries (`label_in_retained` in `records.csv`); see
   [When the Error Filter's Assumption Fails](#when-the-error-filters-assumption-fails)
 
 ### 4. Record statuses and labels
@@ -1053,7 +1054,7 @@ column. This section is an overview. Upgrading from 1.0.0: see the
 ├── haplotypes.csv                # one row per haplotype
 ├── label_conflicts.csv           # records whose label conflicts with their haplotype's majority
 ├── label_variants.csv            # pairs of labels that may be one name written differently
-├── sources.csv                   # per BOLD project or GenBank prefix: records the error filter saw
+├── sources.csv                   # per source and label: distinct sequences, studies kept from the error filter
 ├── taxon_curation_suggestions.csv  # suggested taxa not applied, as a curation file (when any)
 ├── metadata_coverage.csv         # how many records have each metadata field
 ├── divergence/
@@ -1145,7 +1146,8 @@ records), and species counts under named definitions (`n_species_labels_input`,
 `n_species_labels_qc_passed`, `n_species_haplotype_assigned`, `n_species_confident`, ...).
 Rows removed while reading the input are counted first (`n_other_marker_rows`,
 `n_malformed_rows`, `n_duplicate_rows`); the error filter's diagnostics are
-`pct_corrected`, `n_singleton_label_absent` and `n_haplotype_only_sources`.
+`pct_error_filtered`, `n_singleton_label_absent`, `n_haplotype_only_groups` and
+`n_singletons_exempt`.
 
 #### `label_variants.csv`
 
@@ -1157,10 +1159,13 @@ be two letters apart and share haplotypes (e.g. *Coregonus hoyi* and *C. kiyi*).
 
 #### `sources.csv`
 
-One row per source of the records the error filter saw: the BOLD project (processid
-prefix), or the GenBank accession prefix for records mined from GenBank. `haplotype_only`
-flags a source with at least 10 records of which at least 90% are distinct sequences, the
-pattern of population studies that deposit one sequence per haplotype. See
+One row per source and label among the records that reached the error filter: the source
+is the BOLD project (processid prefix), or the GenBank accession prefix for records mined
+from GenBank. `haplotype_only` marks a group with at least 10 records of which at least 90%
+are distinct core sequences: a study that deposits one sequence per haplotype. The error
+filter does not treat such a group's singletons as errors. Judging within one label keeps
+multi-species barcode-library projects, whose sequences differ because their species do,
+from being counted. See
 [When the Error Filter's Assumption Fails](#when-the-error-filters-assumption-fails).
 
 #### `label_conflicts.csv`
@@ -1420,16 +1425,24 @@ The singleton filter assumes that a singleton close to a common haplotype is mor
 error than a real rare variant. Two kinds of data break that assumption:
 
 - **One sequence per haplotype.** Population studies often deposit each haplotype once in
-  GenBank, so every true haplotype is a singleton and the filter removes real variation.
-  `sources.csv` flags such sources (`haplotype_only`), and the log warns when a large share
-  of assigned records are corrected singletons (`pct_corrected` in `summary.csv`).
+  GenBank, so every true haplotype is a singleton and the filter would remove real
+  variation. BOLDGenotyper finds such studies (a source and label with at least 10 records,
+  at least 90% of them distinct core sequences) and keeps their singletons as haplotypes;
+  `sources.csv` lists every group and `n_singletons_exempt` in `summary.csv` counts the
+  singletons kept. The two thresholds are configuration values
+  (`haplotype.haplotype_only_min_records`, `haplotype.haplotype_only_min_distinct`) recorded
+  in `run_provenance.json`. The log also warns when the filter treats more than a quarter of
+  the records it sees as errors (`pct_error_filtered`).
 - **Family- or order-level data.** An error-filtered singleton may be the only record of a
   species. `label_in_retained` in `records.csv` is False when an error-filtered record's
   species label is carried by no retained haplotype, and `n_singleton_label_absent` in
   `summary.csv` counts them; the log warns when there are any.
 
-When either applies, compare the sweep's lowest thresholds and consider a lower
-`--singleton-distance` for that dataset.
+In simulations with known haplotypes, the sweep's elbow removed the simulated sequencing
+errors at every scenario but also merged rare real haplotypes within about 1% of a common
+one; a study that deposits one sequence per haplotype lost most of its haplotypes until its
+singletons were exempted. When the family-level warning fires, compare the sweep's lowest
+thresholds and consider a lower `--singleton-distance` for that dataset.
 
 ### Reviewing and Curating Haplotype Taxa
 

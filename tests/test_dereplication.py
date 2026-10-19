@@ -82,3 +82,22 @@ class TestMAFFTAlignment(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+def test_filter_keeps_exempt_singletons():
+    """Pre-tag A4b: singletons whose member is in a haplotype-only group are not treated as errors."""
+    import pandas as pd
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+    from boldgenotyper.dereplication import filter_error_singletons
+    base = "ACGT" * 150
+    near = base[:10] + ("T" if base[10] != "T" else "A") + base[11:]       # 1 difference
+    records = [SeqRecord(Seq(base), id="hapA"), SeqRecord(Seq(near), id="hapB")]
+    mapping = pd.DataFrame({"processid": ["p1", "p2", "p3"], "haplotype_id": ["hapA", "hapA", "hapB"]})
+    kept, _, stats, removed = filter_error_singletons(records, mapping, min_singleton_distance=0.005)
+    assert [r.id for r in kept] == ["hapA"] and len(removed) == 1
+    kept, mapping_out, stats, removed = filter_error_singletons(
+        records, mapping, min_singleton_distance=0.005, exempt_processids={"p3"})
+    assert [r.id for r in kept] == ["hapA", "hapB"] and removed == []
+    assert stats["n_exempt"] == 1 and "p3" in set(mapping_out["processid"])

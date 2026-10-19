@@ -90,12 +90,15 @@ FILE_DOCS = [
          "n_malformed_rows": "data rows whose number of fields differs from the header's, "
                              "dropped with --allow-malformed-rows (otherwise the run stops)",
          "n_duplicate_rows": "rows repeating a processid of the target marker (first kept)",
-         "pct_corrected": "assigned_corrected as a percentage of all assigned records (assigned + "
-                          "assigned_corrected)",
+         "pct_error_filtered": "records the error filter treated as errors (assigned_corrected + "
+                               "excluded_error_singleton) as a percentage of the records it saw "
+                               "(those two plus assigned)",
          "n_singleton_label_absent": "error-filtered singleton records whose species label no "
                                      "assigned record carries (records.csv label_in_retained False): "
                                      "the filter may have removed a species",
-         "n_haplotype_only_sources": "sources in sources.csv flagged haplotype_only",
+         "n_haplotype_only_groups": "source-and-label groups in sources.csv flagged haplotype_only",
+         "n_singletons_exempt": "singleton haplotypes kept because their records belong to a "
+                                "haplotype_only group (not treated as errors)",
          "n_unique": "unique records of the target marker (rows of other markers and duplicate "
                      "processids removed; first kept)",
          "n_no_sequence": "records with status no_sequence",
@@ -213,21 +216,24 @@ FILE_DOCS = [
          "suggestion_basis": "the lines that agree, or why there is no suggestion",
      }},
     {"pattern": "sources.csv",
-     "text": "One row per source of records seen by the singleton error filter (assigned, "
-             "assigned_corrected, excluded_error_singleton): the BOLD project (processid prefix), "
-             "or the GenBank accession prefix for records mined from GenBank. A source that "
-             "deposits one sequence per haplotype makes true rare haplotypes look like errors to "
-             "the filter; haplotype_only flags it (at least 10 records, at least 90% distinct "
-             "sequences). Check the error filter's results for such datasets.",
+     "text": "One row per source and label among the records that reached the error filter: the "
+             "source is the BOLD project (processid prefix), or the GenBank accession prefix for "
+             "records mined from GenBank. A group with at least 10 records of which at least 90% are "
+             "distinct core sequences is haplotype_only: a study that deposits one sequence per "
+             "haplotype, so every true haplotype is a singleton. The error filter does not treat "
+             "such a group's singletons as errors; they stay as haplotypes (n_singletons_exempt in "
+             "summary.csv). The two thresholds are in run_provenance.json "
+             "(haplotype.haplotype_only_min_records, haplotype_only_min_distinct).",
      "columns": {
          "source": "BOLD project code or GenBank accession prefix",
-         "n_records": "records from the source seen by the error filter",
-         "n_distinct_sequences": "distinct deposited sequences among them",
+         "label": "the records' label (species, or genus when the species is missing)",
+         "n_records": "records of the group that reached the error filter",
+         "n_distinct_sequences": "distinct core sequences among them, before the error filter",
          "distinct_fraction": "n_distinct_sequences / n_records",
+         "haplotype_only": "n_records >= 10 and distinct_fraction >= 0.90 (defaults)",
          "n_assigned": "records with status assigned",
          "n_corrected": "records with status assigned_corrected",
          "n_excluded_error": "records with status excluded_error_singleton",
-         "haplotype_only": "n_records >= 10 and distinct_fraction >= 0.90",
      }},
     {"pattern": "label_variants.csv",
      "text": "Pairs of species labels in one genus that may be one name written differently: "

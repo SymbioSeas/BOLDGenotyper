@@ -309,6 +309,12 @@ class HaplotypeConfig:
         Singletons >5% divergent from nearest haplotype are flagged as potential
         contamination or misidentification.
 
+    haplotype_only_min_records, haplotype_only_min_distinct : int, float
+        A group of records with one source (BOLD project, or GenBank accession
+        prefix) and one label is a study that deposits one sequence per
+        haplotype when it has at least haplotype_only_min_records records (10)
+        and at least haplotype_only_min_distinct (0.90) of them are distinct
+        core sequences. The error filter does not treat its singletons as errors.
     flag_suspect_haplotypes : bool
         Whether to flag suspect haplotypes (default: True).
         Flags singletons that are distant, have ORF issues, or suspect COI.
@@ -343,6 +349,8 @@ class HaplotypeConfig:
     sequencing with the Illumina MiSeq platform. Nucleic Acids Research, 43(6), e37.
     """
     min_singleton_distance: float = 0.005
+    haplotype_only_min_records: int = 10
+    haplotype_only_min_distinct: float = 0.90
     max_singleton_distance: float = 0.05
     assign_corrected: bool = True
     flag_suspect_haplotypes: bool = False

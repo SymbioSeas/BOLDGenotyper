@@ -17,8 +17,8 @@ SUMMARY_COLUMNS = [
     "n_input", "n_other_marker_rows", "n_malformed_rows", "n_duplicate_rows", "n_unique", "n_no_sequence", "n_failed_qc", "n_qc_pass",
     "n_excluded_core", "n_core_ok", "n_assigned", "n_assigned_corrected",
     "n_excluded_error", "n_excluded_error_tied", "n_excluded_error_far", "n_haplotypes",
-    "pct_assigned", "pct_assigned_exact", "pct_corrected",
-    "n_singleton_label_absent", "n_haplotype_only_sources",
+    "pct_assigned", "pct_assigned_exact", "pct_error_filtered",
+    "n_singleton_label_absent", "n_haplotype_only_groups", "n_singletons_exempt",
     "n_species_labels_input", "n_species_labels_species_level", "n_species_labels_qc_passed",
     "n_species_haplotype_assigned", "n_species_confident",
 ]
@@ -33,6 +33,11 @@ _STATUS_COLUMNS = {
     "failed_qc": "n_failed_qc",
     "no_sequence": "n_no_sequence",
 }
+
+
+def _pct_error_filtered(n_assigned: int, n_corrected: int, n_excluded: int) -> float:
+    total = n_assigned + n_corrected + n_excluded
+    return round((n_corrected + n_excluded) / total * 100, 2) if total else 0.0
 
 
 def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
@@ -66,10 +71,11 @@ def compute_assignment_summary(status_df, n_input, n_haplotypes, species_counts,
         "n_haplotypes": int(n_haplotypes),
         "pct_assigned": round((c("assigned") + c("assigned_corrected")) / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
         "pct_assigned_exact": round(c("assigned") / n_qc_pass * 100, 2) if n_qc_pass else 0.0,
-        "pct_corrected": (round(c("assigned_corrected") / (c("assigned") + c("assigned_corrected")) * 100, 2)
-                          if c("assigned") + c("assigned_corrected") else 0.0),
+        "pct_error_filtered": _pct_error_filtered(c("assigned"), c("assigned_corrected"),
+                                                  c("excluded_error_singleton")),
         "n_singleton_label_absent": 0,      # filled by update_summary (Phase 13)
-        "n_haplotype_only_sources": 0,
+        "n_haplotype_only_groups": 0,
+        "n_singletons_exempt": 0,
     }
     for key in SPECIES_COUNT_COLUMNS:
         summary[key] = int((species_counts or {}).get(key, 0))

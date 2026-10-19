@@ -162,7 +162,7 @@ Signatures are abbreviated; see each function's docstring.
 
 ### Haplotypes — `dereplication`, `haplotype_ids`, `record_status`
 
-- `dereplication.identify_haplotypes(tsv_path, fasta_path, output_dir, min_core_coverage=0.8, min_singleton_distance=0.005, max_singleton_distance=0.05, min_sequence_coverage=0.95, assign_corrected=True, return_details=False, ...)` → `(haplotype_records, mapping, stats, [details])`; IDs are `H0001`..., FASTA headers carry `seq_md5` and `n_members`; `details` has the core length, cutoffs, excluded records and error-singleton outcomes
+- `dereplication.identify_haplotypes(tsv_path, fasta_path, output_dir, min_core_coverage=0.8, min_singleton_distance=0.005, max_singleton_distance=0.05, min_sequence_coverage=0.95, assign_corrected=True, return_details=False, record_groups=None, haplotype_only_min_records=10, haplotype_only_min_distinct=0.90, ...)` → `(haplotype_records, mapping, stats, [details])`; with `record_groups` (`error_filter_diagnostics.record_groups`), singletons of haplotype-only groups are not error-filtered (`details.haplotype_only_groups`, `details.n_singletons_exempt`); IDs are `H0001`..., FASTA headers carry `seq_md5` and `n_members`; `details` has the core length, cutoffs, excluded records and error-singleton outcomes
 - `dereplication.flag_suspect_haplotypes(haplotype_records, mapping, max_singleton_distance=0.05)` → per-haplotype stats with `nearest_haplotype`, `nearest_neighbor_distance`, `is_suspect`, `suspect_reasons`
 - `haplotype_ids.seq_md5(seq)` → md5 of the uppercase, ungapped sequence
 - `haplotype_ids.assign_display_ids(counts)` → `{seq_md5: "H0001", ...}` by count, then md5
@@ -181,9 +181,11 @@ Signatures are abbreviated; see each function's docstring.
 
 ### Error-filter diagnostics — `error_filter_diagnostics`
 
-- `source_diagnostics(records)` → `sources.csv` rows (`SOURCE_COLUMNS`; `haplotype_only` at `HAPLOTYPE_ONLY_MIN_RECORDS` 10 and `HAPLOTYPE_ONLY_MIN_DISTINCT` 0.90)
+- `record_groups(records)` → `processid`, `source` (BOLD project or GenBank accession prefix) and `label` per record
+- `haplotype_only_groups(groups, min_records=10, min_distinct=0.90)` → one row per source and label (`GROUP_COLUMNS`) from each record's pre-filter haplotype; `exempt_processids(groups_by_record, groups)` → records of haplotype-only groups
+- `sources_table(groups, records)` → `sources.csv` rows (`SOURCE_COLUMNS`) with the records' statuses
 - `label_in_retained(records)` → for error-filtered singletons with a species-level label, whether an assigned record carries it
-- `corrected_share(n_assigned, n_corrected)`; the run warns above `CORRECTED_SHARE_WARNING` (0.25)
+- `filtered_share(n_assigned, n_corrected, n_excluded)`; the run warns above `FILTERED_SHARE_WARNING` (0.25)
 
 ### Run folder — `layout`, `run_readme`, `provenance`
 

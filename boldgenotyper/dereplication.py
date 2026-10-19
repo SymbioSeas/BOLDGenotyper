@@ -113,6 +113,8 @@ class DiscoveryDetails:
     error_singletons: pd.DataFrame
     n_excluded_error_tied: int
     n_excluded_error_far: int
+    haplotype_only_groups: Optional[pd.DataFrame] = None
+    n_singletons_exempt: int = 0
 
 
 def _member_counts(mapping: pd.DataFrame) -> Dict[str, int]:
@@ -397,7 +399,8 @@ def calculate_pairwise_distances(alignment: List[SeqRecord]) -> np.ndarray:
 def filter_error_singletons(
     haplotype_records: List[SeqRecord],
     haplotype_mapping: pd.DataFrame,
-    min_singleton_distance: float = 0.005
+    min_singleton_distance: float = 0.005,
+    exempt_processids: Optional[set] = None,
 ) -> Tuple[List[SeqRecord], pd.DataFrame, Dict[str, int], list]:
     """
     Filter likely sequencing/PCR error-derived singleton haplotypes.
@@ -415,6 +418,10 @@ def filter_error_singletons(
     min_singleton_distance : float, optional
         Minimum divergence threshold for retaining singletons (default: 0.005 = 0.5%)
         Set to 0.0 to disable filtering (retain all singletons)
+    exempt_processids : set, optional
+        Records whose singleton haplotype is never treated as an error: members
+        of studies that deposit one sequence per haplotype
+        (error_filter_diagnostics.haplotype_only_groups). Counted in n_exempt.
 
     Returns
     -------
@@ -471,6 +478,7 @@ def filter_error_singletons(
             'n_total': len(haplotype_records),
             'n_singletons': sum(1 for r in haplotype_records if counts.get(r.id, 0) == 1),
             'n_filtered': 0,
+            'n_exempt': 0,
             'n_retained': len(haplotype_records)
         }, []
 
@@ -486,6 +494,8 @@ def filter_error_singletons(
 
     n_singletons = 0
     n_filtered = 0
+    n_exempt = 0
+    exempt = exempt_processids or set()
 
     for i, record in enumerate(haplotype_records):
         hap_id = record.id
@@ -503,14 +513,18 @@ def filter_error_singletons(
             else:
                 nearest_neighbor_dist = np.nan
 
-            # Filter if below threshold
+            # Filter if below threshold, unless the record's study deposits one
+            # sequence per haplotype (its singletons are real variation)
             if nearest_neighbor_dist <= min_singleton_distance:
-                n_filtered += 1
                 members = haplotype_mapping.loc[
                     haplotype_mapping['haplotype_id'] == hap_id, 'processid'
                 ].tolist()
-                removed.append((hap_id, str(record.seq), members))
-                continue  # Don't keep this singleton
+                if exempt and set(members) <= exempt:
+                    n_exempt += 1
+                else:
+                    n_filtered += 1
+                    removed.append((hap_id, str(record.seq), members))
+                    continue  # Don't keep this singleton
 
         # Keep this haplotype (multi-member or distant singleton)
         records_to_keep.append(record)
@@ -526,6 +540,7 @@ def filter_error_singletons(
         'n_total': len(haplotype_records),
         'n_singletons': n_singletons,
         'n_filtered': n_filtered,
+        'n_exempt': n_exempt,
         'n_retained': len(records_to_keep),
         'filter_rate': n_filtered / n_singletons if n_singletons > 0 else 0.0
     }
@@ -1002,6 +1017,9 @@ def identify_haplotypes(
     min_sequence_coverage: float = 0.95,
     assign_corrected: bool = True,
     return_details: bool = False,
+    record_groups: Optional[pd.DataFrame] = None,
+    haplotype_only_min_records: int = 10,
+    haplotype_only_min_distinct: float = 0.90,
 ) -> tuple:
     """
     Main haplotype-first workflow: identify ESVs from core region.
@@ -1143,12 +1161,29 @@ def identify_haplotypes(
         orf_validation_results=orf_validation_df
     )
 
+    # Step 4.4: Studies that deposit one sequence per haplotype (their singletons
+    # are not treated as errors)
+    groups, exempt = None, set()
+    if record_groups is not None and len(record_groups):
+        from . import error_filter_diagnostics as efd
+        by_record = record_groups.merge(
+            haplotype_mapping[["processid", "haplotype_id"]].rename(columns={"haplotype_id": "haplotype_key"}),
+            on="processid")
+        groups = efd.haplotype_only_groups(by_record, haplotype_only_min_records,
+                                           haplotype_only_min_distinct)
+        exempt = efd.exempt_processids(by_record, groups)
+        n_groups = int(groups["haplotype_only"].sum())
+        if n_groups:
+            logger.info(f"  {n_groups} source-and-label group(s) deposit one sequence per haplotype; "
+                        f"their singletons are not treated as errors")
+
     # Step 4.5: Filter error-derived singletons
     logger.info("Step 4.5: Filtering error-derived singletons...")
     haplotype_records, haplotype_mapping, filter_stats, removed_singletons = filter_error_singletons(
         haplotype_records,
         haplotype_mapping,
-        min_singleton_distance=min_singleton_distance
+        min_singleton_distance=min_singleton_distance,
+        exempt_processids=exempt,
     )
 
     # Step 5: Flag suspect haplotypes
@@ -1260,6 +1295,8 @@ def identify_haplotypes(
         error_singletons=error_singletons,
         n_excluded_error_tied=n_tied,
         n_excluded_error_far=n_far,
+        haplotype_only_groups=groups,
+        n_singletons_exempt=int(filter_stats.get('n_exempt', 0)),
     )
 
     # Step 6: Write haplotype FASTA (ungapped for downstream use)
