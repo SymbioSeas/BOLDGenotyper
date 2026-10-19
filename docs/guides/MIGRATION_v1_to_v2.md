@@ -268,7 +268,7 @@ suggestion_basis` (new in v2; see 5.6).
 
 | v1 | v2 |
 |---|---|
-| `total_samples` | `n_unique` (and `n_input`, data rows before duplicate removal) |
+| `total_samples` | `n_unique` (and `n_input`, data rows in the file; `n_other_marker_rows`, `n_malformed_rows` and `n_duplicate_rows` count what was removed while reading) |
 | `samples_with_sequence` | `n_unique - n_no_sequence` |
 | `n_assigned` | `n_assigned + n_assigned_corrected` |
 | `n_no_sequence` | `n_no_sequence` (now only records without a sequence; v1 also counted QC, core-coverage and error-filter exclusions here) |
@@ -276,7 +276,7 @@ suggestion_basis` (new in v2; see 5.6).
 | `pct_no_sequence` | removed |
 | `n_haplotypes` | same |
 | `n_species_identified` | `n_species_haplotype_assigned`; see also `n_species_labels_input`, `n_species_labels_species_level`, `n_species_labels_qc_passed`, `n_species_confident` |
-| — | `n_failed_qc`, `n_qc_pass`, `n_excluded_core`, `n_core_ok`, `n_assigned_corrected`, `n_excluded_error`, `n_excluded_error_tied`, `n_excluded_error_far`, `pct_assigned_exact` |
+| — | `n_failed_qc`, `n_qc_pass`, `n_excluded_core`, `n_core_ok`, `n_assigned_corrected`, `n_excluded_error`, `n_excluded_error_tied`, `n_excluded_error_far`, `pct_assigned_exact`, `pct_corrected`, `n_singleton_label_absent`, `n_haplotype_only_sources` |
 
 ### 4.5 Label and QC tables
 
@@ -468,6 +468,9 @@ mismatch); v1's main distribution map also failed silently. v2 writes them.
 | (no outgroup) | tree unrooted as written by FastTree | midpoint-rooted (`phylogenetic.midpoint_root: false` keeps it unrooted); rooting keeps support values on their branches, which 1.0.0's outgroup rooting did not |
 | `--no-assign-corrected` | — | new: leave error-filtered singletons unassigned |
 | `--download-date` | — | new: recorded in `run_provenance.json` |
+| `--marker` | — (the first row of a processid was kept, whatever its marker) | new, default `COI-5P`: rows of other markers are removed before duplicates and counted |
+| `--allow-malformed-rows` | — (malformed rows were dropped silently and reported as duplicates) | new: rows of the wrong field count stop the run unless this is given |
+| `--label-map` | — | new: confirmed label replacements applied before labels are pooled; candidates in `label_variants.csv` |
 | `--taxon-curation` | — | new: apply checked haplotype taxa (5.6) |
 | `--no-evidence-taxa` | — | new: report taxon evidence without applying it |
 | `--similarity-threshold`, `--tie-margin`, `--tie-threshold` | identity re-assignment | removed (records are mapped directly from haplotype discovery) |
@@ -580,6 +583,8 @@ of the final run.
 | `reports.generate_html_report(organism, output_dir, version)` | `report.generate_html_report(run_dir, organism, provenance=None, version=None)`; reads the final run folder; `reports` keeps `compute_assignment_summary` and `generate_assignment_summary` |
 | `utils.setup_logging(..., mode="a")` | default `mode="w"` (a fresh log per run) |
 | `utils.assign_consensus_taxonomy` | label-based rule (5.6) |
+| `metadata.parse_bold_tsv(tsv_path, required_columns=None, encoding="utf-8")` | adds `marker="COI-5P"`, `allow_malformed_rows=False`; raises `MalformedTSVError`; counts in `df.attrs` |
+| — | `label_variants` (`clean_label`, `detect_label_variants`, `load_label_map`, `apply_label_map`), `label_backbone` (`suggest_label_map`), `error_filter_diagnostics` (`source_diagnostics`, `label_in_retained`) |
 | — | `layout` (`build_records_table`, `build_haplotypes_table`, `FILE_MAP`), `run_readme`, `provenance`, `record_status`, `haplotype_ids`, `taxon_labels`, `taxon_evidence`, `taxon_curation` |
 
 ---

@@ -61,6 +61,9 @@ API Reference
    api/haplotype_ids
    api/record_status
    api/taxon_labels
+   api/label_variants
+   api/label_backbone
+   api/error_filter_diagnostics
    api/taxon_evidence
    api/taxon_curation
    api/layout

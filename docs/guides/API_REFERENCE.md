@@ -75,11 +75,13 @@ ok = cli.run_pipeline(
 `run_pipeline(tsv_path, organism, output_dir, cfg, no_report=False, skip_geo=False,
 export_plot_data=False, export_popgen_formats=None, metadata_summary_enabled=False,
 metadata_fields=None, normalize_sex=True, temporal_analysis=False, ...,
-taxon_curation=None)` returns `True`
-when the run finishes (`completed` or `completed_with_warnings` in
+taxon_curation=None, marker="COI-5P", allow_malformed_rows=False, label_map=None)` returns
+`True` when the run finishes (`completed` or `completed_with_warnings` in
 `run_provenance.json`). `export_plot_data` is `--plot-kit`; `export_popgen_formats` is
-`--export-format`; `taxon_curation` is `--taxon-curation` (a curation file that cannot be
-read or lacks required columns makes it return `False` before writing anything). Call
+`--export-format`; `taxon_curation`, `marker`, `allow_malformed_rows` and `label_map` are the
+flags of the same names. A curation file or label map that cannot be used, or an input with
+rows of the wrong field count (unless `allow_malformed_rows`), makes it return `False` before
+writing results. Call
 `utils.setup_logging(log_file=...)` first to get the run log.
 
 ---
@@ -139,9 +141,16 @@ Signatures are abbreviated; see each function's docstring.
 
 ### Input and coordinates — `metadata`
 
-- `parse_bold_tsv(tsv_path, required_columns=None)` → DataFrame; duplicate processids keep the first record
+- `parse_bold_tsv(tsv_path, required_columns=None, marker="COI-5P", allow_malformed_rows=False)` → DataFrame: every data row read (rows of the wrong field count raise `MalformedTSVError` unless allowed, then dropped and counted), rows of other markers removed before duplicate processids (first kept); counts in `df.attrs` (`n_rows`, `n_malformed_rows`, `malformed_lines`, `n_other_marker_rows`, `n_duplicate_rows`)
 - `parse_coord_column(df, coord_col="coord")` → adds float `lat`, `lon` for every parseable coordinate pair (BOLD portal `[lat, lon]` strings included)
 - `mark_coordinate_quality(df)` → adds `coord_status` (`ok`, `missing`, `unparseable`, `centroid`, `zero`, `out_of_range`) and `is_geographic_quality`; removes nothing
+
+### Labels — `label_variants`, `label_backbone`
+
+- `label_variants.clean_label(label)` → the label with whitespace, underscores and case tidied; the name is unchanged
+- `label_variants.detect_label_variants(records, label_map=None)` → `label_variants.csv` rows (`LABEL_VARIANT_COLUMNS`): pairs in one genus one or two letters apart, with a gender-ending change, or a qualifier form; never merges
+- `label_variants.load_label_map(path)` → checked map (`LABEL_MAP_COLUMNS`; raises `LabelMapError` on empty fields, self-mappings, repeated `from` or chains); `apply_label_map(df, label_map)` → `(df with species replaced and species_as_deposited, usage table)`
+- `label_backbone.match_name(name, backbone="gbif")`, `suggest_label_map(run_dir, backbone="gbif")` → a suggested map (spelling fixes and synonyms); `write_suggestions(df, path)`; raises `BackboneError` when the backbone cannot be reached
 
 ### Quality control and labels — `quality_control`
 
@@ -169,6 +178,12 @@ Signatures are abbreviated; see each function's docstring.
 - `taxon_evidence.apply_evidence(taxonomy, evidence, apply=True)` → `(taxonomy, not_applied)`: genus-level haplotypes take `suggested_sp` when it is their leading label in the label rule's genus (`assignment_source` = `evidence`); `not_applied` has `NOT_APPLIED_COLUMNS` with `why_not_applied`
 - `taxon_evidence.suggestions_table(not_applied, haplotypes, sequences)` → the rows of `taxon_curation_suggestions.csv` (`SUGGESTIONS_FILE`, `SUGGESTION_COLUMNS`), a curation file
 - `taxon_curation.load_curation(path)` → validated curation rows (raises `CurationError`); `match_curation(curation, haplotypes, sequences)` → `(applied, not_applied)`; `apply_curation(taxonomy, applied)` → taxonomy with `assignment_source`; `taxa_not_from_labels(taxonomy)` → `{haplotype_id: taxon}` of curated and evidence haplotypes
+
+### Error-filter diagnostics — `error_filter_diagnostics`
+
+- `source_diagnostics(records)` → `sources.csv` rows (`SOURCE_COLUMNS`; `haplotype_only` at `HAPLOTYPE_ONLY_MIN_RECORDS` 10 and `HAPLOTYPE_ONLY_MIN_DISTINCT` 0.90)
+- `label_in_retained(records)` → for error-filtered singletons with a species-level label, whether an assigned record carries it
+- `corrected_share(n_assigned, n_corrected)`; the run warns above `CORRECTED_SHARE_WARNING` (0.25)
 
 ### Run folder — `layout`, `run_readme`, `provenance`
 

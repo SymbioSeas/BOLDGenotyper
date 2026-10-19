@@ -559,7 +559,15 @@ wget -O Sphyrna_lewini.tsv \
 The run folder's `README.md` defines every output; this section describes the steps.
 
 ### 1. Input and coordinates
-- Parses the BOLD TSV once; duplicate process IDs keep their first record
+- Parses the BOLD TSV once and reads every data row: a row whose number of fields differs
+  from the header's stops the run with the line number (re-download the file, or pass
+  `--allow-malformed-rows` to drop and count such rows)
+- Keeps rows of the target marker (`--marker`, default `COI-5P`) before removing duplicate
+  process IDs, so a specimen whose other-marker row comes first keeps its COI; rows of other
+  markers, malformed rows and duplicates are counted in `summary.csv`
+- Tidies how labels are written (whitespace, underscores, the case of genus and epithet)
+  without changing names, and applies a confirmed label map (`--label-map`) if given; see
+  [Label Spelling Variants](#label-spelling-variants)
 - Parses coordinates for every record and gives each a `coord_status`
   (`ok`, `missing`, `unparseable`, `centroid`, `zero`, `out_of_range`)
 - Assigns regions (GOaS ocean basins by default, or a custom shapefile) only to records
@@ -582,6 +590,10 @@ The run folder's `README.md` defines every output; this section describes the st
   (`assigned_corrected`), otherwise left unassigned (`excluded_error_singleton`)
 - Haplotypes that differ only at gaps or Ns are merged; distant singletons, distance
   outliers and reading-frame failures are flagged as suspect
+- The run reports where the error filter may be removing real variation: sources that
+  deposit one sequence per haplotype (`sources.csv`), and error-filtered singletons whose
+  species label no retained haplotype carries (`label_in_retained` in `records.csv`); see
+  [When the Error Filter's Assumption Fails](#when-the-error-filters-assumption-fails)
 
 ### 4. Record statuses and labels
 - Every unique record gets one status: `assigned`, `assigned_corrected`,
@@ -598,6 +610,8 @@ The run folder's `README.md` defines every output; this section describes the st
 - `--taxon-curation FILE` applies taxa you have checked; see
   [Reviewing and Curating Haplotype Taxa](#reviewing-and-curating-haplotype-taxa)
 - Label conflicts are listed with their evidence in `label_conflicts.csv`
+- Possible spelling variants of labels are listed in `label_variants.csv`; nothing is merged
+  unless you confirm it in a label map
 
 ### 5. Phylogeny (`--build-tree`)
 - Every non-suspect haplotype with at least `--tree-min-members` members (default 1) is a
@@ -884,6 +898,9 @@ boldgenotyper --help
 | `--no-metadata-summary` | Flag | False | With `--extended`, skip the metadata cross-tabs (coverage is always written) |
 | `--no-temporal-analysis` | Flag | False | With `--extended`, skip the collection-date summaries |
 | `--download-date` | Date | None | Date the BOLD TSV was downloaded (YYYY-MM-DD); recorded in `run_provenance.json` |
+| `--marker` | String | `COI-5P` | BOLD `marker_code` to analyze; rows of other markers are removed before duplicate process IDs and counted |
+| `--allow-malformed-rows` | Flag | False | Drop and count rows whose number of fields differs from the header's, instead of stopping |
+| `--label-map` | Path | None | CSV/TSV of confirmed label replacements (`from`, `to`, `reason`, optional `source`), applied before labels are pooled (see [Label Spelling Variants](#label-spelling-variants)) |
 | `--taxon-curation` | Path | None | CSV/TSV of checked haplotype taxa applied after the label rule (see [Reviewing and Curating Haplotype Taxa](#reviewing-and-curating-haplotype-taxa)) |
 | `--no-evidence-taxa` | Flag | False | Report taxon evidence without applying it: genus-level haplotypes keep the genus |
 | `--keep-intermediates` | Flag | False | Keep `intermediate/` |
@@ -963,6 +980,18 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 
 ### Advanced Command Parameters
 
+#### `boldgenotyper-labels` (suggest a label map)
+
+```bash
+boldgenotyper-labels suggest results/Pieridae_analysis --backbone gbif   # or worms
+```
+
+Checks every deposited species-level label of a run against GBIF's species-match service
+(or WoRMS) and writes `label_map_suggested.csv` in the run folder (`--output` to change it):
+fuzzy matches as spelling fixes and synonyms with their accepted names, each with the
+backbone and date. It needs network access and changes nothing in the run. Review the rows,
+delete the ones you reject, and pass the file to `--label-map` in the next run.
+
 #### `boldgenotyper-query` Parameters
 
 | Parameter | Type | Default | Description |
@@ -991,6 +1020,7 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 | `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
 | `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |
 | `--genetic-code` | Integer | 2 | NCBI genetic code for reading-frame QC; use the code of the final run (5 for most invertebrates) |
+| `--marker`, `--allow-malformed-rows`, `--label-map` | | as for `boldgenotyper` | Use the same values as the final run |
 | `--log-level` | String | INFO | Logging verbosity |
 
 **Example**:
@@ -1022,6 +1052,8 @@ column. This section is an overview. Upgrading from 1.0.0: see the
 ├── haplotypes.fasta              # >H0001 seq_md5=... n_members=...
 ├── haplotypes.csv                # one row per haplotype
 ├── label_conflicts.csv           # records whose label conflicts with their haplotype's majority
+├── label_variants.csv            # pairs of labels that may be one name written differently
+├── sources.csv                   # per BOLD project or GenBank prefix: records the error filter saw
 ├── taxon_curation_suggestions.csv  # suggested taxa not applied, as a curation file (when any)
 ├── metadata_coverage.csv         # how many records have each metadata field
 ├── divergence/
@@ -1081,8 +1113,9 @@ in `by_species/<figure>/` for the report and web use. Every figure folder has a
 
 One row per unique input record, in input order, including records that failed QC or
 have no sequence. Columns include `status` (see below), `status_note`, `haplotype_id`,
-`haplotype_label`, `assigned_sp`, `label`, `label_conflict`, `nearest_haplotype` and
-`distance_to_nearest` (for error-filtered singletons), `qc_pass`, `qc_fail_reason`,
+`haplotype_label`, `assigned_sp`, `label`, `label_mapped_from` (the deposited label, when a
+label map replaced it), `label_conflict`, `nearest_haplotype`, `distance_to_nearest` and
+`label_in_retained` (for error-filtered singletons), `qc_pass`, `qc_fail_reason`,
 `depositor_keyword_hits`, `lat`, `lon`, `coord_status`, the region column
 (e.g. `ocean_basin`), and key BOLD fields. Join any other input column on `processid`.
 
@@ -1110,6 +1143,25 @@ the taxon evidence columns (see
 Record counts at each step with explicit denominators (percentages are of QC-passed
 records), and species counts under named definitions (`n_species_labels_input`,
 `n_species_labels_qc_passed`, `n_species_haplotype_assigned`, `n_species_confident`, ...).
+Rows removed while reading the input are counted first (`n_other_marker_rows`,
+`n_malformed_rows`, `n_duplicate_rows`); the error filter's diagnostics are
+`pct_corrected`, `n_singleton_label_absent` and `n_haplotype_only_sources`.
+
+#### `label_variants.csv`
+
+Pairs of species labels in one genus that may be one name written differently: epithets
+one or two letters apart, a changed gender ending, or one label that is the other plus more
+words, with record counts and the haplotypes they share. Nothing is merged: valid species can
+be two letters apart and share haplotypes (e.g. *Coregonus hoyi* and *C. kiyi*). See
+[Label Spelling Variants](#label-spelling-variants).
+
+#### `sources.csv`
+
+One row per source of the records the error filter saw: the BOLD project (processid
+prefix), or the GenBank accession prefix for records mined from GenBank. `haplotype_only`
+flags a source with at least 10 records of which at least 90% are distinct sequences, the
+pattern of population studies that deposit one sequence per haplotype. See
+[When the Error Filter's Assumption Fails](#when-the-error-filters-assumption-fails).
 
 #### `label_conflicts.csv`
 
@@ -1335,6 +1387,49 @@ only to genus. BOLDGenotyper reports labels rather than judging them:
 
 Divergences are reported as uncorrected p-distances without species-delimitation
 thresholds; `--extended` adds a barcoding gap computed from record labels.
+
+### Label Spelling Variants
+
+The same species is sometimes deposited under differently written names: misspellings
+(*Leptidea sinapsis*), gender endings (*Colias croceus* for *C. crocea*), or a name with a
+qualifier (*Leptidea sinapis complex*). Split this way, one species looks like two, and its
+records count as label conflicts with each other.
+
+BOLDGenotyper tidies formatting only (whitespace, underscores, capitalization). It lists
+the pairs that may be one name in `label_variants.csv`, but never merges them on its own:
+valid species can differ by two letters and even share haplotypes. To merge:
+
+1. Run once and read `label_variants.csv`.
+2. Optionally, `boldgenotyper-labels suggest RUN_DIR` checks every label against GBIF or
+   WoRMS and writes a suggested map with spelling fixes and synonyms.
+3. Keep the rows you accept in a label map (CSV: `from`, `to`, `reason`, optional
+   `source`) and run again with `--label-map FILE`.
+
+The map replaces deposited species labels before anything is counted, so majority labels,
+label conflicts, evidence and queries all use the confirmed names. `records.csv` keeps the
+deposited label in `label_mapped_from`, and `run_provenance.json` records the map's md5 and
+any rows that matched no record. A map with an empty field, a label mapped to itself, a
+repeated `from` or a chain (a `to` that is another row's `from`) stops the run.
+
+Synonymy is a taxonomic opinion, not a spelling fix: map synonyms only when you accept
+them, and say so in `reason`.
+
+### When the Error Filter's Assumption Fails
+
+The singleton filter assumes that a singleton close to a common haplotype is more likely an
+error than a real rare variant. Two kinds of data break that assumption:
+
+- **One sequence per haplotype.** Population studies often deposit each haplotype once in
+  GenBank, so every true haplotype is a singleton and the filter removes real variation.
+  `sources.csv` flags such sources (`haplotype_only`), and the log warns when a large share
+  of assigned records are corrected singletons (`pct_corrected` in `summary.csv`).
+- **Family- or order-level data.** An error-filtered singleton may be the only record of a
+  species. `label_in_retained` in `records.csv` is False when an error-filtered record's
+  species label is carried by no retained haplotype, and `n_singleton_label_absent` in
+  `summary.csv` counts them; the log warns when there are any.
+
+When either applies, compare the sweep's lowest thresholds and consider a lower
+`--singleton-distance` for that dataset.
 
 ### Reviewing and Curating Haplotype Taxa
 
