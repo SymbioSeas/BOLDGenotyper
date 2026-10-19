@@ -78,6 +78,7 @@ setup(
             'boldgenotyper=boldgenotyper.cli:main',
             'boldgenotyper-sweep=boldgenotyper.cli:main_sweep',
             'boldgenotyper-query=boldgenotyper.cli:main_query',
+            'boldgenotyper-labels=boldgenotyper.cli:main_labels',
         ],
     },
 

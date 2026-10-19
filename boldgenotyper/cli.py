@@ -2410,6 +2410,43 @@ def main():
         return 1
 
 
+def main_labels(argv=None) -> int:
+    """
+    CLI entry point for 'boldgenotyper-labels'.
+
+    boldgenotyper-labels suggest RUN_DIR [--backbone gbif|worms] [--output FILE]
+    checks a run's species labels against GBIF or WoRMS and writes a suggested
+    label map (spelling fixes and synonyms) to review before passing it to
+    --label-map. Needs network access; nothing in the run changes.
+    """
+    from . import label_backbone
+
+    parser = argparse.ArgumentParser(
+        prog='boldgenotyper-labels',
+        description='Suggest a label map by checking a run\'s species labels against a '
+                    'taxonomic backbone. Review the file, then pass it to --label-map.',
+    )
+    sub = parser.add_subparsers(dest='command', required=True)
+    suggest = sub.add_parser('suggest', help='Write a suggested label map for a run folder')
+    suggest.add_argument('run_dir', type=Path, help='A v2 run folder (with records.csv)')
+    suggest.add_argument('--backbone', choices=sorted(label_backbone.BACKBONES), default='gbif',
+                         help='Taxonomic backbone (default: gbif; worms for marine taxa)')
+    suggest.add_argument('--output', type=Path, default=None,
+                         help='Output CSV (default: RUN_DIR/label_map_suggested.csv)')
+    args = parser.parse_args(argv)
+
+    output = args.output or args.run_dir / "label_map_suggested.csv"
+    try:
+        suggestions = label_backbone.suggest_label_map(args.run_dir, backbone=args.backbone)
+    except (label_backbone.BackboneError, FileNotFoundError) as e:
+        print(f"boldgenotyper-labels: error: {e}", file=sys.stderr)
+        return 1
+    label_backbone.write_suggestions(suggestions, output)
+    print(f"{len(suggestions)} suggestion(s) written to {output}. Review them; the confirmed "
+          f"rows are a label map for --label-map.")
+    return 0
+
+
 def main_query(argv=None) -> int:
     """
     CLI entry point for the 'boldgenotyper-query' command.
