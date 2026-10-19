@@ -105,7 +105,7 @@ def parse_bold_tsv(
         Target marker (default 'COI-5P'). When the file has a marker_code
         column, rows of other markers are removed before duplicate processids,
         so a specimen whose other-marker row comes first keeps its COI row.
-        None keeps every marker.
+        Rows with an empty marker_code are kept. None keeps every marker.
     allow_malformed_rows : bool
         Data rows whose field count differs from the header's stop the parse
         (MalformedTSVError) unless this is True; they are then dropped and
@@ -168,7 +168,7 @@ def parse_bold_tsv(
 
     text = "\n".join([header] + [line for _, line in data])
     df = pd.read_csv(io.StringIO(text), sep='\t', dtype=str, quoting=csv.QUOTE_NONE,
-                     low_memory=False)
+                     lineterminator='\n', low_memory=False)
     df.columns = [str(c).lstrip("\ufeff") for c in df.columns]
 
     logger.info(f"Read {len(df)} rows and {len(df.columns)} columns")
@@ -179,7 +179,8 @@ def parse_bold_tsv(
     # Keep the target marker before removing duplicates (A1)
     n_other_marker = 0
     if marker and 'marker_code' in df.columns:
-        is_marker = df['marker_code'].fillna('').str.strip() == marker
+        codes = df['marker_code'].fillna('').str.strip()
+        is_marker = (codes == marker) | (codes == '')       # an empty code: marker unknown, kept
         n_other_marker = int((~is_marker).sum())
         if n_other_marker:
             logger.info(f"Removed {n_other_marker} rows of markers other than {marker}")

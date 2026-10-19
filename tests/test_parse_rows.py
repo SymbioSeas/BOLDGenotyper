@@ -89,3 +89,25 @@ def test_leading_quote_does_not_swallow_lines(tmp_path):
     df = parse_bold_tsv(path)
     assert df["processid"].tolist() == ["P1", "P2", "P3"]
     assert df.loc[df["processid"] == "P1", "notes"].iloc[0] == '"quoted start'
+
+
+def test_empty_marker_code_rows_are_kept(tmp_path):
+    """Final review: a row with no marker_code is kept (marker unknown), not counted as another marker."""
+    path = _tsv(tmp_path, HEADER, [
+        ["P1", "COI-5P", "Genus alpha", "", SEQ],
+        ["P2", "", "Genus alpha", "", SEQ],
+    ])
+    df = parse_bold_tsv(path)
+    assert df["processid"].tolist() == ["P1", "P2"]
+    assert df.attrs["n_other_marker_rows"] == 0
+
+
+def test_carriage_return_inside_field_stays_in_row(tmp_path):
+    """Final review: the parser splits rows exactly where the field-count check does."""
+    path = tmp_path / "cr.tsv"
+    path.write_bytes(("\t".join(HEADER) + "\n"
+                      + "\t".join(["P1", "COI-5P", "Genus alpha", "note\rwith CR", SEQ]) + "\n"
+                      + "\t".join(["P2", "COI-5P", "Genus alpha", "", SEQ]) + "\r\n").encode())
+    df = parse_bold_tsv(path)
+    assert df["processid"].tolist() == ["P1", "P2"]
+    assert df.loc[df["processid"] == "P1", "nuc"].iloc[0] == SEQ
