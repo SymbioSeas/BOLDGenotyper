@@ -303,6 +303,9 @@ def generate_divergence_summary(
         return pd.DataFrame()
 
 
+HEATMAP_MAX_CELLS = 20000          # as quality_control.HEATMAP_MAX_CELLS
+
+
 def create_divergence_heatmap(
     divergence_matrix: pd.DataFrame,
     output_path: Path
@@ -328,6 +331,12 @@ def create_divergence_heatmap(
 
     # Symmetrize matrix (handle any asymmetry from rounding)
     mat = (divergence_matrix + divergence_matrix.T) / 2
+    n = len(mat)
+    if n * n > HEATMAP_MAX_CELLS:
+        # An annotated n x n clustermap of ~1,860 haplotypes took about 25 minutes (2.1.1)
+        logger.info(f"  Divergence heatmap skipped: {n} haplotypes ({n * n:,} cells) exceeds "
+                    f"{HEATMAP_MAX_CELLS:,} cells (pairwise_p_distance.csv holds the values)")
+        return
 
     # Build distance array for hierarchical clustering
     dist_array = squareform(mat.values)
@@ -695,13 +704,15 @@ def generate_divergence_analysis(
         results['gap_stats'] = gap_df.to_dict('records')
         logger.info(f"  Saved label-based gap table: {gap_path}")
 
-    # Create visualizations
-    try:
-        heatmap_path = output_dir / "divergence_heatmap.pdf"
-        create_divergence_heatmap(divergence_matrix, heatmap_path)
-        results['heatmap'] = heatmap_path
-    except Exception as e:
-        logger.warning(f"Could not create divergence heatmap: {e}", extra={"step_failure": "9 divergence"})
+    # The heatmap is an --extended output; it is not drawn otherwise (2.1.1)
+    if extended:
+        try:
+            heatmap_path = output_dir / "divergence_heatmap.pdf"
+            create_divergence_heatmap(divergence_matrix, heatmap_path)
+            if heatmap_path.exists():
+                results['heatmap'] = heatmap_path
+        except Exception as e:
+            logger.warning(f"Could not create divergence heatmap: {e}", extra={"step_failure": "9 divergence"})
 
     if 'label_based_gap' in results:
         try:

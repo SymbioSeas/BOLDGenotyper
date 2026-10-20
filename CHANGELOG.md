@@ -5,6 +5,15 @@ All notable changes to BOLDGenotyper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - Unreleased
+
+### Fixed
+- The divergence heatmap (an `--extended` output) is drawn only with `--extended`, and is
+  skipped above 20,000 haplotype-by-haplotype cells, as the label heatmap is. It was drawn on
+  every run and every sweep threshold: about 25 minutes per run for a family-level Pieridae
+  download (~1,860 haplotypes), and at low sweep thresholds a risk of running out of memory.
+  Result files are unchanged.
+
 ## [2.1.0] - 2026-10-20
 
 Query side only: reference runs are unchanged.
