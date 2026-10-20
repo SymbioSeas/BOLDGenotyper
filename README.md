@@ -445,7 +445,7 @@ open {organism}_output/report.html
 ```bash
 # Step 1: Find the optimal singleton distance threshold
 boldgenotyper-sweep data/Sphyrna_lewini.tsv \
-  --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
+  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
   --output parameter_sweep/Sphyrna_lewini/
 
 # Step 2: Read the recommended threshold from the output
@@ -931,7 +931,7 @@ rare variants.
 ```bash
 # Step 1: test thresholds for your dataset
 boldgenotyper-sweep data/MySpecies.tsv \
-  --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
+  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
   --output sweep_results/
 
 # Step 2: read the settled threshold, the stability table and the haplotype counts
@@ -1021,7 +1021,7 @@ delete the ones you reject, and pass the file to `--label-map` in the next run.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `tsv` | Path | Required | Input BOLD TSV file |
-| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test; evenly spaced values suit the settled threshold |
+| `--thresholds` | String | 0.005,0.01,0.015,0.02,0.025,0.03 | Comma-separated threshold values to test; evenly spaced values suit the settled threshold |
 | `--output` | Path | parameter_sweep/ | Output directory |
 | `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
 | `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |
@@ -1774,7 +1774,7 @@ tail -50 {organism}_output/{organism}_pipeline.log
 
 # Run parameter sweep to find the optimal threshold
 boldgenotyper-sweep data/my_species.tsv \
-  --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
+  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
   --output parameter_sweep/
 
 # Read the recommended threshold, then re-run with it applied

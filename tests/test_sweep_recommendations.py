@@ -226,7 +226,7 @@ def test_first_threshold_settled_asks_for_lower_values(tmp_path):
 
 
 def test_uneven_spacing_is_noted(tmp_path):
-    t, out = [0.01, 0.015, 0.02, 0.03, 0.05], tmp_path / "recommendations.txt"   # the default
+    t, out = [0.01, 0.015, 0.02, 0.03, 0.05], tmp_path / "recommendations.txt"   # the 2.1 default
     ps.generate_recommendations(_summary(t, [280, 275, 274, 274, 273]), "Synth", out,
                                 tracking_df=_tracking_with_changes(t, [5, 2, 1, 1]))
     assert "unevenly spaced" in out.read_text()
@@ -257,3 +257,14 @@ def test_sweep_cli_reports_the_settled_threshold(tmp_path, monkeypatch, capsys, 
     monkeypatch.setattr(ps, "run_parameter_sweep", lambda **kw: result)
     assert cli.main_sweep([str(tsv), "--output", str(tmp_path / "s")]) == 0
     assert expected in capsys.readouterr().out
+
+
+def test_sweep_default_thresholds_are_evenly_spaced_from_0_005(tmp_path, monkeypatch):
+    # 2.2.0: the settled threshold compares steps of one width and cannot be below the first value
+    from boldgenotyper import cli
+    tsv = tmp_path / "in.tsv"
+    tsv.write_text("processid\n")
+    seen = {}
+    monkeypatch.setattr(ps, "run_parameter_sweep", lambda **kw: seen.update(kw) or {})
+    assert cli.main_sweep([str(tsv), "--output", str(tmp_path / "s")]) == 0
+    assert seen["thresholds"] == [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]

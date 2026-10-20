@@ -65,7 +65,7 @@ self-documenting.
 
 ### Computational Considerations
 
-The sweep runs the pipeline once per value (5 by default), without geography, the report or
+The sweep runs the pipeline once per value (6 by default), without geography, the report or
 the tree. Use `--threads`, or test fewer values first.
 
 ---
@@ -74,7 +74,7 @@ the tree. Use `--threads`, or test fewer values first.
 
 ### Step 1: Run the Sweep
 
-Default values (0.01, 0.015, 0.02, 0.03, 0.05):
+Default values (0.005 to 0.030 in steps of 0.005):
 
 ```bash
 boldgenotyper-sweep data/Sphyrna_lewini.tsv --output parameter_sweep/
@@ -84,7 +84,7 @@ Custom values (evenly spaced, as the settled threshold compares steps of the sam
 
 ```bash
 boldgenotyper-sweep data/Sphyrna_lewini.tsv \
-  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
+  --thresholds 0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05 \
   --threads 8 \
   --output sweep_results/
 ```
@@ -183,11 +183,12 @@ mean different haplotypes at different values. Compare by `md5_<value>`.
 HAPLOTYPE COUNT
 ---------------
    threshold   haplotypes   singletons   assigned (% of QC-passed)
+   0.005           61           35         80.1
    0.010           45           20         87.3
    0.015           32            6         94.5   <- settled, elbow
    0.020           30            4         95.0
+   0.025           29            3         95.1
    0.030           29            2         95.1
-   0.050           27            0         95.3
 
 The settled threshold is 0.015: from there on, every step to the next
 threshold changes the haplotype of fewer than 1% of records (STABILITY below).
@@ -195,24 +196,21 @@ It compares neighboring thresholds only, so it does not depend on where the
 range starts.
 
 The elbow (largest change in the slope of the haplotype-count curve) is at
-0.015: 32 haplotypes, against 45 at 0.010 and 27 at 0.050.
+0.015: 32 haplotypes, against 61 at 0.005 and 29 at 0.030.
 It is shown for reference only: it depends on the range tested, because on a
 curve whose drops shrink from one step to the next, the slope changes most
 near the start of the range.
-Here it is the second threshold tested.
-
-The thresholds are unevenly spaced: a wider step changes more records, so
-compare the shares of steps of the same width.
 
 STABILITY
 ---------
 Share of records whose haplotype changes between adjacent thresholds
 (compared by sequence; becoming assigned or unassigned counts as a change):
 
+   0.005 -> 0.010       89 of 912 records   9.8%
    0.010 -> 0.015       41 of 912 records   4.5%
    0.015 -> 0.020        6 of 912 records   0.7%
-   0.020 -> 0.030        3 of 912 records   0.3%
-   0.030 -> 0.050        5 of 912 records   0.5%
+   0.020 -> 0.025        3 of 912 records   0.3%
+   0.025 -> 0.030        1 of 912 records   0.1%
 ```
 
 (Numbers are illustrative.) The file ends with the command for the next step, with the
@@ -352,7 +350,7 @@ Use fewer values, more `--threads`, or a pilot sweep on a subsample, then refine
 ```
 The singleton error-filtering threshold (--singleton-distance) was chosen with
 boldgenotyper-sweep (BOLDGenotyper v2.2.0; Smith, 2026), which ran the pipeline at
-0.005 to 0.030 in steps of 0.005. The haplotype count fell from 45 to 27 across this
+0.005 to 0.030 in steps of 0.005. The haplotype count fell from 61 to 29 across this
 range. From 0.015 on, every step to the next value changed the haplotype of fewer
 than 1% of records (compared by sequence), so we used 0.015: singleton haplotypes
 within a p-distance of 0.015 of another haplotype were treated as likely sequencing

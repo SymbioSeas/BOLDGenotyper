@@ -1805,7 +1805,7 @@ def main_sweep(argv=None) -> int:
 
     Example:
         boldgenotyper-sweep Sphyrna_lewini.tsv \
-            --thresholds 0.01,0.015,0.02,0.03,0.05 \
+            --thresholds 0.005,0.01,0.015,0.02,0.025,0.03 \
             --output parameter_sweep/
     """
     parser = argparse.ArgumentParser(
@@ -1839,8 +1839,9 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
     parser.add_argument(
         '--thresholds',
         type=str,
-        default='0.01,0.015,0.02,0.03,0.05',
-        help='Comma-separated threshold values to test (default: 0.01,0.015,0.02,0.03,0.05)'
+        default='0.005,0.01,0.015,0.02,0.025,0.03',
+        help='Comma-separated threshold values to test, evenly spaced '
+             '(default: 0.005,0.01,0.015,0.02,0.025,0.03)'
     )
 
     parser.add_argument(

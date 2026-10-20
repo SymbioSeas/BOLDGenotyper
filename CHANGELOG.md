@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `recommendations.txt` says when the lowest threshold tested is already settled (sweep
   lower values), when none settles (extend the range upward), and when thresholds are
   unevenly spaced.
+- The sweep's default `--thresholds` are 0.005 to 0.030 in steps of 0.005 (six values; were
+  0.01, 0.015, 0.02, 0.03, 0.05): the settled threshold compares steps of one width and
+  cannot be below the first value tested, so the old default could never recommend the
+  pipeline's own default, 0.005.
 - Pipeline runs are unchanged: only the sweep's recommendation, its text and its plot.
 
 ## [2.1.1] - 2026-10-20
