@@ -598,6 +598,9 @@ def build_label_conflicts(df: pd.DataFrame, group_col: str = "haplotype_id",
     return pd.DataFrame(rows, columns=LABEL_CONFLICT_COLUMNS)
 
 
+HEATMAP_MAX_CELLS = 20000
+
+
 def create_label_composition_heatmap(
     df: pd.DataFrame,
     output_path: Path,
@@ -616,6 +619,12 @@ def create_label_composition_heatmap(
         logger.warning("No haplotypes with enough members for the label heatmap")
         return
     df_filtered[label_col] = df_filtered[label_col].fillna("").replace("", "(no species label)")
+    n_rows, n_cols = df_filtered[group_col].nunique(), df_filtered[label_col].nunique()
+    if n_rows * n_cols > HEATMAP_MAX_CELLS:
+        # An order- or family-level download (1,250 haplotypes x 584 labels) exhausted memory
+        logger.info(f"Label heatmap skipped: {n_rows} haplotypes x {n_cols} labels exceeds "
+                    f"{HEATMAP_MAX_CELLS:,} cells (label_conflicts.csv holds the same information)")
+        return
     ct = pd.crosstab(df_filtered[group_col], df_filtered[label_col])
     ct = ct.reindex(df_filtered[group_col].value_counts().index, fill_value=0)
     zero_mask = ct.eq(0)

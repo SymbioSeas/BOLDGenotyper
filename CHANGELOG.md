@@ -35,6 +35,9 @@ Query side only: reference runs are unchanged.
   download, where 33 of 39 suggestions were of this kind.)
 - `boldgenotyper-labels suggest` retries a request that fails or times out (3 tries) instead
   of ending the run: a slow WoRMS answer stopped a 198-name run partway.
+- A large run no longer runs out of memory in step 6.2: the label composition heatmap (a
+  staging figure, not a run output) is skipped above 20,000 haplotype-by-label cells. A
+  family-level Pieridae download (1,250 haplotypes x 584 labels) was killed there.
 
 ## [2.0.0] - 2026-10-19
 

@@ -139,3 +139,21 @@ def test_conflict_rows_carry_haplotype_taxon():
                        "assigned_sp": ["Genus alpha"] * 3, "assignment_source": ["labels"] * 3})
     rows = qc.build_label_conflicts(qc.add_label_columns(df))
     assert rows.loc[0, "haplotype_taxon"] == "Genus alpha" and rows.loc[0, "assignment_source"] == "labels"
+
+
+def test_label_heatmap_skipped_when_too_large(tmp_path, caplog):
+    """2.1.0: a full order- or family-level download gave a 1,250 x 584 heatmap that exhausted
+    memory; above HEATMAP_MAX_CELLS the figure is skipped with a log line."""
+    import logging
+    import pandas as pd
+    from boldgenotyper import quality_control as qc
+    big = pd.DataFrame({"haplotype_id": [f"H{i:04d}" for i in range(300) for _ in range(3)],
+                        "label": [f"Genus sp{i % 100}" for i in range(900)]})
+    out = tmp_path / "heatmap.pdf"
+    with caplog.at_level(logging.INFO):
+        qc.create_label_composition_heatmap(big, out)
+    assert not out.exists()
+    assert "skipped" in caplog.text
+    small = big[big["haplotype_id"].isin(["H0000", "H0001"])]
+    qc.create_label_composition_heatmap(small, out)
+    assert out.exists()
