@@ -2555,9 +2555,9 @@ How queries are called:
   eligible when it covers --min-query-coverage of the shorter sequence (query
   bases beyond the haplotype's own ends, e.g. the start of a 5' mini-barcode
   outside the haplotype core, are left out), compares at least
-  --min-overlap-length bases and reaches --assign-identity. The equivalence set is every eligible haplotype
-  within --max-mismatch-delta differences (mismatches + gap columns) of the
-  best. species_call is the leading species of the set's pooled member labels
+  --min-overlap-length bases and reaches --assign-identity. The equivalence
+  set is every eligible haplotype within --max-mismatch-delta differences
+  (mismatches + gap columns) of the best. species_call is the leading species of the set's pooled member labels
   when species_support >= --min-species-support. No identity value is
   interpreted as "same species" or "same genus"; the numbers are reported.
 
