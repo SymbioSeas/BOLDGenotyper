@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text(encoding='utf-8')
 
 setup(
     name="boldgenotyper",
-    version="2.0.0",
+    version="2.1.0",
 
     # Descriptions
     description="Automated COI sequence genotyping and biogeographic analysis from BOLD database data",

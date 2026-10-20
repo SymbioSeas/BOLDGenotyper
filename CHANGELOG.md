@@ -5,6 +5,28 @@ All notable changes to BOLDGenotyper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - Unreleased
+
+Query side only: reference runs are unchanged.
+
+### Changed
+- A query that runs past the haplotype core is compared over the part the core covers.
+  Haplotypes are defined on a core region, which in some datasets starts tens of bases into
+  the barcode (about 54 bp in an order-level shark dataset), so a 5' mini-barcode hung over
+  the core's start and got no call. Query bases beyond a haplotype's own ends
+  (`query_overhang`) are now left out of the coverage that decides eligibility
+  (`compared_coverage`, a new column of `query_candidates.csv`); `overlap_coverage` keeps its
+  2.0.0 meaning.
+- A match must compare at least `--min-overlap-length` bases (new option, default 60), so a
+  sequence that touches a haplotype's end over a few bases is never eligible.
+
+### Added
+- `query_candidates.csv`: `query_overhang` and `compared_coverage`.
+- Flags `compared_over_part` (the best match covers neither the whole query nor the whole
+  haplotype) and `short_overlap` (no match with enough coverage compares
+  `--min-overlap-length` bases).
+- `min_overlap_length` in `query_provenance.json` parameters and the methods paragraph.
+
 ## [2.0.0] - 2026-10-19
 
 Output files and columns changed throughout; see

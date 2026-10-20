@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.abspath('../..'))
 project = 'BOLDGenotyper'
 copyright = '2025, Steph Smith'
 author = 'Steph Smith'
-release = '2.0.0'
-version = '2.0.0'
+release = '2.1.0'
+version = '2.1.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

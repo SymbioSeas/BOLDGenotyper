@@ -87,7 +87,14 @@ query's ends therefore count.
 
 - `differences` = mismatches + gap columns inside the overlap.
 - A match is **eligible** when it covers at least `--min-query-coverage` (0.95) of the
-  shorter of query and haplotype and reaches `--assign-identity` (0.97).
+  shorter of query and haplotype, compares at least `--min-overlap-length` (60) bases, and
+  reaches `--assign-identity` (0.97).
+- Query bases beyond a haplotype's own ends (`query_overhang`) cannot be compared and are
+  left out of the coverage (`compared_coverage`, 2.1.0). Haplotypes are defined on a core
+  region, which in some datasets starts tens of bases into the barcode; a 5' mini-barcode
+  then hangs over the core's start and is judged on the part the core covers. Such a call
+  carries the flag `compared_over_part`: fewer bases were compared than the query has, so
+  more haplotypes may tie.
 - The **equivalence set** is every eligible haplotype within `--max-mismatch-delta` (0)
   differences of the best match: the haplotypes this query cannot tell apart.
 - `call_level` is `haplotype` (one haplotype in the set), `haplotype_set` (several) or
@@ -121,7 +128,9 @@ No identity value is read as "same species" or "same genus"; the numbers are rep
 |---|---|
 | `indel_in_query` | a gap run in the alignment whose length is not a multiple of 3 (COI codes protein: check the query for a sequencing or editing error) |
 | `low_coverage` | no match covers `--min-query-coverage` of the shorter sequence |
+| `short_overlap` | no match with enough coverage compares `--min-overlap-length` bases |
 | `below_identity` | no match with enough coverage reaches `--assign-identity` |
+| `compared_over_part` | the query runs past the haplotype core: the best match covers neither the whole query nor the whole haplotype, so the call rests on the bases the core covers |
 | `set_not_identical` | the set's haplotypes differ within the query's region |
 | `label_conflict_in_set` | the pooled labels name more than one species |
 | `species_support_below_threshold` | the leading species is below `--min-species-support` |
@@ -233,8 +242,10 @@ from different dates can be compared; a different md5 means a different referenc
 
 **No eligible match (`call_level` none)**: check `query_coverage` and `identity_pct` of the
 best candidate in `query_candidates.csv`. A short or untrimmed query may not cover 95% of
-the shorter sequence (`low_coverage`); a sequence from a taxon absent from the reference
-stays below `--assign-identity` (`below_identity`).
+the shorter sequence (`low_coverage`); a query that overlaps the haplotype core over fewer
+than `--min-overlap-length` bases is `short_overlap`; a sequence from a taxon absent from the
+reference stays below `--assign-identity` (`below_identity`). `query_overhang` in
+`query_candidates.csv` shows how many of the query's bases lie beyond the core.
 
 **Several haplotypes in the set**: the query does not cover the sites where they differ.
 The pooled labels then decide the species call; a longer query may separate them.

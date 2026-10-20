@@ -791,8 +791,11 @@ matching only.
 **How queries are matched**: each query is aligned over its whole overlap with each
 haplotype (global alignment with free end gaps), so differences at the query's ends are
 counted. `differences` = mismatches + gap columns. A match is eligible when it covers at
-least `--min-query-coverage` (0.95) of the shorter of query and haplotype and reaches
-`--assign-identity` (0.97). The equivalence set is every eligible haplotype within
+least `--min-query-coverage` (0.95) of the shorter of query and haplotype, compares at least
+`--min-overlap-length` (60) bases, and reaches `--assign-identity` (0.97). Query bases beyond
+a haplotype's own ends are left out of the coverage (`compared_coverage`): a 5' mini-barcode
+that starts before the haplotype core is judged on the part the core covers, and its call is
+flagged `compared_over_part`. The equivalence set is every eligible haplotype within
 `--max-mismatch-delta` (0) differences of the best one.
 
 **With sample metadata** (adds the queries' locations, regions and dates to the figures):
