@@ -1917,10 +1917,10 @@ For more information: https://github.com/SymbioSeas/BOLDGenotyper
         print("\n✓ Parameter sweep complete!")
         recommended = results.get('recommended_threshold', 'N/A')
         if isinstance(recommended, (int, float)):
-            print(f"  Recommended threshold: {recommended:.3f}")
+            print(f"  Recommended threshold: {recommended:.3f} (settled: every later step changes "
+                  f"the haplotype of fewer than {parameter_sweep.SETTLED_MAX_PCT_CHANGED:g}% of records)")
         elif recommended is None:
-            print(f"  No elbow: sweep at least {parameter_sweep.MIN_THRESHOLDS_FOR_ELBOW} "
-                  "thresholds to locate one")
+            print("  No threshold settled within the tested range: see recommendations.txt")
         else:
             print(f"  Recommended threshold: {recommended}")
         print(f"  Results saved to: {args.output}")
@@ -2209,8 +2209,9 @@ Notes:
              'Singleton ESVs diverging by less than this value from their nearest '
              'neighbour are removed as likely sequencing or PCR errors. '
              'Default: 0.005 (0.5%%). Use boldgenotyper-sweep to choose a value for '
-             'your dataset (recommendations.txt reports the elbow and how stable '
-             'assignments are between thresholds), and always pass it explicitly.'
+             'your dataset (recommendations.txt recommends the threshold from which '
+             'fewer than 1%% of records change haplotype at each later step), and '
+             'always pass it explicitly.'
     )
 
     parser.add_argument(

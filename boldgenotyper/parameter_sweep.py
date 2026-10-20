@@ -476,11 +476,13 @@ def create_threshold_stability_plot(
 def create_elbow_plot(
     summary_df: pd.DataFrame,
     output_path: Path,
-    recommended_threshold: Optional[float] = None
+    recommended_threshold: Optional[float] = None,
+    elbow_threshold: Optional[float] = None,
 ) -> None:
     """
     Create elbow plot showing haplotype count vs threshold with the
-    recommended threshold highlighted.  Secondary axis shows singleton count.
+    recommended (settled) threshold highlighted and the elbow marked for
+    reference.  Secondary axis shows singleton count.
 
     Parameters
     ----------
@@ -489,7 +491,9 @@ def create_elbow_plot(
     output_path : Path
         Output path for PDF
     recommended_threshold : float, optional
-        Recommended threshold to highlight
+        Recommended threshold to highlight (the settled threshold)
+    elbow_threshold : float, optional
+        Elbow of the haplotype-count curve, drawn as a gray line
     """
     logger.info("  Creating elbow plot...")
 
@@ -513,12 +517,15 @@ def create_elbow_plot(
                  's--', linewidth=2, markersize=8, color=color2, label='Singletons', alpha=0.7)
         ax2.tick_params(axis='y', labelcolor=color2)
 
-    # Highlight recommended threshold
+    # Highlight the recommended (settled) threshold; the elbow for reference
     if recommended_threshold is not None:
         ax1.axvline(recommended_threshold, color='green', linestyle='--',
-                    linewidth=2, label=f'Recommended: {recommended_threshold}')
+                    linewidth=2, label=f'Settled: {recommended_threshold:.3f}')
+    if elbow_threshold is not None:
+        ax1.axvline(elbow_threshold, color='0.5', linestyle=':', linewidth=2,
+                    label=f'Elbow (depends on the range): {elbow_threshold:.3f}')
 
-    ax1.set_title('Elbow Plot: Optimal Singleton Distance Threshold',
+    ax1.set_title('Haplotype Count by Singleton Distance Threshold',
                   fontsize=14, fontweight='bold', pad=20)
 
     # Combine legends from both axes
@@ -599,28 +606,64 @@ def adjacent_change_rates(tracking_df: pd.DataFrame, thresholds: List[float]) ->
     return pd.DataFrame(rows, columns=['threshold_from', 'threshold_to', 'n_records', 'n_changed', 'pct_changed'])
 
 
+# 2.2.0: the sweep recommends the settled threshold. From it on, every step to the
+# next threshold changes the haplotype of fewer than this percentage of records.
+# It compares neighboring thresholds only, so unlike the elbow it does not move
+# with the start of the range.
+SETTLED_MAX_PCT_CHANGED = 1.0
+
+
+def find_settled_threshold(rates: pd.DataFrame,
+                           max_pct_changed: float = SETTLED_MAX_PCT_CHANGED) -> Optional[float]:
+    """
+    The smallest threshold from which every later step between adjacent
+    thresholds changes the haplotype of fewer than max_pct_changed percent of
+    records (2.2.0).
+
+    rates is the table of adjacent_change_rates; the share is taken from
+    n_changed / n_records, not from the rounded pct_changed. None when there is
+    no step, or when the last step changes max_pct_changed percent or more.
+    """
+    if rates is None or len(rates) == 0:
+        return None
+    ordered = rates.sort_values('threshold_from')
+    settled = None
+    for _, r in ordered.iloc[::-1].iterrows():
+        share = r['n_changed'] / r['n_records'] * 100 if r['n_records'] else 0.0
+        if share >= max_pct_changed:
+            break
+        settled = float(r['threshold_from'])
+    return settled
+
+
 def generate_recommendations(
     summary_df: pd.DataFrame,
     organism: str,
     output_path: Path,
     tracking_df: Optional[pd.DataFrame] = None,
+    max_pct_changed: float = SETTLED_MAX_PCT_CHANGED,
 ) -> Optional[float]:
     """
-    Write recommendations.txt: the elbow of the haplotype-count curve and, for
-    each pair of adjacent thresholds, the share of records whose haplotype
-    changes (from group_membership_tracking.csv). No acceptable range is
-    given (v1's covered the whole tested range).
+    Write recommendations.txt: the settled threshold (find_settled_threshold),
+    the share of records whose haplotype changes between each pair of adjacent
+    thresholds (from group_membership_tracking.csv), and the elbow of the
+    haplotype-count curve for reference. No acceptable range is given (v1's
+    covered the whole tested range).
 
-    Returns the threshold at the elbow, or None when fewer than
-    MIN_THRESHOLDS_FOR_ELBOW thresholds were tested (the file then says so).
+    Returns the settled threshold, or None when no threshold settles or there
+    is no stability table (the file then says so).
     """
     logger.info("  Generating recommendations...")
 
-    recommended_threshold = find_elbow_point(summary_df)
+    elbow = find_elbow_point(summary_df)
+    rates = adjacent_change_rates(tracking_df, summary_df['threshold'].tolist()) \
+        if tracking_df is not None and len(tracking_df) else pd.DataFrame()
+    recommended_threshold = find_settled_threshold(rates, max_pct_changed)
     rows = summary_df.to_dict('records')          # keeps integer counts as integers
     first_row, last_row = rows[0], rows[-1]
-    rec_row = next((r for r in rows if r['threshold'] == recommended_threshold), first_row)
+    elbow_row = next((r for r in rows if r['threshold'] == elbow), first_row)
     lo, hi = summary_df['threshold'].min(), summary_df['threshold'].max()
+    steps = np.diff(summary_df['threshold'].to_numpy(dtype=float))
 
     def fmt(value, spec):
         if value is None or pd.isna(value):
@@ -631,7 +674,7 @@ def generate_recommendations(
 =============================================
 
 Dataset:                  {organism}
-QC-passed records:        {fmt(rec_row.get('n_samples'), 'd')}
+QC-passed records:        {fmt(first_row.get('n_samples'), 'd')}
 Threshold range tested:   {lo:.3f} to {hi:.3f}
 Number of thresholds:     {len(summary_df)}
 
@@ -647,20 +690,55 @@ HAPLOTYPE COUNT
    threshold   haplotypes   singletons   assigned (% of QC-passed)
 """
     for r in rows:
-        mark = "   <- elbow" if r['threshold'] == recommended_threshold else ""
+        labels = [name for name, t in (("settled", recommended_threshold), ("elbow", elbow))
+                  if t is not None and r['threshold'] == t]
+        mark = "   <- " + ", ".join(labels) if labels else ""
         text += (f"   {r['threshold']:.3f}       {fmt(r.get('n_haplotypes'), '>6d')}       "
                  f"{fmt(r.get('n_singletons'), '>6d')}       {fmt(r.get('pct_assigned'), '>6.1f')}{mark}\n")
 
-    text += f"""
+    cutoff = f"{max_pct_changed:g}%"
+    if recommended_threshold is not None:
+        text += f"""
+The settled threshold is {recommended_threshold:.3f}: from there on, every step to the next
+threshold changes the haplotype of fewer than {cutoff} of records (STABILITY below).
+It compares neighboring thresholds only, so it does not depend on where the
+range starts.
+"""
+        if recommended_threshold == lo:
+            text += ("It is the lowest threshold tested: sweep lower values to see where the\n"
+                     "haplotypes settle.\n")
+    elif len(rates):
+        last = rates.sort_values('threshold_from').iloc[-1]
+        text += f"""
+No threshold settled: the last step, {last['threshold_from']:.3f} -> {last['threshold_to']:.3f}, still changes
+the haplotype of {last['pct_changed']:.1f}% of records ({cutoff} or more). To find where the
+haplotypes settle, extend the range upward.
+"""
+    else:
+        text += """
+No settled threshold: it is read from the stability table, which needs at least 2
+thresholds and group_membership_tracking.csv.
+"""
+
+    if elbow is not None:
+        text += f"""
 The elbow (largest change in the slope of the haplotype-count curve) is at
-{recommended_threshold:.3f}: {fmt(rec_row['n_haplotypes'], 'd')} haplotypes, against {fmt(first_row['n_haplotypes'], 'd')} at {lo:.3f} and {fmt(last_row['n_haplotypes'], 'd')} at {hi:.3f}.
-""" if recommended_threshold is not None else f"""
+{elbow:.3f}: {fmt(elbow_row['n_haplotypes'], 'd')} haplotypes, against {fmt(first_row['n_haplotypes'], 'd')} at {lo:.3f} and {fmt(last_row['n_haplotypes'], 'd')} at {hi:.3f}.
+It is shown for reference only: it depends on the range tested, because on a
+curve whose drops shrink from one step to the next, the slope changes most
+near the start of the range.
+"""
+        if len(rows) > 1 and elbow == rows[1]['threshold']:
+            text += "Here it is the second threshold tested.\n"
+    else:
+        text += f"""
 No elbow: locating one needs at least {MIN_THRESHOLDS_FOR_ELBOW} thresholds ({len(summary_df)} tested),
 because the elbow is where the slope of the haplotype-count curve changes most.
 """
+    if len(steps) > 1 and not np.allclose(steps, steps[0], rtol=1e-6, atol=1e-9):
+        text += ("\nThe thresholds are unevenly spaced: a wider step changes more records, so\n"
+                 "compare the shares of steps of the same width.\n")
 
-    rates = adjacent_change_rates(tracking_df, summary_df['threshold'].tolist()) \
-        if tracking_df is not None and len(tracking_df) else pd.DataFrame()
     if len(rates):
         text += """
 STABILITY
@@ -677,11 +755,11 @@ Thresholds where this share is small give nearly the same haplotypes for
 nearly every record. Per-record detail: group_membership_tracking.csv.
 """
     if recommended_threshold is not None:
-        next_step = ("1. Review elbow_plot.pdf, threshold_stability.pdf and the stability table above.\n"
-                     "   The elbow is a starting point; the choice of threshold is yours.")
+        next_step = ("1. Review threshold_stability.pdf, elbow_plot.pdf and the tables above.\n"
+                     "   The settled threshold is a starting point; the choice of threshold is yours.")
     else:
-        next_step = ("1. Review the haplotype counts above. To locate an elbow, sweep at least\n"
-                     f"   {MIN_THRESHOLDS_FOR_ELBOW} thresholds.")
+        next_step = ("1. Review the haplotype counts and the stability table above, and sweep a\n"
+                     "   range where a threshold settles.")
     text += f"""
 NEXT STEPS
 ----------
@@ -717,6 +795,7 @@ def run_parameter_sweep(
     marker: Optional[str] = 'COI-5P',
     allow_malformed_rows: bool = False,
     label_map: Optional[Path] = None,
+    max_pct_changed: float = SETTLED_MAX_PCT_CHANGED,
 ) -> Dict[str, Any]:
     """
     Complete parameter sweep workflow.
@@ -741,11 +820,15 @@ def run_parameter_sweep(
         Keep full per-threshold output
     genetic_code : int
         NCBI genetic code for ORF validation; use the code of the final run
+    max_pct_changed : float
+        Cutoff of the settled threshold, the recommendation (percent of records
+        changing haplotype at each later step; default 1.0)
 
     Returns
     -------
     dict
-        Results including paths to summary files and recommended threshold
+        Results including paths to summary files, the recommended (settled)
+        threshold and the elbow
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -827,12 +910,15 @@ def run_parameter_sweep(
         recommended_threshold = generate_recommendations(
             summary_df, organism, recommendations_path,
             tracking_df=tracking_df if len(tracking_df) > 0 else None,
+            max_pct_changed=max_pct_changed,
         )
         results['recommendations'] = recommendations_path
         results['recommended_threshold'] = recommended_threshold
+        results['elbow_threshold'] = find_elbow_point(summary_df)
 
         elbow_path = output_dir / "elbow_plot.pdf"
-        create_elbow_plot(summary_df, elbow_path, recommended_threshold)
+        create_elbow_plot(summary_df, elbow_path, recommended_threshold,
+                          elbow_threshold=results['elbow_threshold'])
         results['elbow_plot'] = elbow_path
     except Exception as e:
         logger.warning(f"Could not generate recommendations: {e}")
@@ -842,7 +928,7 @@ def run_parameter_sweep(
     if 'recommended_threshold' not in results:
         rec_display = 'see recommendations.txt'
     elif results['recommended_threshold'] is None:
-        rec_display = f'no elbow (fewer than {MIN_THRESHOLDS_FOR_ELBOW} thresholds tested)'
+        rec_display = 'none: no threshold settled within the tested range'
     else:
         rec_display = f"{results['recommended_threshold']:.3f}"
     readme_content = f"""# Parameter Sweep Results — {organism}
@@ -858,13 +944,17 @@ rare variants.
 
 **{rec_display}**  (see `recommendations.txt` for full rationale)
 
+The settled threshold: from it on, every step to the next threshold changes the
+haplotype of fewer than {max_pct_changed:g}% of records.  The elbow of the
+haplotype-count curve is reported for reference; it moves with the range tested.
+
 ## Files
 
 | File | Description |
 |------|-------------|
 | `sweep_summary.csv` | Per-threshold metrics table |
 | `threshold_stability.pdf` | 4-panel stability visualisation |
-| `elbow_plot.pdf` | Optimal-threshold detection |
+| `elbow_plot.pdf` | Haplotype count by threshold, settled threshold and elbow marked |
 | `group_membership_tracking.csv` | Sample-level haplotype stability |
 | `recommendations.txt` | Automated interpretation and next steps |
 | `runs/` | Each threshold's record and haplotype tables (used for the stability table); full run folders with --keep-intermediates |
@@ -892,8 +982,9 @@ columns are:
 
 ## Interpretation
 
-See `recommendations.txt`: the elbow of the haplotype-count curve, and the
-share of records whose haplotype changes between adjacent thresholds.
+See `recommendations.txt`: the settled threshold, the share of records whose
+haplotype changes between adjacent thresholds that it is read from, and the
+elbow of the haplotype-count curve for reference.
 
 ## Generated
 
@@ -912,8 +1003,8 @@ share of records whose haplotype changes between adjacent thresholds.
     if rec_threshold is not None and isinstance(rec_threshold, (int, float)):
         logger.info(f"  Recommended min_singleton_distance: {rec_threshold:.3f}")
     else:
-        logger.info("  Recommended min_singleton_distance: no elbow "
-                    f"(needs at least {MIN_THRESHOLDS_FOR_ELBOW} thresholds)")
+        logger.info("  Recommended min_singleton_distance: none "
+                    "(no threshold settled within the tested range)")
 
     logger.info(f"  Results: {output_dir}")
     logger.info("="*70)
