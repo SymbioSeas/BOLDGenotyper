@@ -5,6 +5,24 @@ All notable changes to BOLDGenotyper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - Unreleased
+
+### Changed
+- `boldgenotyper-sweep` recommends the settled threshold: the smallest threshold from which
+  every later step to the next threshold changes the haplotype of fewer than 1% of records
+  (the stability table; `find_settled_threshold`, cutoff `SETTLED_MAX_PCT_CHANGED`). It
+  compares neighboring thresholds only, so it does not move with the start of the range.
+  The elbow it recommended before (the largest change in slope of the haplotype-count
+  curve) falls at the second threshold tested on curves that drop steeply and then level
+  off: on six BOLD datasets, sweeps starting at 0.000, 0.005 and 0.010 put it at 0.005,
+  0.010 and 0.015 in five of the six. The elbow is still reported, for reference, in
+  `recommendations.txt` (`<- elbow`), in `elbow_plot.pdf` (gray) and as `elbow_threshold`
+  in the results; `recommended_threshold` is now the settled threshold.
+- `recommendations.txt` says when the lowest threshold tested is already settled (sweep
+  lower values), when none settles (extend the range upward), and when thresholds are
+  unevenly spaced.
+- Pipeline runs are unchanged: only the sweep's recommendation, its text and its plot.
+
 ## [2.1.1] - 2026-10-20
 
 ### Fixed

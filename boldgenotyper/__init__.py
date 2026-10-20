@@ -32,7 +32,7 @@ Author: Steph Smith (symbioseas@outlook.com)
 Institution: University of North Carolina, Institute of Marine Sciences
 """
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 __author__ = "Steph Smith"
 __email__ = "symbioseas@outlook.com"
 
