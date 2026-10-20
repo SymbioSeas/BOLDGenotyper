@@ -18,7 +18,7 @@ def _m(hid, d=0, cov=1.0, region="R", identity=None, aligned=QLEN, indel=False, 
         matches=aligned - (d - n_gaps), aligned_length=aligned, query_length=QLEN,
         haplotype_length=595, divergence=1 - ident / 100, aligned_query="",
         aligned_haplotype="", n_mismatches=d - n_gaps, n_gaps=n_gaps,
-        indel_in_query=indel, query_coverage=cov, overlap_coverage=cov,
+        indel_in_query=indel, query_coverage=cov, overlap_coverage=cov, compared_coverage=cov,
         differences=d, haplotype_region=region)
 
 
@@ -193,3 +193,41 @@ def test_load_haplotype_taxa(tmp_path):
     (tmp_path / "haplotypes.csv").write_text(
         "haplotype_id,assigned_sp,assignment_level\nH0001,Genus alpha,species\n")
     assert qa.load_haplotype_taxa(tmp_path)["H0001"].source == "labels"
+
+
+# 2.1.0: minimum compared length and the compared_over_part flag
+
+from boldgenotyper import haplotype_query as hq  # noqa: E402
+from tests.synthetic_data import A, base_sequence  # noqa: E402
+
+
+def _bases(n, seed):
+    """n random bases (base_sequence counts codons)."""
+    return base_sequence(n // 3 + 1, seed=seed)[:n]
+
+
+def test_short_overlap_not_eligible():
+    r = hq.align_query_to_haplotype(_bases(86, 6) + A[:40], "q1", A, "H0001")
+    assert r.compared_coverage == 1.0 and r.identity_pct == 100.0 and r.aligned_length == 40
+    assert not qa.is_eligible(r, 0.97, 0.95)
+    assert qa.is_eligible(r, 0.97, 0.95, min_overlap_length=30)
+    v = qa.assign_query("q1", [r], LABELS)
+    assert v.call_level == "none" and "short_overlap" in v.flags
+
+
+def test_unrelated_overhanging_sequence_not_eligible():
+    for seed in range(20):
+        r = hq.align_query_to_haplotype(_bases(126, 100 + seed), "q1", A, "H0001")
+        assert not qa.is_eligible(r, 0.97, 0.95)
+
+
+def test_compared_over_part_flag():
+    mini = _bases(53, 5) + A[:73]
+    v = qa.assign_query("q1", [hq.align_query_to_haplotype(mini, "q1", A, "H0001")], LABELS)
+    assert v.call_level == "haplotype" and v.species_call == "Genus alpha"
+    assert "compared_over_part" in v.flags
+    full = _bases(30, 9) + A + _bases(20, 8)
+    v = qa.assign_query("q1", [hq.align_query_to_haplotype(full, "q1", A, "H0001")], LABELS)
+    assert "compared_over_part" not in v.flags
+    inside = qa.assign_query("q1", [hq.align_query_to_haplotype(A[100:320], "q1", A, "H0001")], LABELS)
+    assert "compared_over_part" not in inside.flags

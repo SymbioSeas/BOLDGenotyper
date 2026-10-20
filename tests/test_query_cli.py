@@ -248,3 +248,11 @@ def test_query_inherits_label_map(tmp_path):
     assert ok
     s, _ = _query(tmp_path, mapped_run, {"window": WINDOW})
     assert "Genus alpah" not in s.loc["window", "pooled_member_labels"]
+
+
+def test_min_overlap_length_recorded_in_provenance(tmp_path, run_dir):
+    s, out = _query(tmp_path, run_dir, {"window": WINDOW})
+    assert json.loads((out / "query_provenance.json").read_text())["parameters"]["min_overlap_length"] == 60
+    (tmp_path / "custom").mkdir()
+    s, out = _query(tmp_path / "custom", run_dir, {"window": WINDOW}, "--min-overlap-length", "80")
+    assert json.loads((out / "query_provenance.json").read_text())["parameters"]["min_overlap_length"] == 80

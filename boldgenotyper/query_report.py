@@ -40,7 +40,7 @@ _CALL_TABLE = ["query_id", "call_level", "equivalence_set", "species_call", "cal
                "species_support", "differences", "identity_pct", "query_coverage", "flags"]
 _CANDIDATE_TABLE = ["rank", "haplotype_id", "assigned_sp", "assignment_source", "n_members",
                     "in_equivalence_set", "eligible", "differences", "identity_pct",
-                    "overlap_coverage"]
+                    "compared_coverage"]
 _FIGURE_TITLES = {
     "query_tree": "Tree: queries beside their equivalence sets' haplotypes",
     "query_map": "Map: reference records and queries, by called taxon",

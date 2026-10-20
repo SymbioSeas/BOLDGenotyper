@@ -36,7 +36,8 @@ CANDIDATE_COLUMNS = [
     "query_id", "rank", "haplotype_id", "haplotype_label", "assigned_sp", "assignment_level",
     "assignment_source", "n_members", "in_equivalence_set", "eligible", "differences",
     "n_mismatches", "n_gaps", "indel_in_query", "identity_pct", "query_coverage",
-    "overlap_coverage", "aligned_length", "query_length", "haplotype_length",
+    "overlap_coverage", "query_overhang", "compared_coverage", "aligned_length",
+    "query_length", "haplotype_length",
 ]
 POOLED_LABELS_NOTE = ("pooled_member_labels and species_support use the labels of every record "
                       "assigned to the equivalence set's haplotypes, including assigned_corrected "
@@ -90,7 +91,8 @@ def write_calls(calls: pd.DataFrame, output_dir) -> Path:
 
 def candidates_table(results, verdicts, haplotypes: Optional[pd.DataFrame] = None,
                      haplotype_taxa: Optional[Dict[str, Any]] = None,
-                     min_identity: float = 0.97, min_query_coverage: float = 0.95) -> pd.DataFrame:
+                     min_identity: float = 0.97, min_query_coverage: float = 0.95,
+                     min_overlap_length: int = 60) -> pd.DataFrame:
     """
     The top matches per query (CANDIDATE_COLUMNS), in rank order.
 
@@ -120,7 +122,7 @@ def candidates_table(results, verdicts, haplotypes: Optional[pd.DataFrame] = Non
             "assignment_source": taxon.source if taxon else field("assignment_source"),
             "n_members": field("n_members"),
             "in_equivalence_set": r.haplotype_id in sets.get(r.query_id, set()),
-            "eligible": is_eligible(r, min_identity, min_query_coverage),
+            "eligible": is_eligible(r, min_identity, min_query_coverage, min_overlap_length),
             "differences": r.differences,
             "n_mismatches": r.n_mismatches,
             "n_gaps": r.n_gaps,
@@ -128,6 +130,8 @@ def candidates_table(results, verdicts, haplotypes: Optional[pd.DataFrame] = Non
             "identity_pct": round(r.identity_pct, 4),
             "query_coverage": round(r.query_coverage, 4),
             "overlap_coverage": round(r.overlap_coverage, 4),
+            "query_overhang": r.query_overhang,
+            "compared_coverage": round(r.compared_coverage, 4),
             "aligned_length": r.aligned_length,
             "query_length": r.query_length,
             "haplotype_length": r.haplotype_length,
@@ -171,7 +175,8 @@ def write_json(results, verdicts, output_dir, parameters: Optional[dict] = None,
                 "rank": i, "haplotype_id": r.haplotype_id, "identity_pct": r.identity_pct,
                 "differences": r.differences, "n_mismatches": r.n_mismatches, "n_gaps": r.n_gaps,
                 "indel_in_query": r.indel_in_query, "query_coverage": r.query_coverage,
-                "overlap_coverage": r.overlap_coverage,
+                "overlap_coverage": r.overlap_coverage, "query_overhang": r.query_overhang,
+                "compared_coverage": r.compared_coverage,
                 "alignment": {"matches": r.matches, "length": r.aligned_length, "score": r.score,
                               "query_start": r.query_start, "query_end": r.query_end,
                               "haplotype_start": r.haplotype_start, "haplotype_end": r.haplotype_end},
@@ -343,7 +348,10 @@ _CALL_DOCS = {
     "identity_pct": "identity with the best match over the columns with a base in both (%)",
     "query_coverage": "share of the query's bases in the overlap with the best match",
     "flags": "';'-joined: indel_in_query (a gap run not a multiple of 3), low_coverage, "
-             "below_identity, set_not_identical (the set's haplotypes differ over the query's "
+             "short_overlap (fewer than --min-overlap-length bases compared), below_identity, "
+             "compared_over_part (the query runs past the haplotype core: the best match "
+             "covers neither the whole query nor the whole haplotype), set_not_identical "
+             "(the set's haplotypes differ over the query's "
              "region), label_conflict_in_set, species_support_below_threshold, "
              "no_species_labels, no_reference_labels (a FASTA reference or v1 run folder), "
              "haplotype_taxa_disagree (a haplotype with a curated or evidence taxon is in the "
@@ -363,16 +371,20 @@ _CANDIDATE_DOCS = {
     "assignment_source": "labels, evidence or curated",
     "n_members": "records assigned to the haplotype in the reference run",
     "in_equivalence_set": "the haplotype is in the query's equivalence set",
-    "eligible": "the alignment covers --min-query-coverage of the shorter sequence at "
-                "--assign-identity or more",
+    "eligible": "compared_coverage reaches --min-query-coverage, at least "
+                "--min-overlap-length bases are compared, and identity reaches --assign-identity",
     "differences": "mismatches plus gap columns over the overlap",
     "n_mismatches": "mismatches",
     "n_gaps": "gap columns inside the overlap",
     "indel_in_query": "a gap run whose length is not a multiple of 3",
     "identity_pct": "identity over the columns with a base in both (%)",
     "query_coverage": "share of the query's bases in the overlap",
-    "overlap_coverage": "query bases in the overlap / the shorter of query and haplotype; "
-                        "--min-query-coverage applies to this",
+    "overlap_coverage": "query bases in the overlap / the shorter of query and haplotype",
+    "query_overhang": "query bases beyond the haplotype's own ends (e.g. a 5' mini-barcode "
+                      "starting before the haplotype core); they cannot be compared",
+    "compared_coverage": "query bases in the overlap / the shorter of (query length minus "
+                         "query_overhang) and haplotype length; --min-query-coverage applies "
+                         "to this",
     "aligned_length": "columns with a base in both sequences",
     "query_length": "query length in bp",
     "haplotype_length": "haplotype length in bp",
@@ -445,7 +457,9 @@ def methods_sentence(provenance: dict) -> str:
             f"end gaps; match {a.get('match'):+d}, mismatch {a.get('mismatch')}, gap opening "
             f"{a.get('gap_open')}, gap extension {a.get('gap_extend')}). A haplotype was an eligible "
             f"match when the alignment covered at least {p.get('min_query_coverage', 0):.0%} of the "
-            f"shorter sequence at {p.get('assign_identity', 0) * 100:.1f}% identity or more; the "
+            f"shorter sequence (query bases beyond the haplotype's own ends left out), compared "
+            f"at least {p.get('min_overlap_length', 60)} bases, and reached "
+            f"{p.get('assign_identity', 0) * 100:.1f}% identity or more; the "
             f"equivalence set was every eligible haplotype within {p.get('max_mismatch_delta')} "
             f"difference(s) (mismatches plus gap columns) of the best match.")
     if ref:

@@ -87,3 +87,42 @@ def test_unrelated_sequence_has_low_coverage():
     assert r.overlap_coverage < 0.5
 
 
+
+
+# 2.1.0: a query that runs past the haplotype core is compared over the part the reference
+# covers: compared_coverage leaves out query bases beyond the haplotype's own ends, and
+# eligibility uses it. overlap_coverage keeps its 2.0.0 meaning.
+
+def _bases(n, seed):
+    """n random bases (base_sequence counts codons)."""
+    return base_sequence(n // 3 + 1, seed=seed)[:n]
+
+
+def test_query_overhanging_core_start_is_compared_over_overlap():
+    query = _bases(53, 5) + A[:73]          # a 5' mini-barcode: 53 bases before the core
+    r = _align(query, A)
+    assert r.query_overhang == 53
+    assert r.aligned_length == 73 and r.differences == 0
+    assert r.compared_coverage == 1.0
+    assert r.overlap_coverage == pytest.approx(73 / 126)        # unchanged from 2.0.0
+    assert r.query_coverage == pytest.approx(73 / 126)
+
+
+def test_overhang_past_core_end_counts_too():
+    query = A[-80:] + _bases(40, 6)
+    r = _align(query, A)
+    assert r.query_overhang == 40 and r.compared_coverage == 1.0
+
+
+def test_full_length_query_compared_coverage_unchanged():
+    query = base_sequence(30, seed=9) + A + base_sequence(20, seed=8)
+    r = _align(query, A)
+    assert r.compared_coverage == r.overlap_coverage == 1.0
+
+
+def test_bases_opposite_the_haplotype_are_compared_not_overhang():
+    """Query bases opposite haplotype bases are aligned (as mismatches if they differ), so
+    only bases past the haplotype's own ends can be overhang."""
+    r = _align("N" * 30 + A[100:320], A)
+    assert (r.query_start, r.haplotype_start, r.query_overhang) == (0, 70, 0)
+    assert r.n_mismatches == 30 and r.identity_pct < 97

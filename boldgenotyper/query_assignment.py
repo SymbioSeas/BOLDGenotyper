@@ -5,10 +5,13 @@ reference run's member labels, decide which haplotypes the query cannot tell
 apart (its equivalence set) and whether their pooled member labels support a
 species call. No interpretive labels: the verdict reports numbers and flags.
 
-Eligible match: overlap_coverage >= min_query_coverage and identity_pct >=
-100 * min_identity. Ranking: eligible first, then fewer differences
-(mismatches + gap columns), higher coverage, higher identity, longer
-alignment, haplotype ID. Equivalence set: eligible matches within
+Eligible match: compared_coverage >= min_query_coverage, at least
+min_overlap_length bases compared (aligned_length), and identity_pct >=
+100 * min_identity. compared_coverage leaves out query bases beyond the
+haplotype's own ends (2.1.0), so a query that runs past the haplotype core is
+judged on the part the reference covers. Ranking: eligible first, then fewer
+differences (mismatches + gap columns), higher coverage, higher identity,
+longer alignment, haplotype ID. Equivalence set: eligible matches within
 max_mismatch_delta differences of the best.
 
 Species call: when a haplotype in the equivalence set has a curated or
@@ -18,7 +21,9 @@ otherwise no call (flag haplotype_taxa_disagree). When none has, the pooled
 member labels are called at min_species_support or more (call_basis 'pooled
 labels').
 
-Flags: indel_in_query, low_coverage, below_identity, set_not_identical,
+Flags: indel_in_query, low_coverage, short_overlap, below_identity,
+compared_over_part (the best match covers neither the whole query nor the
+whole haplotype: the query runs past the haplotype core), set_not_identical,
 label_conflict_in_set, species_support_below_threshold, no_species_labels,
 no_reference_labels, haplotype_taxa_disagree.
 """
@@ -32,6 +37,7 @@ from . import taxon_labels
 REVIEWED_SOURCES = ("curated", "evidence")    # haplotype taxa not from the pooled labels
 
 CALL_LEVELS = ("haplotype", "haplotype_set", "none")
+DEFAULT_MIN_OVERLAP_LENGTH = 60           # bases compared (2.1.0)
 
 
 class HaplotypeTaxon(NamedTuple):
@@ -66,17 +72,20 @@ class QueryVerdict:
     call_basis: str = ""                  # pooled labels | haplotype taxa | "" (no call)
 
 
-def is_eligible(match, min_identity: float, min_query_coverage: float) -> bool:
-    return (match.overlap_coverage >= min_query_coverage
+def is_eligible(match, min_identity: float, min_query_coverage: float,
+                min_overlap_length: int = DEFAULT_MIN_OVERLAP_LENGTH) -> bool:
+    return (match.compared_coverage >= min_query_coverage
+            and match.aligned_length >= min_overlap_length
             and match.identity_pct >= min_identity * 100.0)
 
 
-def rank_matches(matches: Sequence, min_identity: float, min_query_coverage: float) -> list:
+def rank_matches(matches: Sequence, min_identity: float, min_query_coverage: float,
+                 min_overlap_length: int = DEFAULT_MIN_OVERLAP_LENGTH) -> list:
     """Order matches: eligible first, then fewer differences, higher coverage,
     higher identity, longer alignment, haplotype ID."""
     return sorted(matches, key=lambda m: (
-        not is_eligible(m, min_identity, min_query_coverage),
-        m.differences, -m.overlap_coverage, -m.identity_pct, -m.aligned_length,
+        not is_eligible(m, min_identity, min_query_coverage, min_overlap_length),
+        m.differences, -m.compared_coverage, -m.identity_pct, -m.aligned_length,
         m.haplotype_id,
     ))
 
@@ -84,7 +93,8 @@ def rank_matches(matches: Sequence, min_identity: float, min_query_coverage: flo
 def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]], *,
                  min_identity: float = 0.97, min_query_coverage: float = 0.95,
                  max_mismatch_delta: int = 0, min_species_support: float = 0.70,
-                 haplotype_taxa: Optional[Dict[str, HaplotypeTaxon]] = None) -> QueryVerdict:
+                 haplotype_taxa: Optional[Dict[str, HaplotypeTaxon]] = None,
+                 min_overlap_length: int = DEFAULT_MIN_OVERLAP_LENGTH) -> QueryVerdict:
     """Compute a QueryVerdict from a query's full list of haplotype matches.
 
     member_labels maps haplotype_id -> labels of its member records (exact
@@ -93,8 +103,8 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
     a curated taxon in the equivalence set makes the call from the
     haplotypes' taxa (module docstring).
     """
-    ranked = rank_matches(matches, min_identity, min_query_coverage)
-    eligible = [m for m in ranked if is_eligible(m, min_identity, min_query_coverage)]
+    ranked = rank_matches(matches, min_identity, min_query_coverage, min_overlap_length)
+    eligible = [m for m in ranked if is_eligible(m, min_identity, min_query_coverage, min_overlap_length)]
     top = ranked[0] if ranked else None
     flags: List[str] = []
 
@@ -129,9 +139,13 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
         if top is None:
             return _verdict(None, "none", [], None, "", "", None, max_mismatch_delta,
                             "no haplotypes to match")
-        if not any(m.overlap_coverage >= min_query_coverage for m in ranked):
+        covered = [m for m in ranked if m.compared_coverage >= min_query_coverage]
+        if not covered:
             flags.append("low_coverage")
             why = f"no match covers {min_query_coverage:.0%} of the overlap"
+        elif not any(m.aligned_length >= min_overlap_length for m in covered):
+            flags.append("short_overlap")
+            why = f"no match with enough coverage compares {min_overlap_length} bases or more"
         else:
             flags.append("below_identity")
             why = f"no match with enough coverage reaches {min_identity * 100:.1f}% identity"
@@ -140,6 +154,10 @@ def assign_query(query_id, matches, member_labels: Optional[Dict[str, List[str]]
     best = eligible[0]
     if best.indel_in_query:
         flags.append("indel_in_query")
+    haplotype_span = best.haplotype_end - best.haplotype_start
+    if (best.query_coverage < min_query_coverage
+            and haplotype_span < min_query_coverage * best.haplotype_length):
+        flags.append("compared_over_part")
     delta = int(max_mismatch_delta)
     eq = [m for m in eligible if m.differences <= best.differences + delta]
     identical = len({m.haplotype_region for m in eq}) == 1

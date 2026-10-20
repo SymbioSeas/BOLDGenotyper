@@ -2552,8 +2552,10 @@ Output Files:
 
 How queries are called:
   Each query is aligned over its whole overlap with every haplotype. A match is
-  eligible when it covers --min-query-coverage of the shorter sequence and
-  reaches --assign-identity. The equivalence set is every eligible haplotype
+  eligible when it covers --min-query-coverage of the shorter sequence (query
+  bases beyond the haplotype's own ends, e.g. the start of a 5' mini-barcode
+  outside the haplotype core, are left out), compares at least
+  --min-overlap-length bases and reaches --assign-identity. The equivalence set is every eligible haplotype
   within --max-mismatch-delta differences (mismatches + gap columns) of the
   best. species_call is the leading species of the set's pooled member labels
   when species_support >= --min-species-support. No identity value is
@@ -2615,7 +2617,16 @@ For more information:
         type=float,
         default=0.95,
         help='Minimum fraction of the shorter sequence (query or haplotype) that the '
-             'alignment must cover for a match to be eligible (default: 0.95).'
+             'alignment must cover for a match to be eligible; query bases beyond the '
+             "haplotype's own ends are left out (default: 0.95)."
+    )
+
+    parser.add_argument(
+        '--min-overlap-length',
+        type=int,
+        default=60,
+        help='Minimum number of bases compared for a match to be eligible (default: 60). '
+             'Matters for queries that run past the haplotype core, such as 5\' mini-barcodes.'
     )
 
     parser.add_argument(
@@ -2798,6 +2809,7 @@ For more information:
             min_species_support=args.min_species_support,
             query_records=query_records,
             haplotype_taxa=haplotype_taxa,
+            min_overlap_length=args.min_overlap_length,
         )
 
         # Exact-match reference records (Q10)
@@ -2816,6 +2828,7 @@ For more information:
         parameters = {
             "assign_identity": args.assign_identity,
             "min_query_coverage": args.min_query_coverage,
+            "min_overlap_length": args.min_overlap_length,
             "max_mismatch_delta": args.max_mismatch_delta,
             "min_species_support": args.min_species_support,
             "top_n": args.top_n,
@@ -2834,7 +2847,8 @@ For more information:
         query_outputs.write_calls(calls, output_dir)
         candidates = query_outputs.candidates_table(
             results, verdicts, haplotypes=metadata, haplotype_taxa=haplotype_taxa,
-            min_identity=args.assign_identity, min_query_coverage=args.min_query_coverage)
+            min_identity=args.assign_identity, min_query_coverage=args.min_query_coverage,
+            min_overlap_length=args.min_overlap_length)
         query_outputs.write_candidates(candidates, output_dir)
         query_outputs.write_alignments(results, verdicts, output_dir, reference_run=reference_run,
                                        haplotypes=metadata, haplotype_file=reference_fasta)

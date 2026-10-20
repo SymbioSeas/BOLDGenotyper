@@ -96,8 +96,17 @@ class AlignmentResult:
     query_coverage : float
         Query bases in the overlap / query_length
     overlap_coverage : float
-        Query bases in the overlap / min(query_length, haplotype_length); the
-        --min-query-coverage threshold applies to this value
+        Query bases in the overlap / min(query_length, haplotype_length)
+    query_overhang : int
+        Query bases beyond the haplotype's own ends: before the overlap where
+        the haplotype has no bases before it, or after it where the haplotype
+        has none after it (e.g. a 5' mini-barcode that starts before the
+        haplotype core). They cannot be compared.
+    compared_coverage : float
+        Query bases in the overlap / min(query_length - query_overhang,
+        haplotype_length): the share of what the haplotype could cover that the
+        alignment covers. The --min-query-coverage threshold applies to this
+        value (2.1.0); it equals overlap_coverage when nothing hangs over
     differences : int
         n_mismatches + n_gaps
     haplotype_region : str
@@ -125,6 +134,8 @@ class AlignmentResult:
     haplotype_end: int = 0
     query_coverage: float = 0.0
     overlap_coverage: float = 0.0
+    query_overhang: int = 0
+    compared_coverage: float = 0.0
     differences: int = 0
     haplotype_region: str = ""
 
@@ -261,6 +272,9 @@ def align_query_to_haplotype(
     identity_pct = matches / aligned_length * 100 if aligned_length else 0.0
     n_gaps = sum(gap_runs)
     query_bases = q_end - q_start
+    # Query bases beyond the haplotype's ends cannot be compared and do not count against
+    # compared_coverage; unaligned query bases opposite haplotype bases do (2.1.0).
+    overhang = (q_start if h_start == 0 else 0) + (qlen - q_end if h_end == hlen else 0)
 
     return AlignmentResult(
         query_id=query_id,
@@ -284,6 +298,8 @@ def align_query_to_haplotype(
         haplotype_end=h_end,
         query_coverage=query_bases / qlen,
         overlap_coverage=min(query_bases / min(qlen, hlen), 1.0),
+        query_overhang=overhang,
+        compared_coverage=min(query_bases / min(qlen - overhang, hlen), 1.0),
         differences=n_mismatches + n_gaps,
         haplotype_region=haplotype_clean[h_start:h_end],
     )
@@ -394,6 +410,7 @@ def query_against_haplotypes(
     min_species_support: float = 0.70,
     query_records: Optional[List[SeqRecord]] = None,
     haplotype_taxa: Optional[Dict[str, "query_assignment.HaplotypeTaxon"]] = None,
+    min_overlap_length: int = query_assignment.DEFAULT_MIN_OVERLAP_LENGTH,
 ) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame], List["query_assignment.QueryVerdict"]]:
     """
     Query sequences against haplotype consensuses.
@@ -516,12 +533,13 @@ def query_against_haplotypes(
         # Rank (eligible first, then fewer differences, ...) and compute the
         # verdict from the full list before truncating to top N for display.
         query_results = query_assignment.rank_matches(
-            query_results, min_identity=min_identity, min_query_coverage=min_query_coverage)
+            query_results, min_identity=min_identity, min_query_coverage=min_query_coverage,
+            min_overlap_length=min_overlap_length)
         verdicts.append(query_assignment.assign_query(
             query_id, query_results, member_labels,
             min_identity=min_identity, min_query_coverage=min_query_coverage,
             max_mismatch_delta=max_mismatch_delta, min_species_support=min_species_support,
-            haplotype_taxa=haplotype_taxa,
+            haplotype_taxa=haplotype_taxa, min_overlap_length=min_overlap_length,
         ))
         all_results.extend(query_results[:top_n])
 
@@ -530,7 +548,7 @@ def query_against_haplotypes(
         logger.info(
             f"  {query_id}: Best match = {best.haplotype_id} "
             f"({best.identity_pct:.2f}%, {best.differences} differences, "
-            f"coverage {best.overlap_coverage:.2f})"
+            f"coverage {best.compared_coverage:.2f})"
         )
 
     logger.info(f"Alignment complete: {len(all_results)} results generated")
