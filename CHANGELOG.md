@@ -27,6 +27,13 @@ Query side only: reference runs are unchanged.
   `--min-overlap-length` bases).
 - `min_overlap_length` in `query_provenance.json` parameters and the methods paragraph.
 
+### Fixed
+- `boldgenotyper-labels suggest --backbone worms` no longer suggests renaming species that
+  WoRMS writes with their subgenus (`Holothuria (Metriatyla) albiventer`): WoRMS marks the
+  plain binomial an "alternative representation" of the accepted name, which is not a
+  synonym. Suggested names are given without the subgenus. (Found on a *Holothuria*
+  download, where 33 of 39 suggestions were of this kind.)
+
 ## [2.0.0] - 2026-10-19
 
 Output files and columns changed throughout; see

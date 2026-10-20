@@ -14,6 +14,7 @@ library only.
 """
 
 import datetime
+import re
 import json
 import time
 import urllib.error
@@ -88,6 +89,15 @@ def match_name(name: str, backbone: str = "gbif", timeout: float = 20) -> Dict[s
     return result
 
 
+_SUBGENUS = re.compile(r"^(\S+) \([A-Z][a-z]+\) ")
+
+
+def strip_subgenus(name: str) -> str:
+    """'Holothuria (Metriatyla) albiventer' -> 'Holothuria albiventer' (WoRMS gives accepted
+    names with the subgenus; labels have none)."""
+    return _SUBGENUS.sub(r"\1 ", name)
+
+
 def _is_fuzzy(match_type: str, backbone: str) -> bool:
     mt = match_type.lower()
     return mt == "fuzzy" if backbone == "gbif" else (mt != "" and not mt.startswith("exact"))
@@ -95,7 +105,9 @@ def _is_fuzzy(match_type: str, backbone: str) -> bool:
 
 def _is_synonym(status: str, backbone: str) -> bool:
     st = status.lower()
-    return "synonym" in st if backbone == "gbif" else (st != "" and st != "accepted")
+    # WoRMS: an 'alternative representation' is the accepted name written another way
+    # (e.g. without its subgenus), not a synonym
+    return "synonym" in st if backbone == "gbif" else st not in ("", "accepted", "alternative representation")
 
 
 def suggest_label_map(run_dir: Path, backbone: str = "gbif") -> pd.DataFrame:
@@ -117,9 +129,9 @@ def suggest_label_map(run_dir: Path, backbone: str = "gbif") -> pd.DataFrame:
         if i and PAUSE_SECONDS:
             time.sleep(PAUSE_SECONDS)
         m = match_name(name, backbone)
-        target = clean_label(m["accepted_name"])
+        target = clean_label(strip_subgenus(m["accepted_name"]))
         if not target or target == name:
-            continue
+            continue    # accepted as labeled (with WoRMS, possibly written with its subgenus)
         if _is_synonym(m["status"], backbone):
             kind, how = "synonym", "synonym of the accepted name"
         elif _is_fuzzy(m["match_type"], backbone):

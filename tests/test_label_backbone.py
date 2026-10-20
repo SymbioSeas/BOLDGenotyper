@@ -104,3 +104,34 @@ def test_suggestions_load_as_a_label_map(tmp_path, monkeypatch):
     assert cli.main_labels(["suggest", str(run)]) == 0
     loaded = load_label_map(run / "label_map_suggested.csv")
     assert loaded.loc[0, "from"] == "Leptidea sinapsis" and loaded.loc[0, "to"] == "Leptidea sinapis"
+
+
+def _worms(scientificname, valid_name, status, match_type="exact"):
+    return [[{"match_type": match_type, "status": status, "scientificname": scientificname,
+              "valid_name": valid_name}]]
+
+
+def test_worms_subgenus_form_is_not_a_synonym(tmp_path, monkeypatch):
+    """WoRMS gives accepted names with the subgenus and marks the plain binomial an
+    'alternative representation': the same name, not a synonym (as WoRMS answered, 20 Oct 2026)."""
+    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen({
+        "Holothuria albiventer": _worms("Holothuria albiventer", "Holothuria (Metriatyla) albiventer",
+                                        "alternative representation"),
+        "Holothuria polii": _worms("Holothuria polii", "Holothuria (Roweothuria) poli",
+                                   "alternative representation", "phonetic"),
+        "Holothuria collaris": _worms("Holothuria collaris", "Holothuria (Lessonothuria) verrucosa",
+                                      "unaccepted"),
+        "Holothuria ocellata": _worms("Holothuria ocellata", "Bohadschia ocellata", "unaccepted",
+                                      "exact_subgenus"),
+    }))
+    labels = ["Holothuria albiventer", "Holothuria polii", "Holothuria collaris", "Holothuria ocellata"]
+    out = lb.suggest_label_map(_run_dir(tmp_path, labels), backbone="worms").set_index("from")
+    assert "Holothuria albiventer" not in out.index
+    assert out.loc["Holothuria polii", ["to", "kind"]].tolist() == ["Holothuria poli", "spelling"]
+    assert out.loc["Holothuria collaris", ["to", "kind"]].tolist() == ["Holothuria verrucosa", "synonym"]
+    assert out.loc["Holothuria ocellata", ["to", "kind"]].tolist() == ["Bohadschia ocellata", "synonym"]
+
+
+def test_strip_subgenus():
+    assert lb.strip_subgenus("Holothuria (Metriatyla) albiventer") == "Holothuria albiventer"
+    assert lb.strip_subgenus("Holothuria albiventer") == "Holothuria albiventer"
