@@ -254,8 +254,9 @@ PNG output is capped at 150 dpi and 3000 px per side (`utils.save_capped_png`).
 
 ### Sweep — `parameter_sweep`
 
-- `run_parameter_sweep(tsv_path, thresholds, output_dir, organism=None, threads=4, keep_intermediates=False, genetic_code=2)` → paths and the elbow threshold
+- `run_parameter_sweep(tsv_path, thresholds, output_dir, organism=None, threads=4, keep_intermediates=False, genetic_code=2, marker='COI-5P', allow_malformed_rows=False, label_map=None, max_pct_changed=1.0)` → paths, `recommended_threshold` (the settled threshold) and `elbow_threshold`
 - `extract_run_metrics(output_dir, organism, threshold)`, `track_group_membership(run_outputs, organism, thresholds)`, `adjacent_change_rates(tracking_df, thresholds)`
+- `find_settled_threshold(rates, max_pct_changed=1.0)`: the smallest threshold from which every later step in `adjacent_change_rates` changes the haplotype of fewer than `max_pct_changed`% of records (2.2.0); `find_elbow_point(summary_df)`: the largest change in slope of the haplotype-count curve, reported for reference
 
 ### Exports — `popgen_export`
 

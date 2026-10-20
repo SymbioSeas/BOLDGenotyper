@@ -1,7 +1,7 @@
 # Parameter Sweep Guide for BOLDGenotyper
 
 **Author**: Steph Smith
-**BOLDGenotyper version**: 2.0.0
+**BOLDGenotyper version**: 2.2.0
 
 ---
 
@@ -37,11 +37,14 @@ self-documenting.
 
 ### What the Sweep Reports
 
-- The number of haplotypes and singletons at each value, with the **elbow** of the
-  haplotype-count curve marked
-- Assignment coverage, suspect haplotypes and label conflicts at each value
 - **Stability**: for each pair of adjacent values, the share of records whose haplotype
   changes (compared by sequence, so renumbered IDs do not count as changes)
+- The **settled threshold**, the recommendation: the smallest value from which every later
+  step changes the haplotype of fewer than 1% of records (2.2.0)
+- The number of haplotypes and singletons at each value, with the settled threshold and
+  the **elbow** of the haplotype-count curve marked (the elbow for reference only; see
+  [Choosing a Threshold](#choosing-a-threshold))
+- Assignment coverage, suspect haplotypes and label conflicts at each value
 
 ---
 
@@ -77,7 +80,7 @@ Default values (0.01, 0.015, 0.02, 0.03, 0.05):
 boldgenotyper-sweep data/Sphyrna_lewini.tsv --output parameter_sweep/
 ```
 
-Custom values:
+Custom values (evenly spaced, as the settled threshold compares steps of the same width):
 
 ```bash
 boldgenotyper-sweep data/Sphyrna_lewini.tsv \
@@ -96,7 +99,7 @@ boldgenotyper-sweep data/Panulirus.tsv --genetic-code 5 --output sweep_panulirus
 ### Step 2: Review the Results
 
 ```bash
-cat parameter_sweep/recommendations.txt     # haplotype counts with the elbow, and stability
+cat parameter_sweep/recommendations.txt     # the settled threshold, stability, haplotype counts
 head parameter_sweep/sweep_summary.csv      # all metrics per value
 open parameter_sweep/elbow_plot.pdf
 open parameter_sweep/threshold_stability.pdf
@@ -121,9 +124,9 @@ boldgenotyper data/Sphyrna_lewini.tsv \
 parameter_sweep/
 ├── sweep_summary.csv              # metrics for each value tested
 ├── threshold_stability.pdf        # four panels: metrics against value
-├── elbow_plot.pdf                 # haplotype count against value, elbow marked
+├── elbow_plot.pdf                 # haplotype count against value, settled threshold and elbow marked
 ├── group_membership_tracking.csv  # each record's haplotype at each value
-├── recommendations.txt            # haplotype-count table and stability table
+├── recommendations.txt            # the settled threshold, haplotype-count and stability tables
 ├── README.md                      # interpretation guide
 └── runs/                          # record and haplotype tables per threshold (full run folders with --keep-intermediates)
     ├── threshold_0_010/
@@ -149,15 +152,15 @@ One row per value:
 
 ### `threshold_stability.pdf`
 
-- **A. Haplotype count**: look for the elbow
+- **A. Haplotype count**: falls steeply, then levels off
 - **B. Singleton count**: falls as the value rises
 - **C. Suspect count**: haplotypes flagged as suspect
 - **D. Assignment quality**: percentage assigned, and records with a label conflict
 
 ### `elbow_plot.pdf`
 
-Haplotype count against value, with the elbow (the largest change in the slope of the
-curve) marked. Past the elbow, raising the value removes few further haplotypes.
+Haplotype count against value, with the settled threshold (green, dashed) and the elbow
+(gray, dotted; the largest change in the slope of the curve) marked.
 
 ### `group_membership_tracking.csv`
 
@@ -181,13 +184,25 @@ HAPLOTYPE COUNT
 ---------------
    threshold   haplotypes   singletons   assigned (% of QC-passed)
    0.010           45           20         87.3
-   0.015           32            6         94.5   <- elbow
+   0.015           32            6         94.5   <- settled, elbow
    0.020           30            4         95.0
    0.030           29            2         95.1
    0.050           27            0         95.3
 
+The settled threshold is 0.015: from there on, every step to the next
+threshold changes the haplotype of fewer than 1% of records (STABILITY below).
+It compares neighboring thresholds only, so it does not depend on where the
+range starts.
+
 The elbow (largest change in the slope of the haplotype-count curve) is at
 0.015: 32 haplotypes, against 45 at 0.010 and 27 at 0.050.
+It is shown for reference only: it depends on the range tested, because on a
+curve whose drops shrink from one step to the next, the slope changes most
+near the start of the range.
+Here it is the second threshold tested.
+
+The thresholds are unevenly spaced: a wider step changes more records, so
+compare the shares of steps of the same width.
 
 STABILITY
 ---------
@@ -200,38 +215,55 @@ Share of records whose haplotype changes between adjacent thresholds
    0.030 -> 0.050        5 of 912 records   0.5%
 ```
 
-(Numbers are illustrative.) The file ends with the command for the next step. It does not
-give an "acceptable range": the choice is yours.
+(Numbers are illustrative.) The file ends with the command for the next step, with the
+settled threshold. It does not give an "acceptable range": the choice is yours.
 
 ---
 
 ## Choosing a Threshold
 
-### 1. Elbow
+### 1. The Settled Threshold
 
-The elbow is where the haplotype count stops dropping steeply. Below it, many singletons
-are within reach of a larger haplotype (likely errors); above it, raising the value removes
-few further haplotypes.
+The sweep recommends the smallest value from which every later step to the next value
+changes the haplotype of fewer than 1% of records (the stability table). Below it, raising
+the value still moves records between haplotypes; from it on, the haplotypes are nearly
+the same for nearly every record, so the result does not hinge on the exact value.
 
-Locating an elbow needs at least 4 values: it is the largest change in slope, and with 3
-values there is only one change, so the middle value would always be chosen. With fewer
-than 4, `recommendations.txt` reports the counts and says there is no elbow.
+- It compares neighboring values only, so it does not move when the range starts lower or
+  higher. Sweep evenly spaced values: a step twice as wide changes more records.
+- It cannot be lower than the first value tested. When the first value is already settled,
+  `recommendations.txt` says so: sweep lower values to see where the haplotypes settle.
+- When no value settles (the last step still changes 1% or more), extend the range upward.
+- The 1% cutoff is `parameter_sweep.SETTLED_MAX_PCT_CHANGED` (and the `max_pct_changed`
+  argument of `run_parameter_sweep`). The stability table lists every step, so another
+  cutoff can be read from it.
 
 ### 2. Stability
 
 The stability table shows how many records change haplotype between neighboring values. A
-value where the share is small on both sides gives nearly the same haplotypes for nearly
-every record, so the result does not hinge on the exact value. A large share between two
-values shows where the choice matters.
+large share between two values shows where the choice matters; a share that rises again at
+a higher step (two neighbors merging) moves the settled threshold above that step.
 
-### 3. Assignment and Labels
+### 3. The Elbow (for Reference)
+
+The elbow is the largest change in the slope of the haplotype-count curve. It is reported,
+but it is not the recommendation: these curves fall steeply and then level off, each step
+removing fewer haplotypes than the one before, so the slope changes most near the start of
+whatever range is tested. On six BOLD datasets, sweeps starting at 0.000, 0.005 and 0.010
+put the elbow at 0.005, 0.010 and 0.015 in five of the six: the second value tested.
+`recommendations.txt` says when the elbow is the second value tested.
+
+Locating an elbow needs at least 4 values: with 3 there is only one change in slope, so the
+middle value would always be chosen.
+
+### 4. Assignment and Labels
 
 `pct_assigned` rises as more error-filtered singletons are corrected into retained
 haplotypes. `pct_label_conflict` rising with the value can mean that singletons carrying
 other labels are being merged into their neighbors; check `label_conflicts.csv` in a run
 at that value (`--keep-intermediates`).
 
-### 4. Biology
+### 5. Biology
 
 Check the haplotypes against what you know of the taxon: too many singletons suggests
 errors are being kept; very few haplotypes in a diverse dataset suggests over-filtering.
@@ -242,17 +274,16 @@ errors are being kept; very few haplotypes in a diverse dataset suggests over-fi
 discovery; may keep sequencing errors as haplotypes. Example: 0.005-0.010.
 
 **Aggressive (higher value, fewer singletons retained)**: noisier data; may remove real rare
-haplotypes. Example: 0.03-0.05. Empirically, marine vertebrates have settled near 0.015 and
-some insect families near 0.085.
+haplotypes. Example: 0.03-0.05.
 
 ### Ambiguous Results
 
-**No clear elbow** (gradual decline): rely on the stability table; choose a value where few
-records change on either side.
+**No threshold settles** (every step changes 1% or more of records): extend the range
+upward, or check data quality.
 
-**Two elbows**: the lower one keeps finer structure; the higher one merges more rare
-variants. Choose by research question and report both in a sensitivity analysis if they
-differ in conclusions.
+**The share dips under 1% and rises again**: the settled threshold is above the later
+rise. Read the records that change at that step (`group_membership_tracking.csv`); if
+the lower value suits your question, report both in a sensitivity analysis.
 
 ---
 
@@ -320,28 +351,28 @@ Use fewer values, more `--threads`, or a pilot sweep on a subsample, then refine
 
 ```
 The singleton error-filtering threshold (--singleton-distance) was chosen with
-boldgenotyper-sweep (BOLDGenotyper v2.0.0; Smith, 2026), which ran the pipeline at
-0.01, 0.015, 0.02, 0.03 and 0.05. The haplotype count fell from 45 to 27 across this
-range, with an elbow at 0.015 (32 haplotypes). Between adjacent values at or above
-0.015, fewer than 1% of records changed haplotype (compared by sequence). We used
-0.015: singleton haplotypes within a p-distance of 0.015 of another haplotype were
-treated as likely sequencing errors, and their records assigned to the nearest
-retained haplotype when it was unique and within that distance.
+boldgenotyper-sweep (BOLDGenotyper v2.2.0; Smith, 2026), which ran the pipeline at
+0.005 to 0.030 in steps of 0.005. The haplotype count fell from 45 to 27 across this
+range. From 0.015 on, every step to the next value changed the haplotype of fewer
+than 1% of records (compared by sequence), so we used 0.015: singleton haplotypes
+within a p-distance of 0.015 of another haplotype were treated as likely sequencing
+errors, and their records assigned to the nearest retained haplotype when it was
+unique and within that distance.
 ```
 
 ### Short Version
 
 ```
-The singleton filtering threshold (0.015) was chosen with boldgenotyper-sweep at the
-elbow of the haplotype-count curve, where fewer than 1% of records changed haplotype
-between neighboring values (Supplementary Figure S1).
+The singleton filtering threshold (0.015) was chosen with boldgenotyper-sweep as the
+smallest value from which fewer than 1% of records changed haplotype at each further
+step (Supplementary Figure S1).
 ```
 
 ### Figure Legend for Sweep Plots
 
 ```
 Figure S1: Singleton error-filtering threshold. (A) Number of haplotypes at each
---singleton-distance value; the elbow at 0.015 is marked. (B) Singleton haplotypes
+--singleton-distance value; the threshold used (0.015) is marked. (B) Singleton haplotypes
 retained. (C) Suspect haplotypes. (D) Percentage of QC-passed records assigned to a
 haplotype, and records with a label conflict.
 ```
@@ -354,7 +385,7 @@ haplotype, and records with a label conflict.
 
 1. Check data quality first (one ordinary run: `summary.csv`, `records.csv`)
 2. Start with the default values, then refine the range
-3. Read the plots and both tables; the elbow is a starting point, not a rule
+3. Read the plots and both tables; the settled threshold is a starting point, not a rule
 4. Pass the chosen value explicitly, and keep `recommendations.txt` and the plots with
    your methods
 
@@ -368,7 +399,7 @@ haplotype, and records with a label conflict.
 **ESV approach**:
 - Porter, T. M., & Hajibabaei, M. (2020). Putting the I in ITS: Improved characterization of ITS diversity for the eukaryotes using exact sequence variants. Ecology and Evolution, 10(14), 7110-7127.
 
-**Elbow method**:
+**Elbow method** (reported for reference):
 - Thorndike, R. L. (1953). Who belongs in the family? Psychometrika, 18(4), 267-276.
 
 ---

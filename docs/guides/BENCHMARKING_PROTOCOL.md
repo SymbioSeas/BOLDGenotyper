@@ -15,8 +15,8 @@
 > - The annotated table is `records.csv` (`haplotype_id`, `status`, `label`, ...);
 >   haplotype IDs are `H0001`, ... with a stable `seq_md5`; per-haplotype data are in
 >   `haplotypes.csv`.
-> - Pass `--singleton-distance` explicitly; the sweep reports the elbow with the share of
->   records that change haplotype between thresholds.
+> - Pass `--singleton-distance` explicitly; the sweep recommends the settled threshold, from
+>   the share of records that change haplotype between thresholds (2.2.0).
 > - "Contamination" reporting is replaced by label conflicts with evidence
 >   (`label_conflicts.csv`).
 > - `scripts/compare_analyses.py` is not distributed. Benchmark 4 compares the two runs by
@@ -895,7 +895,7 @@ comparison.to_csv("benchmarking/accuracy/panulirus_literature_comparison.csv", i
 
 Demonstrate that the parameter sweep:
 - Identifies reasonable clustering thresholds
-- Detects "elbow" points in threshold vs. cluster plots
+- Recommends the settled threshold (fewer than 1% of records change haplotype at each later step)
 - Produces stable, reproducible recommendations
 - Works across diverse taxonomic groups
 
@@ -914,7 +914,7 @@ For each dataset and threshold:
 - **Number of haplotypes** identified
 - **Singleton rate** (% haplotypes with only 1 sample)
 - **Stability index** (how membership changes between adjacent thresholds)
-- **Recommended threshold** (from elbow detection)
+- **Recommended threshold** (the settled threshold)
 - **Silhouette score** (clustering quality metric)
 
 ### 3.4 Validation Protocol

@@ -7,7 +7,8 @@ elbows of the sweeps in `benchmarking/parameter_sweep/<dataset>/recommendations.
 (run with BOLDGenotyper 1.0.0). Error-singleton handling changed in 2.0.0
 (records of removed singletons are now assigned to their nearest haplotype when it
 is within the threshold), so re-run `boldgenotyper-sweep` with 2.0.0 and check the
-stability table before a final run (see `PARAMETER_SWEEP_GUIDE.md`). Pass
+stability table before a final run (see `PARAMETER_SWEEP_GUIDE.md`; since 2.2.0 the
+sweep recommends the settled threshold, read from that table, not the elbow). Pass
 `--download-date` with the date of the BOLD download so it is recorded in
 `run_provenance.json`, and use a new `--output` folder for each run.
 

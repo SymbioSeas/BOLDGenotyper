@@ -653,10 +653,12 @@ Beyond the main pipeline:
 #### Parameter Sweep (`boldgenotyper-sweep`)
 
 Runs the pipeline at several `--singleton-distance` thresholds and reports:
-- Number of haplotypes and singletons per threshold, with the elbow of the curve
-- Assignment coverage per threshold
 - For each pair of adjacent thresholds, the share of records whose haplotype changes
   (compared by sequence), from `group_membership_tracking.csv`
+- The settled threshold, which it recommends: the smallest threshold from which every
+  later step changes the haplotype of fewer than 1% of records. It does not move with the
+  start of the range; the elbow of the haplotype-count curve, also reported, does.
+- Number of haplotypes and singletons per threshold, and assignment coverage
 
 **When to use**: Before running your final analysis: run the sweep, read
 `recommendations.txt`, choose a threshold, and pass it to `boldgenotyper --singleton-distance`.
@@ -932,7 +934,7 @@ boldgenotyper-sweep data/MySpecies.tsv \
   --thresholds 0.005,0.01,0.015,0.02,0.03,0.05 \
   --output sweep_results/
 
-# Step 2: read the haplotype-count table (elbow marked) and the stability table
+# Step 2: read the settled threshold, the stability table and the haplotype counts
 cat sweep_results/recommendations.txt
 
 # Step 3: apply the chosen value
@@ -1019,7 +1021,7 @@ delete the ones you reject, and pass the file to `--label-map` in the next run.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `tsv` | Path | Required | Input BOLD TSV file |
-| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test (at least 4 to locate an elbow) |
+| `--thresholds` | String | 0.01,0.015,0.02,0.03,0.05 | Comma-separated threshold values to test; evenly spaced values suit the settled threshold |
 | `--output` | Path | parameter_sweep/ | Output directory |
 | `--threads` | Integer | 4 | Number of parallel threads (sequential by default) |
 | `--keep-intermediates` | Flag | False | Keep full output for each threshold tested |
@@ -1332,9 +1334,9 @@ See the **interactive tutorial**: `notebooks/06_plot_customization_tutorial.ipyn
 parameter_sweep/
 ├── sweep_summary.csv              # metrics for each tested threshold
 ├── threshold_stability.pdf        # metrics against threshold
-├── elbow_plot.pdf                 # haplotype count against threshold, elbow marked
+├── elbow_plot.pdf                 # haplotype count against threshold, settled threshold and elbow marked
 ├── group_membership_tracking.csv  # each record's haplotype (ID and seq_md5) per threshold
-├── recommendations.txt            # haplotype-count table and stability table
+├── recommendations.txt            # the settled threshold, haplotype-count and stability tables
 ├── README.md                      # interpretation guide
 └── runs/                          # record and haplotype tables per threshold (full run folders with --keep-intermediates)
 ```
@@ -1344,8 +1346,9 @@ parameter_sweep/
   label-conflict share and mean majority fraction per threshold
 - `group_membership_tracking.csv`: `t_<threshold>` (haplotype ID) and `md5_<threshold>`
   (its `seq_md5`) per record, plus how often its co-members change
-- `recommendations.txt`: the elbow of the haplotype-count curve and, for each pair of
-  adjacent thresholds, the share of records whose haplotype changes
+- `recommendations.txt`: the settled threshold, the share of records whose haplotype
+  changes between each pair of adjacent thresholds, and the elbow of the haplotype-count
+  curve for reference
 
 #### Population Genetics Exports (`exports/`)
 
@@ -1377,7 +1380,7 @@ See [`docs/guides/POPGEN_EXPORT_GUIDE.md`](docs/guides/POPGEN_EXPORT_GUIDE.md) f
 
 BOLDGenotyper uses the **Exact Sequence Variant (ESV)** approach (Porter & Hajibabaei 2020) for haplotype discovery. Each distinct sequence of the core alignment region is a haplotype; no clustering threshold is involved, and records are mapped to haplotypes directly (there is no identity-based re-assignment).
 
-**Error Filtering and `--singleton-distance`**: Singleton ESVs within `--singleton-distance` (default: 0.5%) of another haplotype are removed as probable sequencing or PCR errors, and their records are assigned to the nearest retained haplotype when it is unique and within the same distance. This threshold is the parameter that most affects the number of haplotypes. **Run `boldgenotyper-sweep` first**: it reports the haplotype count at each threshold with the elbow of the curve marked, and for each pair of neighboring thresholds the share of records whose haplotype changes. Choose a value where the count has leveled off and few records change, and pass it to `boldgenotyper --singleton-distance`. Suitable values vary with taxon and sequence quality (empirically: marine vertebrates ≈ 0.015; some insect families ≈ 0.085).
+**Error Filtering and `--singleton-distance`**: Singleton ESVs within `--singleton-distance` (default: 0.5%) of another haplotype are removed as probable sequencing or PCR errors, and their records are assigned to the nearest retained haplotype when it is unique and within the same distance. This threshold is the parameter that most affects the number of haplotypes. **Run `boldgenotyper-sweep` first**: for each pair of neighboring thresholds it reports the share of records whose haplotype changes, and it recommends the settled threshold, the smallest from which every later step changes the haplotype of fewer than 1% of records. Check it against the haplotype counts, and pass the value you choose to `boldgenotyper --singleton-distance`. Suitable values vary with taxon and sequence quality.
 
 ### Labels and the Haplotype Taxon
 
@@ -1441,9 +1444,9 @@ error than a real rare variant. Two kinds of data break that assumption:
   species label is carried by no retained haplotype, and `n_singleton_label_absent` in
   `summary.csv` counts them; the log warns when there are any.
 
-In simulations with known haplotypes, the sweep's elbow removed the simulated sequencing
-errors at every scenario but also merged rare real haplotypes within about 1% of a common
-one; a study that deposits one sequence per haplotype lost most of its haplotypes until its
+In simulations with known haplotypes, the sweep's settled threshold removed nearly all the
+simulated sequencing errors in every scenario but also merged rare real haplotypes within
+about 1% of a common one; a study that deposits one sequence per haplotype lost most of its haplotypes until its
 singletons were exempted. When the family-level warning fires, compare the sweep's lowest
 thresholds and consider a lower `--singleton-distance` for that dataset.
 
@@ -1857,10 +1860,11 @@ python -c "import pandas as pd; r = pd.read_csv('{organism}_output/records.csv')
 **Problem**: `boldgenotyper-sweep` - How do I interpret the elbow plot?
 
 ```bash
-# The elbow plot shows the haplotype count against threshold
-# Look for the "elbow point" where the curve levels off, then check the
-# stability table: the share of records whose haplotype changes between
-# neighboring thresholds
+# The elbow plot shows the haplotype count against threshold, with the settled
+# threshold (the recommendation) and the elbow marked. The settled threshold
+# comes from the stability table: from it on, fewer than 1% of records change
+# haplotype at each step. The elbow moves with the start of the range tested,
+# so it is shown for reference only
 
 # Check the recommendations file:
 cat parameter_sweep/recommendations.txt
