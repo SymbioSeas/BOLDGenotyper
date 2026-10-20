@@ -3,12 +3,12 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "BOLDGenotyper: Automated COI Sequence Genotyping and Biogeographic Analysis"
 version: 2.0.0
-date-released: "2025-01-20"
+date-released: "2026-10-19"
 authors:
   - family-names: Smith
     given-names: Steph
-    email: symbioseas@outlook.com
-    affiliation: "University of North Carolina at Chapel Hill, Department of Biology"
+    email: steph.smith@unc.edu
+    affiliation: "University of North Carolina at Chapel Hill, Institute of Marine Sciences"
 repository-code: "https://github.com/SymbioSeas/BOLDGenotyper"
 url: "https://github.com/SymbioSeas/BOLDGenotyper"
 abstract: >-
@@ -36,8 +36,8 @@ preferred-citation:
   authors:
     - family-names: Smith
       given-names: Steph
-      email: symbioseas@outlook.com
-  year: 2025
+      email: steph.smith@unc.edu
+  year: 2026
   url: "https://github.com/SymbioSeas/BOLDGenotyper"
   notes: "If a DOI is available, please use it for citation."
 references:
