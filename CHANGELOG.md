@@ -33,6 +33,8 @@ Query side only: reference runs are unchanged.
   plain binomial an "alternative representation" of the accepted name, which is not a
   synonym. Suggested names are given without the subgenus. (Found on a *Holothuria*
   download, where 33 of 39 suggestions were of this kind.)
+- `boldgenotyper-labels suggest` retries a request that fails or times out (3 tries) instead
+  of ending the run: a slow WoRMS answer stopped a 198-name run partway.
 
 ## [2.0.0] - 2026-10-19
 

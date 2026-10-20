@@ -35,6 +35,8 @@ BACKBONES = {
 SUGGESTION_COLUMNS = ["from", "to", "reason", "source", "kind", "backbone_match_type",
                       "backbone_status"]
 PAUSE_SECONDS = 0.1
+ATTEMPTS = 3                     # tries per request; a slow answer is retried
+RETRY_PAUSE_SECONDS = 2.0        # before the second try (doubled before the third)
 _GBIF_URL = "https://api.gbif.org/v1/species/match?name={}&strict=false"
 _WORMS_URL = ("https://www.marinespecies.org/rest/AphiaRecordsByMatchNames"
               "?scientificnames[]={}&marine_only=false")
@@ -45,11 +47,16 @@ class BackboneError(RuntimeError):
 
 
 def _get_json(url: str, timeout: float):
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            body = response.read()
-    except (urllib.error.URLError, OSError) as e:
-        raise BackboneError(f"could not reach {url.split('?')[0]}: {e}")
+    for attempt in range(ATTEMPTS):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                body = response.read()
+            break
+        except (urllib.error.URLError, OSError) as e:
+            if attempt == ATTEMPTS - 1:
+                raise BackboneError(f"could not reach {url.split('?')[0]} after {ATTEMPTS} "
+                                    f"tries: {e}")
+            time.sleep(RETRY_PAUSE_SECONDS * 2 ** attempt)
     if not body:
         return None
     try:

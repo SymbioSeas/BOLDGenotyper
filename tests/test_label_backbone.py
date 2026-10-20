@@ -52,6 +52,7 @@ def _gbif(canonical, match_type="EXACT", status="ACCEPTED", species=None):
 @pytest.fixture(autouse=True)
 def _no_pause(monkeypatch):
     monkeypatch.setattr(lb, "PAUSE_SECONDS", 0)
+    monkeypatch.setattr(lb, "RETRY_PAUSE_SECONDS", 0)
 
 
 def test_gbif_fuzzy_suggests_spelling(tmp_path, monkeypatch):
@@ -135,3 +136,30 @@ def test_worms_subgenus_form_is_not_a_synonym(tmp_path, monkeypatch):
 def test_strip_subgenus():
     assert lb.strip_subgenus("Holothuria (Metriatyla) albiventer") == "Holothuria albiventer"
     assert lb.strip_subgenus("Holothuria albiventer") == "Holothuria albiventer"
+
+
+def test_a_timeout_is_retried(tmp_path, monkeypatch):
+    """One slow answer among hundreds of names should not end the run."""
+    calls = []
+    answer = _fake_urlopen({"Pieris rapae": _gbif("Pieris rapae")})
+
+    def flaky(url, timeout=None):
+        calls.append(url)
+        if len(calls) <= 2:
+            raise urllib.error.URLError("timed out")
+        return answer(url, timeout)
+    monkeypatch.setattr(urllib.request, "urlopen", flaky)
+    lb.suggest_label_map(_run_dir(tmp_path, ["Pieris rapae"]))
+    assert len(calls) == 3
+
+
+def test_persistent_failure_still_fails(tmp_path, monkeypatch):
+    calls = []
+
+    def offline(url, timeout=None):
+        calls.append(url)
+        raise urllib.error.URLError("no network")
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    with pytest.raises(lb.BackboneError):
+        lb.suggest_label_map(_run_dir(tmp_path, ["Pieris rapae"]))
+    assert len(calls) == lb.ATTEMPTS
