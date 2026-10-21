@@ -5,6 +5,16 @@ All notable changes to BOLDGenotyper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - Unreleased
+
+### Added
+- `boldgenotyper-query --threads N` (and `threads` in `query_against_haplotypes`): queries
+  are aligned in N worker processes. Each query is aligned to every haplotype, about 4 ms
+  per pair, so a query took ~8 s against a family-level reference of ~1,900 haplotypes on
+  one core; 100 such queries took 776 s on one core, 143 s with 8 processes and 113 s with
+  12. The outputs are the same for any N (`query_provenance.json` records it); the default,
+  1, keeps the single-process behavior.
+
 ## [2.2.0] - 2026-10-20
 
 ### Changed
