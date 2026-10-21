@@ -256,3 +256,29 @@ def test_min_overlap_length_recorded_in_provenance(tmp_path, run_dir):
     (tmp_path / "custom").mkdir()
     s, out = _query(tmp_path / "custom", run_dir, {"window": WINDOW}, "--min-overlap-length", "80")
     assert json.loads((out / "query_provenance.json").read_text())["parameters"]["min_overlap_length"] == 80
+
+
+def test_threads_give_identical_files(tmp_path, run_dir):
+    """2.3.0: --threads runs queries in parallel; every result file is the same."""
+    records = {"window": WINDOW, "whole": A, "start": A[:200]}
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    _, out1 = _query(tmp_path / "one", run_dir, records)
+    _, out2 = _query(tmp_path / "two", run_dir, records, "--threads", "2")
+    for name in ("query_calls.csv", "query_candidates.csv"):
+        assert (out2 / name).read_bytes() == (out1 / name).read_bytes(), name
+
+    def undated(path):                  # the alignments file starts with the time of the run
+        return [line for line in path.read_text().splitlines() if not line.startswith("Analysis Date:")]
+    assert undated(out2 / "query_alignments.txt") == undated(out1 / "query_alignments.txt")
+    params = json.loads((out2 / "query_provenance.json").read_text())["parameters"]
+    assert params["threads"] == 2
+    assert json.loads((out1 / "query_provenance.json").read_text())["parameters"]["threads"] == 1
+
+
+def test_threads_below_one_is_a_usage_error(tmp_path, run_dir):
+    fasta = tmp_path / "queries.fasta"
+    fasta.write_text(f">window\n{WINDOW}\n")
+    with pytest.raises(SystemExit):
+        cli.main_query(["--query", str(fasta), "--haplotypes", str(run_dir),
+                        "--output", str(tmp_path / "out"), "--threads", "0"])

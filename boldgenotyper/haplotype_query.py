@@ -37,7 +37,8 @@ Dependencies:
 Author: Steph Smith (symbioseas@outlook.com)
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Iterator, List, Tuple, Optional
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 import logging
 from dataclasses import dataclass, field
@@ -309,6 +310,46 @@ def align_query_to_haplotype(
 # Metadata Loading
 # ============================================================================
 
+# 2.3.0: with threads > 1, queries run in worker processes. Each worker gets the haplotypes
+# once (pool initializer) and aligns whole queries; results come back in query order, so the
+# ranking, the calls and every output are the same as with one thread.
+_WORKER_HAPLOTYPES: List[Tuple[str, str]] = []
+_WORKER_ALIGNER: Optional[PairwiseAligner] = None
+
+
+def _init_query_worker(haplotypes: List[Tuple[str, str]]) -> None:
+    global _WORKER_HAPLOTYPES, _WORKER_ALIGNER
+    _WORKER_HAPLOTYPES = haplotypes
+    _WORKER_ALIGNER = make_aligner()
+
+
+def _align_query_with(query: Tuple[str, str], haplotypes: List[Tuple[str, str]],
+                      aligner: PairwiseAligner) -> List[AlignmentResult]:
+    """One query (id, sequence) against every haplotype (id, sequence), in haplotype order."""
+    query_id, query_seq = query
+    return [align_query_to_haplotype(query_seq, query_id, seq, haplotype_id, aligner=aligner)
+            for haplotype_id, seq in haplotypes]
+
+
+def _align_query_in_worker(query: Tuple[str, str]) -> List[AlignmentResult]:
+    return _align_query_with(query, _WORKER_HAPLOTYPES, _WORKER_ALIGNER)
+
+
+def _aligned_queries(queries: List[Tuple[str, str]], haplotypes: List[Tuple[str, str]],
+                     threads: int) -> Iterator[List[AlignmentResult]]:
+    """Each query's alignments to every haplotype, in query order."""
+    workers = min(threads, len(queries))
+    if workers <= 1:
+        aligner = make_aligner()
+        for query in queries:
+            yield _align_query_with(query, haplotypes, aligner)
+        return
+    chunk = max(1, len(queries) // (workers * 4))
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_query_worker,
+                             initargs=(haplotypes,)) as pool:
+        yield from pool.map(_align_query_in_worker, queries, chunksize=chunk)
+
+
 def load_haplotype_metadata(analysis_dir: Path) -> Optional[pd.DataFrame]:
     """
     Load haplotype metadata from previous analysis.
@@ -411,6 +452,7 @@ def query_against_haplotypes(
     query_records: Optional[List[SeqRecord]] = None,
     haplotype_taxa: Optional[Dict[str, "query_assignment.HaplotypeTaxon"]] = None,
     min_overlap_length: int = query_assignment.DEFAULT_MIN_OVERLAP_LENGTH,
+    threads: int = 1,
 ) -> Tuple[List[AlignmentResult], Optional[pd.DataFrame], List["query_assignment.QueryVerdict"]]:
     """
     Query sequences against haplotype consensuses.
@@ -439,6 +481,9 @@ def query_against_haplotypes(
     haplotype_taxa : dict, optional
         haplotype_id -> HaplotypeTaxon for species calls; None loads them from
         analysis_dir's haplotypes.csv (query_assignment.load_haplotype_taxa)
+    threads : int, optional
+        Worker processes for the alignments (default: 1, in this process). The
+        results are the same for any number (2.3.0).
 
     Returns
     -------
@@ -462,6 +507,9 @@ def query_against_haplotypes(
     >>> len(results)
     50  # 5 queries × 10 top matches each
     """
+    if threads < 1:
+        raise ValueError(f"threads must be at least 1, got {threads}")
+
     # Validate input files
     if not query_fasta.exists():
         raise FileNotFoundError(f"Query file not found: {query_fasta}")
@@ -508,28 +556,15 @@ def query_against_haplotypes(
                     f"called from the haplotypes' taxa")
 
     # Perform alignments
-    logger.info(f"Performing alignments: {len(valid_queries)} queries × {len(haplotype_records)} haplotypes")
+    workers = min(threads, len(valid_queries))
+    logger.info(f"Performing alignments: {len(valid_queries)} queries × {len(haplotype_records)} haplotypes"
+                + (f" ({workers} processes)" if workers > 1 else ""))
     all_results = []
     verdicts = []
-    aligner = make_aligner()
+    queries = [(q.id, str(q.seq)) for q in valid_queries]
+    haplotypes = [(h.id, str(h.seq)) for h in haplotype_records]
 
-    for query_record in valid_queries:
-        query_seq = str(query_record.seq)
-        query_id = query_record.id
-
-        # Align against all haplotypes
-        query_results = []
-        for haplotype_record in haplotype_records:
-            haplotype_seq = str(haplotype_record.seq)
-            haplotype_id = haplotype_record.id
-
-            result = align_query_to_haplotype(
-                query_seq, query_id,
-                haplotype_seq, haplotype_id,
-                aligner=aligner,
-            )
-            query_results.append(result)
-
+    for (query_id, _), query_results in zip(queries, _aligned_queries(queries, haplotypes, threads)):
         # Rank (eligible first, then fewer differences, ...) and compute the
         # verdict from the full list before truncating to top N for display.
         query_results = query_assignment.rank_matches(

@@ -1947,6 +1947,17 @@ def _iso_date(value: str) -> str:
         raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}")
 
 
+def _positive_int(value: str) -> int:
+    """argparse type: an integer of at least 1."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}")
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {number}")
+    return number
+
+
 def _build_main_parser() -> argparse.ArgumentParser:
     """Build the main boldgenotyper argument parser."""
     parser = argparse.ArgumentParser(
@@ -2607,6 +2618,14 @@ For more information:
     )
 
     parser.add_argument(
+        '--threads',
+        type=_positive_int,
+        default=1,
+        help='Worker processes for the alignments; queries run in parallel and the '
+             'results are the same for any number (default: 1)'
+    )
+
+    parser.add_argument(
         '--assign-identity',
         type=float,
         default=0.97,
@@ -2812,6 +2831,7 @@ For more information:
             query_records=query_records,
             haplotype_taxa=haplotype_taxa,
             min_overlap_length=args.min_overlap_length,
+            threads=args.threads,
         )
 
         # Exact-match reference records (Q10)
@@ -2834,6 +2854,7 @@ For more information:
             "max_mismatch_delta": args.max_mismatch_delta,
             "min_species_support": args.min_species_support,
             "top_n": args.top_n,
+            "threads": args.threads,
             "search_records": args.search_records,
             **curation_parameters,
         }
