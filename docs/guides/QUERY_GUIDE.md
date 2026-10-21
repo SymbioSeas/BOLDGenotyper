@@ -1,7 +1,7 @@
 # Query Guide for BOLDGenotyper
 
 **Author**: Steph Smith
-**BOLDGenotyper version**: 2.0.0
+**BOLDGenotyper version**: 2.3.0
 
 ---
 
@@ -231,8 +231,8 @@ Query-time curation needs a run-folder reference.
 ## Repeat Queries
 
 Keep one reference run per reference dataset, and query the full set of your samples each
-time you add some: a query run takes seconds, and the calls of earlier samples are
-recomputed with the same settings. Every output records the reference run's md5, so results
+time you add some: a query run takes seconds for a handful of samples, and the calls of
+earlier samples are recomputed with the same settings. Every output records the reference run's md5, so results
 from different dates can be compared; a different md5 means a different reference run
 (new download, settings or curation), and earlier calls should be repeated against it.
 
@@ -246,6 +246,11 @@ the shorter sequence (`low_coverage`); a query that overlaps the haplotype core 
 than `--min-overlap-length` bases is `short_overlap`; a sequence from a taxon absent from the
 reference stays below `--assign-identity` (`below_identity`). `query_overhang` in
 `query_candidates.csv` shows how many of the query's bases lie beyond the core.
+
+**Queries take long**: each query is aligned to every haplotype (about 4 ms per pair), so
+hundreds of queries against a family-level reference take an hour or more on one core. Pass
+`--threads N` (2.3.0) to align queries in N worker processes; the outputs are the same for
+any N, and `query_provenance.json` records the number.
 
 **Several haplotypes in the set**: the query does not cover the sites where they differ.
 The pooled labels then decide the species call; a longer query may separate them.

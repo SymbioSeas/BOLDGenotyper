@@ -790,6 +790,10 @@ boldgenotyper-query --query samples.fasta --haplotypes haplotypes.fasta --top-n 
 A v1 run folder (no `run_provenance.json`) also works as `--haplotypes`, for haplotype
 matching only.
 
+**Many queries or a large reference**: each query is aligned to every haplotype, so the time
+grows with queries × haplotypes (about 8 s per query against ~1,900 haplotypes on one core).
+`--threads N` aligns queries in N worker processes; every output is the same for any N.
+
 **How queries are matched**: each query is aligned over its whole overlap with each
 haplotype (global alignment with free end gaps), so differences at the query's ends are
 counted. `differences` = mismatches + gap columns. A match is eligible when it covers at
@@ -1006,6 +1010,7 @@ delete the ones you reject, and pass the file to `--label-map` in the next run.
 | `--haplotypes` | Path | Required | A run folder (v2 or v1) or a haplotype FASTA |
 | `--output` | Path | `haplotype_query_results/` | Output directory |
 | `--top-n` | Integer | 10 | Matches reported per query |
+| `--threads` | Integer | 1 | Worker processes for the alignments; the results are the same for any number |
 | `--assign-identity` | Float | 0.97 | Minimum identity for an eligible match |
 | `--min-query-coverage` | Float | 0.95 | Minimum coverage of the shorter of query and haplotype |
 | `--max-mismatch-delta` | Integer | 0 | Differences from the best match allowed in the equivalence set |
