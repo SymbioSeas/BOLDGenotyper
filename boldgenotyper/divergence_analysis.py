@@ -84,7 +84,8 @@ def calculate_pairwise_distance(seq1: str, seq2: str) -> float:
 def align_consensus_sequences(
     consensus_fasta: Path,
     output_dir: Path,
-    organism: str
+    organism: str,
+    threads: int = 1
 ) -> Path:
     """
     Align consensus sequences using MAFFT if not already aligned.
@@ -97,6 +98,8 @@ def align_consensus_sequences(
         Output directory for alignment
     organism : str
         Organism name
+    threads : int, optional
+        MAFFT threads (--thread; default: 1). The alignment is the same for any number.
 
     Returns
     -------
@@ -118,10 +121,7 @@ def align_consensus_sequences(
 
     try:
         # Run MAFFT
-        cmd = [
-            'mafft',
-            '--auto',
-            '--quiet',
+        cmd = ['mafft', '--auto', '--quiet'] + (['--thread', str(threads)] if threads > 1 else []) + [
             str(consensus_fasta)
         ]
 
@@ -624,6 +624,7 @@ def generate_divergence_analysis(
     organism: str,
     extended: bool = False,
     records: Optional[pd.DataFrame] = None,
+    threads: int = 1,
 ) -> Dict[str, Any]:
     """
     Complete divergence analysis workflow.
@@ -641,6 +642,9 @@ def generate_divergence_analysis(
         Output directory for divergence analysis
     organism : str
         Organism name
+    threads : int, optional
+        MAFFT threads for the haplotype alignment (default: 1); the result is the
+        same for any number.
 
     Returns
     -------
@@ -661,7 +665,8 @@ def generate_divergence_analysis(
     aligned_fasta = align_consensus_sequences(
         consensus_fasta,
         output_dir,
-        organism
+        organism,
+        threads=threads
     )
 
     # Calculate pairwise divergence matrix

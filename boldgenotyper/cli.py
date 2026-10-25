@@ -904,6 +904,7 @@ def run_pipeline(
             record_groups=error_filter_diagnostics.record_groups(df_qc_passed),
             haplotype_only_min_records=cfg.haplotype.haplotype_only_min_records,
             haplotype_only_min_distinct=cfg.haplotype.haplotype_only_min_distinct,
+            threads=cfg.n_threads,
         )
 
         logger.info(f"  Identified {len(haplotype_records)} high-confidence haplotypes (after error filtering)")
@@ -1439,6 +1440,7 @@ def run_pipeline(
                 organism=organism,
                 extended=cfg.extended,
                 records=df_final,
+                threads=cfg.n_threads,
             )
 
             logger.info(f"  Divergence analysis complete: {dirs['divergence_analysis']}")

@@ -126,7 +126,8 @@ def _member_counts(mapping: pd.DataFrame) -> Dict[str, int]:
 def run_mafft_alignment(
     input_fasta: str,
     output_fasta: str,
-    mafft_options: Optional[List[str]] = None
+    mafft_options: Optional[List[str]] = None,
+    threads: int = 1
 ) -> None:
     """
     Perform multiple sequence alignment using MAFFT.
@@ -139,11 +140,15 @@ def run_mafft_alignment(
         Path to output aligned FASTA file
     mafft_options : List[str], optional
         Additional MAFFT command line options (default: ["--auto"])
+    threads : int, optional
+        MAFFT threads (--thread; default: 1). The alignment is the same for any number.
 
     Raises
     ------
     AlignmentError
         If MAFFT is not found or alignment fails
+    ValueError
+        If threads is below 1
 
     Examples
     --------
@@ -151,6 +156,9 @@ def run_mafft_alignment(
     >>> run_mafft_alignment("sequences.fasta", "aligned.fasta",
     ...                     mafft_options=["--maxiterate", "1000"])
     """
+    if threads < 1:
+        raise ValueError(f"threads must be at least 1, not {threads}")
+
     # Check if MAFFT is available
     if shutil.which('mafft') is None:
         raise AlignmentError(
@@ -165,7 +173,7 @@ def run_mafft_alignment(
         mafft_options = ["--auto"]
 
     # Build command
-    cmd = ["mafft"] + mafft_options + [input_fasta]
+    cmd = ["mafft"] + mafft_options + (["--thread", str(threads)] if threads > 1 else []) + [input_fasta]
 
     logger.info(f"Running MAFFT alignment: {' '.join(cmd)}")
 
@@ -1020,6 +1028,7 @@ def identify_haplotypes(
     record_groups: Optional[pd.DataFrame] = None,
     haplotype_only_min_records: int = 10,
     haplotype_only_min_distinct: float = 0.90,
+    threads: int = 1,
 ) -> tuple:
     """
     Main haplotype-first workflow: identify ESVs from core region.
@@ -1060,6 +1069,9 @@ def identify_haplotypes(
     return_details : bool, optional
         Also return a DiscoveryDetails with the cutoffs applied, the records
         excluded for core coverage, and the error-singleton outcomes.
+    threads : int, optional
+        MAFFT threads for the record alignment (default: 1); the result is the
+        same for any number.
 
     Returns
     -------
@@ -1111,7 +1123,7 @@ def identify_haplotypes(
     # Step 1: Align sequences
     logger.info("Step 1: Aligning sequences with MAFFT...")
     aligned_fasta = output_path / f"{Path(fasta_path).stem}_aligned.fasta"
-    run_mafft_alignment(str(fasta_path), str(aligned_fasta))
+    run_mafft_alignment(str(fasta_path), str(aligned_fasta), threads=threads)
 
     # Step 2: Load alignment
     logger.info("Step 2: Loading alignment...")
