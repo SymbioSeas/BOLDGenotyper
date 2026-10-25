@@ -890,7 +890,7 @@ boldgenotyper --help
 | `--singleton-distance` | Float | 0.005 | Error filter: singleton haplotypes within this p-distance of another haplotype are removed as likely errors; choose with `boldgenotyper-sweep` and pass explicitly |
 | `--no-assign-corrected` | Flag | False | Leave records of error-filtered singletons unassigned instead of assigning them to their nearest haplotype |
 | `--genetic-code` | Integer | 2 | NCBI genetic code for ORF validation (2 = vertebrate mitochondrial; 5 = invertebrate mitochondrial) |
-| `--threads` | Integer | 4 | Number of parallel CPU threads |
+| `--threads` | Integer | 4 | Threads for the MAFFT alignments (records, haplotypes, tree); the results are the same for any number |
 | `--build-tree` | Flag | False | Build a phylogenetic tree with FastTree |
 | `--tree-min-members` | Integer | 1 | Minimum members for a haplotype to be a tree tip (suspect haplotypes are always excluded) |
 | `--phylo-outgroup-fasta`, `--phylo-outgroup-label`, `--phylo-outgroup-taxon` | | None | Root the tree on an outgroup |
@@ -984,7 +984,10 @@ and `haplotypes.csv` has `in_tree` for each haplotype.
 
 #### `--threads`
 
-**What it controls**: Number of CPU cores used by MAFFT and FastTree.
+**What it controls**: The threads MAFFT uses for its three alignments: the records (the
+longest step of a large run), the haplotypes for the divergence step, and the tree. FastTree
+runs on one thread. MAFFT gives the same alignment for any number of threads, so the results
+do not depend on it. Up to 2.3.0 only the tree alignment used them.
 
 **Recommendation**: Set to number of available cores (check with `nproc` or `sysctl -n hw.ncpu`)
 

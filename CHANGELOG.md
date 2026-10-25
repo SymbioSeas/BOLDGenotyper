@@ -5,6 +5,18 @@ All notable changes to BOLDGenotyper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - Unreleased
+
+### Fixed
+- `--threads` now reaches the MAFFT alignment of the records and of the haplotypes (the
+  divergence step), not only the tree's. Up to 2.3.0 these two ran on one thread whatever
+  `--threads` said, although the record alignment is the longest step of a large run (18.5 of
+  39 min on 20,926 Pieridae records). MAFFT gives the same alignment for any number of
+  threads; on 8,936 Pieridae records the alignment was byte-identical and took 34 s on 8
+  threads against 203 s on one. `run_mafft_alignment`, `identify_haplotypes`,
+  `align_consensus_sequences` and `generate_divergence_analysis` take `threads` (default 1,
+  the 2.3.0 command). FastTree still runs on one thread.
+
 ## [2.3.0] - 2026-10-21
 
 ### Added

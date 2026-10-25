@@ -2035,7 +2035,8 @@ Notes:
         '--threads',
         type=int,
         default=4,
-        help='Number of parallel threads (default: 4)'
+        help='Threads for the MAFFT alignments of the records, the haplotypes and the tree; '
+             'the results are the same for any number (default: 4)'
     )
 
     parser.add_argument(

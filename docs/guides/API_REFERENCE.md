@@ -162,7 +162,7 @@ Signatures are abbreviated; see each function's docstring.
 
 ### Haplotypes — `dereplication`, `haplotype_ids`, `record_status`
 
-- `dereplication.identify_haplotypes(tsv_path, fasta_path, output_dir, min_core_coverage=0.8, min_singleton_distance=0.005, max_singleton_distance=0.05, min_sequence_coverage=0.95, assign_corrected=True, return_details=False, record_groups=None, haplotype_only_min_records=10, haplotype_only_min_distinct=0.90, ...)` → `(haplotype_records, mapping, stats, [details])`; with `record_groups` (`error_filter_diagnostics.record_groups`), singletons of haplotype-only groups are not error-filtered (`details.haplotype_only_groups`, `details.n_singletons_exempt`); IDs are `H0001`..., FASTA headers carry `seq_md5` and `n_members`; `details` has the core length, cutoffs, excluded records and error-singleton outcomes
+- `dereplication.identify_haplotypes(tsv_path, fasta_path, output_dir, min_core_coverage=0.8, min_singleton_distance=0.005, max_singleton_distance=0.05, min_sequence_coverage=0.95, assign_corrected=True, return_details=False, record_groups=None, haplotype_only_min_records=10, haplotype_only_min_distinct=0.90, threads=1, ...)` → `(haplotype_records, mapping, stats, [details])`; `threads` is MAFFT's for the record alignment; with `record_groups` (`error_filter_diagnostics.record_groups`), singletons of haplotype-only groups are not error-filtered (`details.haplotype_only_groups`, `details.n_singletons_exempt`); IDs are `H0001`..., FASTA headers carry `seq_md5` and `n_members`; `details` has the core length, cutoffs, excluded records and error-singleton outcomes
 - `dereplication.flag_suspect_haplotypes(haplotype_records, mapping, max_singleton_distance=0.05)` → per-haplotype stats with `nearest_haplotype`, `nearest_neighbor_distance`, `is_suspect`, `suspect_reasons`
 - `haplotype_ids.seq_md5(seq)` → md5 of the uppercase, ungapped sequence
 - `haplotype_ids.assign_display_ids(counts)` → `{seq_md5: "H0001", ...}` by count, then md5
@@ -214,7 +214,7 @@ Pass only records with `coord_status == "ok"` to the region functions, as the pi
 
 ### Divergence — `divergence_analysis`
 
-- `generate_divergence_analysis(consensus_fasta, taxonomy_csv, output_dir, organism, extended=False, records=None)` → aligned haplotypes and pairwise p-distances; with `extended`, the label-based gap
+- `generate_divergence_analysis(consensus_fasta, taxonomy_csv, output_dir, organism, extended=False, records=None, threads=1)` → aligned haplotypes (MAFFT on `threads` threads) and pairwise p-distances; with `extended`, the label-based gap
 - `compute_label_based_gap(distance_by_id, records)` → per-label `max_within`, `min_between`, `label_based_gap`
 
 ### Metadata — `metadata_summary`
